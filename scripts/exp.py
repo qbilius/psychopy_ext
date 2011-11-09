@@ -371,8 +371,8 @@ class Experiment:
         
          
     
-class Extras:
-    def drawLine(self, shapeStim):
+#class Extras:
+    def drawLine(self,shapeStim):
         """
         Draws thick shape stimuli as a collection of lines
         Necessary when PsychoPy fails to draw ShapeStim due to its thickness
@@ -394,7 +394,7 @@ class Extras:
             lh = np.sqrt(edges[0]**2 + edges[1]**2)/2#np.abs(parts[0])+np.abs(parts[1])# 
             
             line = visual.ShapeStim(
-                win,
+                self.win,
                 lineWidth   = 0,
                 lineColor   = None,
 
