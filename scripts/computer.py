@@ -7,7 +7,7 @@ class Computer:
     stereo = False
     trigger = 'space'
     defaultKeys = ['escape', trigger]
-    validResponses = {1: '1', 0: '0'}
+    validResponses = {0: '1', 1: '2', 2: '3', 3: '4'}
     
     def __init__(self, mac = None):
         mac = uuid.getnode() # get mac address

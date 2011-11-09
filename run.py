@@ -22,7 +22,9 @@ def run():
         name = 'scripts.'+rp.runType
         #import pdb; pdb.set_trace()
         __import__(name)
-        sys.modules[name].run(rp)
+        run = sys.modules[name].Test(rp)
+        run.run()
+#        sys.modules[name].run(rp)
         
         
     def runAnalysis(rp):

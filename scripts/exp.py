@@ -41,6 +41,7 @@ class Experiment:
         """
         What to do when exit is requested
         """
+        #self.win.saveMovieFrames('experiment.mpg')
         self.dispRunStats()
         core.quit()
                 
@@ -60,15 +61,13 @@ class Experiment:
 
     def trial2struct(self,trial):
     
-        trialStruct = []
+        self.trialStruct = []
         for event in trial:
             eventStruct = {}
             eventStruct['dur'] = event[0]
             eventStruct['display'] = event[1]
             eventStruct['defaultFun'] = event[2]
-            trialStruct.append(eventStruct)
-        
-        return trialStruct
+            self.trialStruct.append(eventStruct)
         
         
     def TrialHandler2rec(self):
@@ -185,31 +184,17 @@ class Experiment:
             )
         
         
-    def showIntro(self, text = None, args = None, wait = 0):
+    def showIntro(self, text = None, wait = 0):
         """
         Show instructions until trigger is received
         """
         
-        if args != None:
-            (vertices, p, stimSize) = args
-            # add response keys and stimuli-size boxes at the stimuli position
-            box.setVertices(vertices)
-            for (key, value) in keyNames.items():
-                box.setPos(p[key])
-                box.draw()
-                number = visual.TextStim(self.win, text = value,
-                                         pos = p[key], wrapWidth = stimSize - 1)
-                number.draw()
-                if self.comp.stereo:
-                    number2 = visual.TextStim(self.win2, text = value,
-                                             pos = p[key], wrapWidth = stimSize - 1)
-                    number2.draw()
-
         if text != None:
+        
             introText = visual.TextStim(
                 self.win,
                 text = text,
-                color = 'black',
+                color = 'white',
                 height = .7,
                 alignHoriz = 'center')
             introText.draw()
@@ -218,7 +203,7 @@ class Experiment:
                 introText2 = visual.TextStim(
                     self.win2,
                     text = text,
-                    color = 'black',
+                    color = 'white',
                     height = .7,
                     alignHoriz = 'center')
                 introText2.draw()
@@ -227,11 +212,12 @@ class Experiment:
         if self.comp.stereo: self.win2.flip()
         
         thisKey = None
-        while thisKey != self.comp.trigger: thisKey = self.lastKey()    
+        while thisKey != self.comp.trigger:
+            thisKey = self.lastKey()
+            #self.win.getMovieFrame()
+        core.wait(wait) # wait a little bit before starting the experiment
         self.win.flip()
         if self.comp.stereo: self.win2.flip()
-        
-        core.wait(wait)
         
             
     def waitEvent(self, globClock, trialClock, eventClock,
@@ -247,14 +233,18 @@ class Experiment:
             self.win.flip()
             if self.comp.stereo: self.win2.flip()
             
-        else:
+        else:        
+            for stim in thisEvent['display']: stim.draw()
+            self.win.flip()
+            if self.comp.stereo: self.win2.flip()
+                        
+            
             while eventClock.getTime() < thisEvent['dur'] and \
             trialClock.getTime() < thisTrial['dur']:# and \
             # globClock.getTime() < thisTrial['onset'] + thisTrial['dur']:
+                #self.win.getMovieFrame()
                 self.lastKey()
-                for stim in thisEvent['display']: stim.draw()
-                self.win.flip()
-                if self.comp.stereo: self.win2.flip()            
+                           
                 
 
     def run(self, noOutput = False, audioFeedback = False, captureWin = False):
@@ -275,8 +265,8 @@ class Experiment:
             
             if not fileExists: #dataCSV.writerow(expPlan.dtype.names[:-1])
                 header = self.expPlan.trialList[0].keys() #+ ['subjResp', 'accuracy','RT']
-                trialStructIndex = header.index('trialStruct')
-                del header[trialStructIndex]
+#                trialStructIndex = header.index('trialStruct')
+#                del header[trialStructIndex]
                 dataCSV.writerow(header)
                 
         # set up clocks
@@ -293,7 +283,7 @@ class Experiment:
             thisTrial['onset'] = self.expPlan.thisTrialN*thisTrial['dur'] # NOT QUITE CORRECT
             
             # go over each event in a trial    
-            for j, thisEvent in enumerate(thisTrial['trialStruct']):
+            for j, thisEvent in enumerate(self.trialStruct):
                 eventClock.reset()
                
                 if j == 0: thisTrial['actualOnset'] = globClock.getTime()
@@ -331,8 +321,8 @@ class Experiment:
             
             if not noOutput: #expPlan.saveAsWideText(thisTrial)#list(thisTrial)[:-1])
                 out = thisTrial.values()# + [val[trialNo] for val in expPlan.data.values()]            
-                trialStructIndex = self.expPlan.trialList[0].keys().index('trialStruct')
-                del out[trialStructIndex]
+#                trialStructIndex = self.expPlan.trialList[0].keys().index('trialStruct')
+#                del out[trialStructIndex]
                 dataCSV.writerow(out)
             
         if not noOutput: dataFile.close()
@@ -378,8 +368,10 @@ class Experiment:
         Necessary when PsychoPy fails to draw ShapeStim due to its thickness
         """
         vertices = shapeStim.vertices
+        pos = shapeStim.pos
         if shapeStim.closeShape: numPairs = len(vertices)
         else: numPairs = len(vertices)-1
+        # import pdb; pdb.set_trace()
 
         
         shape = []
@@ -400,14 +392,14 @@ class Experiment:
 
                 fillColor   = shapeStim.lineColor,
                 ori         = -np.arctan2(edges[1],edges[0])*180/np.pi,
-                pos         = [(thisPair[0][0]+thisPair[1][0])/2, (thisPair[0][1]+thisPair[1][1])/2],
+                pos         = [(thisPair[0][0]+thisPair[1][0])/2 + pos[0], (thisPair[0][1]+thisPair[1][1])/2 + pos[1]],
                 vertices    = [[-lh,-wh],[-lh,wh],
                                [lh,wh],[lh,-wh]]
             )
             shape.append(line)
-            #import pdb; pdb.set_trace()
         
-        return shape
+        if len(shape) == 1: return shape[0]
+        else: return shape
         
         
     def makePara(expPlan):
