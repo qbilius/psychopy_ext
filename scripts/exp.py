@@ -326,6 +326,12 @@ class Experiment:
                 dataCSV.writerow(out)
             
         if not noOutput: dataFile.close()
+
+        
+    def closeWin():
+        """
+        Closes all open windows
+        """
         self.win.close()
         if self.comp.stereo: self.win2.close()
 
