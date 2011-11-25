@@ -397,7 +397,7 @@ class Experiment:
                 lineColor   = None,
 
                 fillColor   = shapeStim.lineColor,
-                ori         = -np.arctan2(edges[1],edges[0])*180/np.pi,
+                ori         = -np.arctan2(edges[1],edges[0])*180/np.pi+shapeStim.ori,
                 pos         = [(thisPair[0][0]+thisPair[1][0])/2 + pos[0], (thisPair[0][1]+thisPair[1][1])/2 + pos[1]],
                 vertices    = [[-lh,-wh],[-lh,wh],
                                [lh,wh],[lh,-wh]]
