@@ -5,13 +5,14 @@ import sys
 # Set up paths
 # Should typically be modified by the accessing module
 paths = {
+    'dataDir': 'data/%s/',
     'paraDirSup': 'scripts/%(runType)s/para/', # modify with the module path
     'paraDir': 'data/%s/para/', # will get modified by subjID
     'dataBehavDir': 'data/%s/data_behav/', # will get modified by subjID
     'dataFmriDir': 'data/%s/data_fmri/', # where fMRI data will be
     'recDir': 'data/%s/reconstruction/', # where ROIs will be
     #'simDir': '%(thisExpPath)s/hmax', # where simulation data will be stored
-    'dataPrep': 'data/%s/data_prep_event/' # where preporcessed and masked data is stored
+    'dataROIs': 'data/%s/data_rois/' # where preporcessed and masked data is stored
 }
 
             
