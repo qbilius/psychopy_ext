@@ -182,7 +182,11 @@ class Control(object):
         rp = parser.parse_args()
         module = mods[rp.moduleName]
         for key in module.extraInfo.keys():
-            module.extraInfo[key] = rp.__dict__[key]
+            try:
+                value = eval(rp.__dict__[key])
+            except:
+                value = rp.__dict__[key]
+            module.extraInfo[key] = value
         for key in module.runParams.keys():
             module.runParams[key] = rp.__dict__[key]
         getattr(module, rp.action)()
