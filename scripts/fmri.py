@@ -21,10 +21,17 @@ import pandas
 
 # import svm_plot
 import exp
-
+import plot
+import plot
 
 # import Orange
 import cPickle as pickle
+
+# some modules are only available in Python 2.6
+try:
+    from collections import OrderedDict
+except:
+    from scripts.core.exp import OrderedDict
 
 
 class MVPA(object):
@@ -34,120 +41,98 @@ class MVPA(object):
                  tr,
                  filename = 'svm100.pkl',
                  visualize = False,
+                 noOutput = False
                  ):
         self.filename = filename
         self.visualize = visualize
         self.paths = paths
         self.tr = tr
+        self.noOutput = noOutput
 
-    def run(self,
-            subjID,
-            rois,
-            ds=None,
-            runType='main',
-            filename='svm.pkl',
-            # allConds = exp.OrderedDict([
-            #                     ('parts', [[1,2,3,4],[1,2,3,4]]),
-            #                     ('whole', [[5,6,7,8],[5,6,7,8]])
-            #                  ]),
-            clf = 'LinearNuSVMC',
-            repeat = 10,
-            splitRule = (5,6),
-            #filter = None,
-            acc = None,
-            plot = True,
-            numVoxels = 'all',
-            condsForRef = 'sel',
-            noOutput = False,
-        ):
-
-        """Performs an SVM classification.
-
-        **Parameters**
-
-            rp: Namespace (required)
-                Run parameters that are parsed from the command line
-            allConds: OrderedDict
-                An ordered dictionary containing the lists of conditions that will go for
-                training and testing
-            clf: 'SMLR', 'LinearCSVMC', 'LinearNuSVMC', 'RbfNuSVMC', or 'RbfCSVMC', or a list of them
-                A name of the classifier to be used
-            repeat: int
-                how many times repeat SVM training+testing cycle (with a different selection of timepoints)
-            splitRule: list or 'min'
-                + a list of number of chunks (~runs) and size of each chunk
-                + or 'min' - take the least number across all conditions, split by sqrt
-            # filter: **None** or a rule
-                # Specify which data should be taken.
-                # + **None** means all data will be used.
-                # + Rule: e.g., "thisData['accuracy'] == 'Correct'" (only correct responses taken)
-            acc: **None**, 'max', or float
-                + **None** means that all data will be used
-                + 'max': take max accuracy, typically limited by the whole condition
-                + float: e.g., .95 (take 95% of correct responses and 5% of incorrect)
-            plot: **True** or **False**
-                Whether to plot the output or not
-            numVoxels: 'all', 'min' or int
-                Specify
-                + 'all': use all voxels available
-                + 'min': use the minimal number of voxels across all ROIs for all ROIs
-                + int: use that many voxels for all ROIs
-            condsForRef: 'all', 'sel', or 'min'
-                When getting accuracy or selecting voxels for analysis, specify whether
-                these analyses should depend on all conditions ('all') or only on the
-                ones specified at allConds ('sel')
-
-        """
-        
-        clf = eval('mvpa2.suite.' + clf + '()')
-        # tabData = behav.getBehavData()
-
-        if numVoxels != None:
-            try: numVoxels = int(numVoxels) #if specified as an int
-            except: numVoxels = numVoxels            
-        # params = ROIparams.run(rp, space = 'native')
-        # params.sort(order=['subjID','numVoxels'])
-
-        # have more iterations within an ROI if random voxels sampling is specified
-        if numVoxels == 'minRandom':
-            numRoiIter = int(np.sqrt(repeat))
-            repeat /= numRoiIter
-            print 'INFO: Repetions over ROIs changed to %d ' %numRoiIter +\
-            'and repetions within ROIs changed to %d' %repeat
-        else: numRoiIter = 1
-
-        # read in scan data and perform SVMs for each subject each ROI group
-        #dataOut = []
-        # numT = len(np.unique(tabData['cond']))
-        #results = exp.OrderedDict([(roi[1], np.zeros((len(rp.subjID_list),numT-1,numT-1))) for roi in rp.rois])
-        # results = exp.OrderedDict([(roi[1], np.zeros((len(rp.subjID_list),numT-1,numT-1))) for roi in rois])
-        # import pdb; pdb.set_trace()
-        
+    #def loop(method):
+    def run_method(self, subjIDs, runType, rois, method='mvpa', offset=None,
+                   dur=None):
+        if type(subjIDs) not in [list, tuple]:
+            subjIDs = [subjIDs]
+        try:
+            filename = self.filename % subjID
+        except:
+            filename = self.filename
         results = []
-        for r, ROI_list in enumerate(rois):
-            print ROI_list[1],
-            ds = self.extract_samples(subjID, runType, ROI_list)
-            dsmean = np.mean(ds.samples)
-            mvpa2.suite.poly_detrend(ds, polyord=2, chunks_attr='chunks')
-            ds.samples += dsmean # recover the detrended mean
-            evds = self.ds2evds(ds)
-            # self.plotChunks(ds,evds,chunks=[0])
-            #self.plot_psc(evds)
-            evds = evds[evds.sa.targets != 0]
-            result = self.svm(evds)
-            for line in result:
-                line.extend([
-                    ('subjID', subjID),
-                    ('ROI', ROI_list[1]),
-                    ])
-                results.append(line)
+        for subjID in subjIDs:
+            try:
+                header, result = pickle.load(open(filename,'rb'))
+                results.append(result)
+            except:
+                for r, ROI_list in enumerate(rois):
+                    print ROI_list[1],
+                    ds = self.extract_samples(subjID, runType, ROI_list)
+                    ds = self.detrend(ds)
+                    if ROI_list[1] in ['LO', 'pFs']:
+                        offset = 2
+                    else: 
+                        offset = 3
+                    evds = self.ds2evds(ds, offset=offset, dur=dur)
+                    if method == 'time_course':
+                        header, result = self.get_psc(evds)
+                    elif method == 'univariate':
+                        header, result = self.psc_diff(evds)
+                    else:
+                        evds = evds[evds.sa.targets != 0]
+                        header, result = self.svm(evds, nIter=30)
+                    header.extend(['subjID', 'ROI'])
+                    for line in result:
+                        line.extend([subjID, ROI_list[1]])
+                        results.append(line)
 
-        if not noOutput:
-            # mvpa2.suite.h5save(rp.o, results)
-            try: os.makedirs(self.paths['analysis'])
-            except: pass
-            pickle.dump(results, open(filename,'wb'))
-        return results
+                # import pdb; pdb.set_trace()
+                if not self.noOutput:
+                    # mvpa2.suite.h5save(rp.o, results)
+                    try:
+                        os.makedirs(self.paths['analysis'])
+                    except:
+                        pass
+                    
+                    pickle.dump([header,results], open(filename,'wb'))
+
+        return header, results
+        #return thisloop
+
+    #@loop
+    # def time_course(self, subjID, runType, ROI_list):
+    #     ds = self.extract_samples(subjID, runType, ROI_list)
+    #     ds = self.detrend(ds)
+    #     evds = self.ds2evds(ds, offset=0, dur=8)
+    #     # mvpamod.plotChunks(ds,evds,chunks=[0])
+    #     return self.get_psc(evds)
+
+    # def univariate(self, subjID, runType, ROI_list):
+    #     ds = self.extract_samples(subjID, runType, ROI_list)
+    #     ds = self.detrend(ds)
+    #     evds = self.ds2evds(ds, offset=3, dur=3)
+    #     # mvpamod.plotChunks(ds,evds,chunks=[0])
+    #     return self.psc_diff(evds)
+
+    # #@loop
+    # def mvpa(self, subjID, runType, ROI_list, offset, dur):
+    #     """Performs an SVM classification.
+
+    #     **Parameters**
+
+    #         clf: 'SMLR', 'LinearCSVMC', 'LinearNuSVMC', 'RbfNuSVMC', or 'RbfCSVMC', or a list of them
+    #             A name of the classifier to be used
+
+    #     """        
+    #     ds = self.extract_samples(subjID, runType, ROI_list)
+    #     ds = self.detrend(ds)
+    #     evds = self.ds2evds(ds, offset=offset, dur=dur)
+    #     evds = evds[evds.sa.targets != 0]
+    #     return self.svm(evds)
+        
+
+    def get_evds(self, ds):
+        pass
+        
 
 
     def extract_samples(self,
@@ -188,7 +173,6 @@ class MVPA(object):
 
         reuse = True
         roiname = self.paths['data_rois'] %subjID + ROIs[1] + '.gz.hdf5'
-        # import pdb; pdb.set_trace()
         if reuse and os.path.isfile(roiname):
             ds = mvpa2.suite.h5load(roiname)
 
@@ -288,8 +272,13 @@ class MVPA(object):
 
         return ds
 
+    def detrend(self, ds):
+        dsmean = np.mean(ds.samples)
+        mvpa2.suite.poly_detrend(ds, polyord=2, chunks_attr='chunks')
+        ds.samples += dsmean # recover the detrended mean
+        return ds
         
-    def ds2evds(self, ds):
+    def ds2evds(self, ds, offset=2, dur=2):
         
         # if self.visualize: self.plotChunks(ds, chunks=[0], shiftTp=2)
 
@@ -307,8 +296,8 @@ class MVPA(object):
         events = events_temp
 
         for ev in events:
-            ev['onset'] += 2  # offset since the peak is at 6-8 sec
-            ev['duration'] = 2  # use two time points as peaks since they are both high
+            ev['onset'] += offset  # offset since the peak is at 6-8 sec
+            ev['duration'] = dur  # use two time points as peaks since they are both high
         evds = mvpa2.suite.eventrelated_dataset(ds, events=events)
         if self.visualize: self.plotChunks(ds, evds, chunks=[0], shiftTp=0)
 
@@ -367,40 +356,58 @@ class MVPA(object):
         plt.plot(meanPerChunk.T)
         plt.show()
 
-    def plot_psc(self,evds):
+    def get_psc(self, evds):
+        """
+        For each condition, extracts all timepoints as specified in the evds window, and averages across voxels
+        """
         # plt.subplot(111)
         #vx_lty = ['-', '--']
         #t_col = ['b', 'r']
         
         #evds[]
-        allConds = exp.OrderedDict([
-            ('metric',[1,4,7,10]),
-            ('non-accidental',[2,5,8,11]),
-            ('other',[3,6,9,12]),
-            ])
-        allConds = exp.OrderedDict([(str(i+1),i+1) for i in range(12) ])
+        # allConds = exp.OrderedDict([
+        #     ('metric',[1,4,7,10]),
+        #     ('non-accidental',[2,5,8,11]),
+        #     ('other',[3,6,9,12]),
+        #     ])
+        #allConds = OrderedDict([(str(i+1),[i+1]) for i in range(12) ])
         baseline = evds[evds.sa.targets == 0].samples
         baseline = evds.a.mapper[-1].reverse(baseline)
         # average across all voxels and all blocks
-        baseline = np.mean(np.mean(baseline,2),0)
-        
+        baseline = np.mean(np.mean(baseline,2),0)        
         # now plot the mean timeseries and standard error
-        for label, conds in allConds.items():
-            evdsMean = evds[np.array([t in conds for t in evds.sa.targets])].samples
-            evdsMean = evds.a.mapper[-1].reverse(evdsMean)
-            # average across all voxels
-            evdsMean = np.mean(evdsMean,2)
-            # l = mvpa2.suite.plot_err_line((evdsMean-baseline)/baseline*100)
-            legend = mvpa2.suite.plot_err_line(evdsMean,linestyle='-')
-                              #fmt=t_col[j], linestyle='-')
-            # label this plot for automatic legend generation
-            legend[0][0].set_label(label)
-            
-        plt.ylabel('Percent signal change')
-        plt.axhline(linestyle='--', color='0.6')
-        plt.xlim(( 0,evdsMean.shape[1]+1 ))
-        # plt.ylim((-.5,2.))
-        plt.legend()
+        header = ['stim1.cond', 'time', 'subjResp']
+        results = []
+        for cond in evds.UT:
+            if cond != 0:
+                evdsMean = evds[np.array([t == cond for t in evds.sa.targets])].samples
+                evdsMean = evds.a.mapper[-1].reverse(evdsMean)
+                # average across all voxels
+                evdsMean = np.mean(np.mean(evdsMean,2),0)
+                # import pdb; pdb.set_trace()
+                # l = mvpa2.suite.plot_err_line((evdsMean-baseline)/baseline*100)
+                if np.any(baseline<0):
+                    print 'WARNING: some baseline values are negative'
+                thispsc = (evdsMean-baseline)/baseline*100
+                #time = np.arange(len(thispsc))*self.tr
+                for pno, p in enumerate(thispsc):
+                    results.append([cond, pno*self.tr, p])
+        return header, results
+
+    def psc_diff(self, evds):
+        # run_averager = mvpa2.suite.mean_group_sample(['targets'])
+        # evds_avg = evds.get_mapped(run_averager)
+        # numT = len(evds_avg.UT)
+        head, psc = self.get_psc(evds)
+        df = pandas.DataFrame(psc, columns=head)
+        agg = df.groupby('stim1.cond')['subjResp'].mean()
+        header = ['stim1.cond', 'stim2.cond', 'subjResp']
+        results = []
+        for stim1, val1 in agg.iteritems():
+            for stim2, val2 in agg.iteritems():
+                results.append([stim1, stim2,
+                    np.abs(val1-val2)])
+        return header, results
 
 
     def correlation(self,
@@ -463,7 +470,8 @@ class MVPA(object):
     #    import pdb; pdb.set_trace()
         evds_avg.samples -= np.tile(np.mean(evds_avg, 1), (evds_avg.shape[1],1) ).T
         # and divide by standard deviation across voxels
-        evds_avg.samples /= np.tile(np.std(evds_avg, axis=1, ddof=1), (evds_avg.shape[1],1) ).T
+        evds_avg.samples /= np.tile(np.std(evds_avg, axis=1, ddof=1),
+            (evds_avg.shape[1],1) ).T
 
         # results = np.zeros((nIter,numT*(numT-1),numT*(numT-1)))
         if len(evds_avg.UC)%2:
@@ -473,8 +481,8 @@ class MVPA(object):
             runtype = [0]*(len(evds_avg.UC)-8) + [1]*8
 
         targets = evds_avg.UT
+        header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
         results = []
-
         for n in range(nIter):
             print n,
             np.random.shuffle(runtype)
@@ -518,12 +526,7 @@ class MVPA(object):
                         # predictions = clf.predict(test_samp)
                         predictions = clf.predict(evds_test_ij.samples)
                         pred = np.mean(predictions == evds_test_ij.sa.targets)
-                    results.append([
-                        ('iter', n),
-                        ('stim1.cond', targets[0]),
-                        ('stim2.cond', targets[1]),
-                        ('subjResp', pred)
-                    ])
+                    results.append([n, targets[0], targets[1], pred])
                     
                     
 
@@ -533,7 +536,7 @@ class MVPA(object):
     #    plt.plot(cumMean)
     #    plt.show()
 
-        return results
+        return header, results
 
 
 
@@ -1005,7 +1008,7 @@ class Preproc(object):
         f.close()
 
 
-class Plot(object):
+class Plot(plot.Plot):
     def make_symmetric(self, similarity):
         res = np.zeros(similarity.shape)
         for i in range(similarity.shape[0]):
@@ -1104,3 +1107,13 @@ class Plot(object):
                     np.fill_diagonal(ind,False)
                     avg[i,j] = np.mean(matrix[ind])
         return avg
+
+    def plot_psc(self, *args, **kwargs):
+        ax = self.pivot_plot(marker='o', kind='line', *args, **kwargs)        
+        ax.set_xlabel('Time since trial onset, s')            
+        ax.set_ylabel('Signal change, %')
+        ax.axhline(linestyle='--', color='0.6')
+        # plt.xlim(( 0,evdsMean.shape[1]+1 ))
+        # plt.ylim((-.5,2.))
+        ax.legend(loc=0)
+        return ax
