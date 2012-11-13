@@ -1,5 +1,10 @@
 import wx
 import argparse
+# some modules are only available in Python 2.6
+try:
+    from collections import OrderedDict
+except:
+    from scripts.core.exp import OrderedDict
 
 class StaticBox(wx.StaticBox):
     def __init__(self, parent, label='', content=None):
@@ -181,14 +186,27 @@ class Control(object):
 
         rp = parser.parse_args()
         module = mods[rp.moduleName]
-        for key in module.extraInfo.keys():
+        for key in mod.extraInfo.keys():
             try:
                 value = eval(rp.__dict__[key])
             except:
                 value = rp.__dict__[key]
             module.extraInfo[key] = value
-        for key in module.runParams.keys():
+        for key in mod.runParams.keys():
             module.runParams[key] = rp.__dict__[key]
+        # mod, module = mods[rp.moduleName]
+        # extraInfo = []
+        # runParams = []
+        # for key in mod.extraInfo.keys():
+        #     try:
+        #         value = eval(rp.__dict__[key])
+        #     except:
+        #         value = rp.__dict__[key]
+        #     extraInfo.append((key,value))
+        # for key in mod.runParams.keys():
+        #     runParams.append((key,rp.__dict__[key]))            
+        # module = module(extraInfo=OrderedDict(extraInfo),
+        #                 runParams=OrderedDict(runParams))
         getattr(module, rp.action)()
         # args.func(args)
 
