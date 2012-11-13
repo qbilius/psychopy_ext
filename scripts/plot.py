@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from mpl_toolkits.axes_grid1 import ImageGrid
+
 """
 A library of simple and beautiful plots.
 """
@@ -16,6 +18,12 @@ class Plot(object):
         fig, axes = plt.subplots(**kwargs)
         return (fig, axes)
 
+    def figure(self, *args, **kwargs):
+        return plt.figure(*args, **kwargs)
+
+    def ImageGrid(self, *args, **kwargs):
+        return ImageGrid(*args, **kwargs)
+
     def show(self, *args, **kwargs):
         plt.show(*args, **kwargs)
 
@@ -29,7 +37,7 @@ class Plot(object):
             colors = colors_full + colors_pale
             return colors[:ncolors]
         else:
-            return [mpl.cm.Paired(c) for c in np.linspace(ncolors)]
+            return [mpl.cm.Paired(c) for c in np.linspace(0,ncolors)]
 
         
     def sample_cmap(self, cmap='Paired', ncolors=2):
@@ -56,12 +64,14 @@ class Plot(object):
 
 
     def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,ax=None,
+                   title='', kind='bar', xtickson=True, ytickson=True,
                    **kwargs):
 
         if ax is None: ax = plt.subplot(111)
         if type(rows) != list: rows = [rows]
         if type(cols) != list: cols = [cols]
         if type(yerr) != list: yerr = [yerr]
+        # import pdb; pdb.set_trace()
         if df[values].dtype == str:  # calculate accuracy
             agg = df.groupby(rows+cols+yerr, as_index=False)[values].size()
         else:
@@ -77,23 +87,91 @@ class Plot(object):
         edgecolors = []
         for c in colors:
             edgecolors.extend([c]*avg.shape[0])
-        
-        avg.plot(kind='bar', ax=ax, **{
+
+        if kind == 'bar':
+            avg.plot(kind='bar', ax=ax, **{
                 'yerr':p_yerr_zeros,  # otherwise get_lines doesn't work
                 'color': colors,
                 #'edgecolor': edgecolors,  # get rid of ugly black edges
                 })
-        ax.set_ylabel(values)
-        if 'title' in kwargs: ax.set_title(kwargs['title'])
+            for i, col in enumerate(avg.columns):
+                x = ax.get_lines()[i * len(avg.columns)].get_xdata()
+                y = avg[col]
+                ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
+                    ecolor='black')
+        else:
+            avg.plot(kind='line', ax=ax, **{
+                #'color': colors,
+                })
+            for i, col in enumerate(avg.columns):
+                x = ax.get_lines()[i].get_xdata()
+                y = avg[col]
+                ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
+                    ecolor='black')
+        if not xtickson:
+            ax.set_xticklabels(['']*len(ax.get_xticklabels()))
+        if not ytickson:
+            ax.set_yticklabels(['']*len(ax.get_yticklabels()))
 
-        for i, col in enumerate(avg.columns):
-            x = ax.get_lines()[i * len(avg.columns)].get_xdata()
-            y = avg[col]
-            ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
-                ecolor='black')
-        ax.legend(loc=8)
-        plt.tight_layout()
+        if 'ylabel' in kwargs:
+            ax.set_ylabel(kwargs['ylabel'])
+        else:
+            ax.set_ylabel(values)
+        ax.set_title(title)        
+        l = ax.legend(loc=1)
+        l.legendPatch.set_alpha(0.5)
+        # plt.tight_layout()
         return ax
+
+    def matrix_plot(self, matrix, ax=None, title='', xtickson=True,
+            ytickson=True,
+                    **kwargs):
+        """
+        Plots a matrix.
+        """
+        if ax is None:
+            ax = plt.subplot(111)
+        import matplotlib.colors
+        norm = matplotlib.colors.normalize(vmax=.2, vmin=0)
+        im = ax.imshow(matrix, norm=norm, interpolation='none', **kwargs)
+        # ax.set_title(title)
+
+        ax.cax.colorbar(im)#, ax=ax, use_gridspec=True)
+        # ax.cax.toggle_label(True)
+        
+        # t = self.add_inner_title(ax, title, loc=2)
+        # t.patch.set_ec("none")
+        # t.patch.set_alpha(0.5)
+
+        if xtickson:
+            xnames = ['|'.join(map(str,label)) for label in matrix.columns]
+            ax.set_xticks(range(len(xnames)))
+            ax.set_xticklabels(xnames)
+            #labels = ax.set_xticklabels(xnames)
+            # import pdb; pdb.set_trace()
+            ax.axis['bottom'].major_ticklabels.set_rotation(90)
+            # plt.setp(labels, 'rotation', 'vertical')
+        else:
+            ax.set_xticklabels(['']*len(matrix.columns))
+        if ytickson:
+            ynames = ['|'.join(map(str,label)) for label in matrix.index]
+            ax.set_yticklabels(ynames)
+        else:
+            ax.set_yticklabels(['']*len(matrix.index))
+
+        return ax
+
+    def add_inner_title(self, ax, title, loc, size=None, **kwargs):
+        from matplotlib.offsetbox import AnchoredText
+        from matplotlib.patheffects import withStroke
+        if size is None:
+            size = dict(size=plt.rcParams['legend.fontsize'])
+        at = AnchoredText(title, loc=loc, prop=size,
+                          pad=0., borderpad=0.5,
+                          frameon=False, **kwargs)
+        ax.add_artist(at)
+        at.txt._text.set_path_effects([withStroke(foreground="w", linewidth=3)])
+        return at
 
     def pivot_plot_old(self, pivot, persubj=None, kind='bar', ncols=2, ax=None, title='',
                 xlabels=True, yerr_type='sem', legend=True, **kwargs):
@@ -132,34 +210,6 @@ class Plot(object):
         plt.tight_layout()
 
         return pplot
-
-
-    def matrix(self, matrix, matrix_labels, ax=None, title='',
-                xlabels=True, ylabels=True, **kwargs):
-        """
-        Plots a matrix.
-        """
-        if ax is None:
-            ax = plt.subplot(111)
-        im = ax.imshow(matrix, interpolation='none', **kwargs)
-        ax.set_title(title)
-        plt.colorbar(im, ax=ax, use_gridspec=True)
-
-        xnames = ['%s|%s' %
-            (str(n[0]), str(n[1])) for n in matrix_labels.columns]
-        if xlabels:
-            loc, labels = plt.xticks(range(matrix.shape[1]), xnames)
-            plt.setp(labels, 'rotation', 'vertical')
-        else:
-            ax.set_xticklabels([''] * matrix.shape[1])
-        if ylabels:
-            ynames = ['%d|%s' % (n[0], n[1]) for n in matrix_labels.index]
-            plt.yticks(range(matrix.shape[0]), ynames)
-        else:
-            ax.set_yticklabels([''] * matrix.shape[0])
-
-        return ax
-
 
     def errorbars(self, persubj, ncols, yerr_type='sem'):
         # Set up error bar information
