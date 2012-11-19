@@ -8,15 +8,18 @@ A library of simple and beautiful plots.
 """
 
 class Plot(object):
-    def __init__(self, ax=None):
-        if ax is None:
-            self.ax = plt.subplot(111)
-        else:
-            self.ax = ax
+    # def __init__(self, ax=None):
+    #     if ax is None:
+    #         self.ax = plt.subplot(111)
+    #     else:
+    #         self.ax = ax
 
     def subplots(self, **kwargs):
         fig, axes = plt.subplots(**kwargs)
         return (fig, axes)
+
+    def subplots_adjust(self, *args, **kwargs):
+        plt.subplots_adjust(*args, **kwargs)
 
     def figure(self, *args, **kwargs):
         return plt.figure(*args, **kwargs)
@@ -48,6 +51,14 @@ class Plot(object):
         colors = cmap(norm(z))
         return colors
 
+    def nan_outliers(self, df, values=None, group=None):
+        # remove outliers
+        zscore = lambda x: (x - x.mean()) / x.std()
+        tdf = df.groupby(group)[values].transform(zscore)
+        df[values] = np.select([tdf<-3, tdf>3],[np.nan, np.nan],
+                               default=df[values])
+        return df
+
 
     def plot(self, x,y=None, ax=None, **kwargs):
         if ax is None:
@@ -62,26 +73,50 @@ class Plot(object):
 
     # def subplot():
 
-
-    def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,ax=None,
-                   title='', kind='bar', xtickson=True, ytickson=True,
-                   **kwargs):
-
-        if ax is None: ax = plt.subplot(111)
+    def aggregate(self, df, rows=None,cols=None,values=None,yerr=None):
         if type(rows) != list: rows = [rows]
         if type(cols) != list: cols = [cols]
-        if type(yerr) != list: yerr = [yerr]
+        if yerr is None:
+            yerr = []
+        else:
+            if type(yerr) != list:
+                yerr = [yerr]
         # import pdb; pdb.set_trace()
         if df[values].dtype == str:  # calculate accuracy
-            agg = df.groupby(rows+cols+yerr, as_index=False)[values].size()
+            agg = df.groupby(rows+cols+yerr)[values].size()
         else:
-            agg = df.groupby(rows+cols+yerr,
-                             as_index=False)[values].aggregate(np.mean)
+            agg = df.groupby(rows+cols+yerr)[values].mean()
 
-        avg = agg.groupby(rows+cols)[values].mean().unstack()
-        std = agg.groupby(rows+cols)[values].std(ddof=1).unstack()
-        size = agg.groupby(rows+cols)[values].size().unstack()
-        p_yerr = np.asarray(std/np.sqrt(size))
+        #grouped = agg.groupby(rows+cols)[values]
+        
+        return agg#.unstack()
+    
+    def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,
+                   **kwargs):        
+        agg = self.aggregate(df, rows=rows, cols=cols,
+                                 values=values, yerr=yerr)
+        if yerr is None:
+            no_yerr = True
+        else:
+            no_yerr = False
+        return self._plot(agg, no_yerr=no_yerr,**kwargs)
+        
+    def _plot(self, agg, ax=None,
+                   title='', kind='bar', xtickson=True, ytickson=True,
+                   no_yerr=False, **kwargs):
+        if ax is None:
+            ax = plt.subplot(111)
+        if not no_yerr:
+            grouped = agg.unstack()
+            avg = grouped.mean(1).unstack()
+            std = grouped.std(1, ddof=1).unstack()
+            size = grouped.unstack().groupby(level=1,axis=1).aggregate(len)
+            p_yerr = np.asarray(std/np.sqrt(size))
+        else:
+            avg = agg.unstack()
+            p_yerr = np.zeros(avg.shape)
+            # import pdb; pdb.set_trace()
+
         p_yerr_zeros = np.zeros((p_yerr.shape[0],))
         colors = self.sample_paired(len(avg.columns))
         edgecolors = []
@@ -97,9 +132,12 @@ class Plot(object):
             for i, col in enumerate(avg.columns):
                 x = ax.get_lines()[i * len(avg.columns)].get_xdata()
                 y = avg[col]
-                ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
-                    ecolor='black')
-        else:
+                try:
+                    ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
+                        ecolor='black')
+                except:
+                    import pdb; pdb.set_trace()
+        elif kind == 'line':
             avg.plot(kind='line', ax=ax, **{
                 #'color': colors,
                 })
@@ -108,20 +146,38 @@ class Plot(object):
                 y = avg[col]
                 ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
                     ecolor='black')
+        # import pdb; pdb.set_trace()    
+        if 'xticklabels' in kwargs:
+            ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
         if not xtickson:
             ax.set_xticklabels(['']*len(ax.get_xticklabels()))
+        # else:
+        #     labels = ax.get_xticklabels() 
+        #     for label in labels: 
+        #         label.set_rotation(90) 
         if not ytickson:
             ax.set_yticklabels(['']*len(ax.get_yticklabels()))
+        ax.set_xlabel('')
 
+        if 'ylim' in kwargs:
+            ax.set_ylim(kwargs['ylim'])
+        
         if 'ylabel' in kwargs:
             ax.set_ylabel(kwargs['ylabel'])
-        else:
-            ax.set_ylabel(values)
+        # else:
+        #     import pdb; pdb.set_trace()
+        #     ax.set_ylabel(grouped.name)
         ax.set_title(title)        
-        l = ax.legend(loc=1)
+        l = ax.legend(loc=8)
         l.legendPatch.set_alpha(0.5)
-        # plt.tight_layout()
+        l.set_visible(False)
+        if 'numb' in kwargs:
+            t = self.add_inner_title(ax, title=kwargs['numb'], loc=2)
+        
         return ax
+
+    def tight_layout(self):
+        plt.tight_layout()
 
     def matrix_plot(self, matrix, ax=None, title='', xtickson=True,
             ytickson=True,
@@ -132,7 +188,7 @@ class Plot(object):
         if ax is None:
             ax = plt.subplot(111)
         import matplotlib.colors
-        norm = matplotlib.colors.normalize(vmax=.2, vmin=0)
+        norm = matplotlib.colors.normalize(vmax=1, vmin=0)
         im = ax.imshow(matrix, norm=norm, interpolation='none', **kwargs)
         # ax.set_title(title)
 
@@ -148,8 +204,9 @@ class Plot(object):
             ax.set_xticks(range(len(xnames)))
             ax.set_xticklabels(xnames)
             #labels = ax.set_xticklabels(xnames)
-            # import pdb; pdb.set_trace()
-            ax.axis['bottom'].major_ticklabels.set_rotation(90)
+            # rotate long labels
+            if max([len(n) for n in xnames]) > 20:
+                ax.axis['bottom'].major_ticklabels.set_rotation(90)
             # plt.setp(labels, 'rotation', 'vertical')
         else:
             ax.set_xticklabels(['']*len(matrix.columns))
@@ -161,7 +218,7 @@ class Plot(object):
 
         return ax
 
-    def add_inner_title(self, ax, title, loc, size=None, **kwargs):
+    def add_inner_title(self, ax, title, loc=2, size=None, **kwargs):
         from matplotlib.offsetbox import AnchoredText
         from matplotlib.patheffects import withStroke
         if size is None:
