@@ -4,7 +4,7 @@ import argparse
 try:
     from collections import OrderedDict
 except:
-    from scripts.core.exp import OrderedDict
+    from exp import OrderedDict
 
 class StaticBox(wx.StaticBox):
     def __init__(self, parent, label='', content=None):

@@ -23,7 +23,7 @@ except:
 import wx
 import matplotlib.pyplot as plt
 
-from scripts.core.computer import Computer
+from computer import Computer
 
 
 

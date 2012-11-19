@@ -2,7 +2,7 @@
 Introduction
 ============
 
-To guarantee highest possible standards, all stages of scientific conduct must be made transparent. Publishing a paper is not sufficient anymore. Raw data, experimental and analysis scripts must be freely available as well. (Here, raw data is not included due to a massive size of fMRI files.) I believe that full disclosure leads to more collaborative and more reliable science.
+To guarantee highest possible standards, all stages of scientific conduct must be made transparent. Not only the final paper, but also raw data, experimental and analysis scripts and their change history must be freely available as well. I believe that full disclosure leads to more collaborative and more reliable science.
 
 (See also `Nick Barnes. Publish your computer code: it is good enough. <http://dx.doi.org/10.1038/467753a>`_)
 

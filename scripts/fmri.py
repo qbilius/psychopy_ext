@@ -13,15 +13,8 @@ import itertools
 
 import pandas
 
-# import dataAnalysis as da
-# import scripts.tools.qFunctions as q
-# import ROIparams
-# import behav
-# import psc
-
 # import svm_plot
 import exp
-import plot
 import plot
 
 # import Orange
@@ -31,7 +24,7 @@ import cPickle as pickle
 try:
     from collections import OrderedDict
 except:
-    from scripts.core.exp import OrderedDict
+    from exp import OrderedDict
 
 
 class MVPA(object):
