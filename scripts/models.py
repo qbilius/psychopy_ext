@@ -178,13 +178,12 @@ class GaborJet(Model):
             rangeXY -= 1  # shift from MatLab indexing to Python
         else:        
             sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
-            
+
         [xx,yy] = np.meshgrid(rangeXY,rangeXY)
         
         grid = xx + 1j*yy
         grid = grid.T.ravel()  # transpose just to match MatLab's grid(:) behavior
         grid_position = np.hstack([grid.imag, grid.real]).T
-        
         
         # FFT of the image    
         im_freq = np.fft.fft2(im)
@@ -229,7 +228,7 @@ class GaborJet(Model):
                 # use fftshift to change DC to the corners
                 freq_kernel = np.fft.fftshift(freq_kernel)
                 
-                # convolute the image with a kernel specified scale and orientation
+                # convolve the image with a kernel of the specified scale and orientation
                 TmpFilterImage = im_freq*freq_kernel
                 #
                 # calculate magnitude and phase
@@ -252,6 +251,7 @@ class GaborJet(Model):
                     # get magnitude and phase at specific positions
                     tmpMag = TmpGWTMag[rangeXY,:][:,rangeXY]
                     JetsMagnitude[:,LevelL*nOrientation+DirecL] = tmpMag.ravel()
+                    import pdb; pdb.set_trace()
                 else:
                     TmpGWTMag_real = np.real(iTmpFilterImage)
                     TmpGWTMag_imag = np.imag(iTmpFilterImage)                
@@ -264,7 +264,7 @@ class GaborJet(Model):
         if cell_type == 'simple':
             JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
         # use magnitude for similarity    
-        return (JetsMagnitude, JetsPhase, grid_position)
+        return (JetsMagnitude, JetsPhase, grid_position)    
 
 
     def dissimilarity(self,g,f):
