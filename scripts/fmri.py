@@ -53,25 +53,39 @@ class MVPA(object):
     def run_method(self, subjIDs, runType, rois, method='mvpa', offset=None,
                    dur=None):
         if type(subjIDs) not in [list, tuple]:
-            subjIDs = [subjIDs]
-        try:
-            filename = self.filename % subjID
-        except:
-            filename = self.filename
-        results = []
+            subjIDs = [subjIDs]            
+        results = []        
         for subjID in subjIDs:
+            print subjID
             try:
-                header, result = pickle.load(open(filename,'rb'))
-                results.append(result)
+                filename = self.filename % subjID
             except:
+                filename = self.filename
+            loaded = False
+            if method=='mvpa':
+                try:
+                    header, result = pickle.load(open(filename,'rb'))
+                    results.extend(result)
+                    # result = pickle.load(open(filename,'rb'))
+                    # header = [i[0] for i in result[0]]
+                    # for res in result:
+                    #     results.append([r[1] for r in res])
+                    
+                    print '%s: loaded stored svm results' %subjID
+                    loaded = True
+                except:
+                    pass
+
+            if not loaded:
+                temp_res = []
                 for r, ROI_list in enumerate(rois):
                     print ROI_list[1],
                     ds = self.extract_samples(subjID, runType, ROI_list)
                     ds = self.detrend(ds)
-                    if ROI_list[1] in ['LO', 'pFs']:
-                        offset = 2
-                    else: 
-                        offset = 3
+                    # if ROI_list[1] == 'pFs':
+                    #     offset = 2
+                    # else: 
+                    #     offset = 3
                     evds = self.ds2evds(ds, offset=offset, dur=dur)
                     if method == 'time_course':
                         header, result = self.get_psc(evds)
@@ -79,11 +93,12 @@ class MVPA(object):
                         header, result = self.psc_diff(evds)
                     else:
                         evds = evds[evds.sa.targets != 0]
-                        header, result = self.svm(evds, nIter=30)
+                        header, result = self.svm(evds, nIter=100)
                     header.extend(['subjID', 'ROI'])
                     for line in result:
                         line.extend([subjID, ROI_list[1]])
-                        results.append(line)
+                        temp_res.append(line)
+                results.extend(temp_res)
 
                 # import pdb; pdb.set_trace()
                 if not self.noOutput:
@@ -93,7 +108,7 @@ class MVPA(object):
                     except:
                         pass
                     
-                    pickle.dump([header,results], open(filename,'wb'))
+                    pickle.dump([header,temp_res], open(filename,'wb'))
 
         return header, results
         #return thisloop
@@ -473,12 +488,21 @@ class MVPA(object):
         evds_avg.samples /= np.tile(np.std(evds_avg, axis=1, ddof=1),
             (evds_avg.shape[1],1) ).T
 
-        # results = np.zeros((nIter,numT*(numT-1),numT*(numT-1)))
+        ## NEW
         if len(evds_avg.UC)%2:
             runtype = [0]*(len(evds_avg.UC)-9) + [1]*8 + [-1]
             # for odd number of chunks (will get rid of one)
         else:
             runtype = [0]*(len(evds_avg.UC)-8) + [1]*8
+        ###
+
+        ## OLD
+        # if len(evds_avg.UC)%2:
+        #     runtype = [0]*(len(evds_avg.UC)-3) + [1]*2 + [-1]
+        #     # for odd number of chunks (will get rid of one)
+        # else:
+        #    runtype = [0]*(len(evds_avg.UC)-2) + [1]*2
+        ###
 
         targets = evds_avg.UT
         header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
@@ -490,9 +514,11 @@ class MVPA(object):
 
             evds_train = evds_avg[np.array([i==0 for i in evds_avg.sa.runtype])]
             evds_test = evds_avg[np.array([i==1 for i in evds_avg.sa.runtype])]
+            ## NEW
             # boost results by averaging test patterns over chunks
             run_averager = mvpa2.suite.mean_group_sample(['targets'])
             evds_test = evds_test.get_mapped(run_averager)
+            ###
 
             for i in range(0, numT):
                 for j in range(0, numT):
@@ -915,7 +941,7 @@ class Preproc(object):
                 last += dynScans
 
     
-    def gen_stats_batch(self, subjID, runType=None, condcol='cond'):
+    def gen_stats_batch(self, subjID, runType=None, condcol='cond', descrcol='name'):
         if runType is None:
             runType = ['main','loc','mer']
         elif type(runType) not in [tuple, list]:
@@ -952,7 +978,8 @@ class Preproc(object):
 
                 for cNo, cond in enumerate(conds):
                     agg = data[data[condcol] == cond]
-                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).name = '%s';\n" %(3*rtNo+1,rnNo+1,cNo+1,agg['name'][0]))
+                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).name = '%d|%s';\n" % (3*rtNo+1,rnNo+1,cNo+1,
+                        cond, agg[descrcol][0]))
                     # import pdb; pdb.set_trace()
                     # onsets = ' '.join(map(str,agg['onset']))
                     if 'blockNo' in agg.dtype.names:
@@ -962,8 +989,13 @@ class Preproc(object):
                             onsets.append( agg[agg['blockNo']==block]['onset'][0] )
                             durs.append( np.around(sum( agg[agg['blockNo']==block]['dur'] ), decimals = 1) )
                     else:
-                        onsets = agg['onset']
+                        onsets = np.round(agg['onset'])
                         durs = agg['dur']
+                        # for fixation we remove the first and the last blocks
+                        if cond == 0:
+                            onsets = onsets[1:-1]
+                            durs = durs[1:-1]
+
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).onset = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,onsets))
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).duration = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,durs))
                         
@@ -984,19 +1016,26 @@ class Preproc(object):
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.convec = [1 -1];\n" %(3*rtNo+3))
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.sessrep = 'repl';\n\n\n" %(3*rtNo+3))
             else:
-                f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.name = 'all > fix';\n" %(3*rtNo+3))
+                # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.name = 'all > fix';\n" %(3*rtNo+3))
                 
                 conds = np.unique(data[condcol])
                 descrs = []
-                for cond in conds[1:]: # skip fixation condition as it's our baseline
-                    descrs.append(data[data[condcol]==cond]['descr'][0])
+                # skip fixation condition as it's our baseline
+                for cond in conds[1:]: 
+                    descrs.append((cond,
+                        data[data[condcol]==cond][descrcol][0]))
                 # descrs = np.unique(data['descr'])
                 # descrs = descrs[descrs != 'fixation']
-                thisCond = ' '.join(['-1']+['1']*len(descrs))
-                f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.convec = [%s];\n" %(3*rtNo+3,thisCond))
-                f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.sessrep = 'repl';\n" %(3*rtNo+3))
+
+                # thisCond = ' '.join(['-1']+['1']*len(descrs))
+                # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.convec = [%s];\n" %(3*rtNo+3,thisCond))
+                # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.sessrep = 'repl';\n" %(3*rtNo+3))
+
+                # dNo is corrected with +2: +1 for Matlab and +1 because we 
+                # have 'all > fix'
+                # for now disabled
                 for dNo, descr in enumerate(descrs):
-                    f.write("matlabbatch{%d}.spm.stats.con.consess{%d}.tcon.name = '%s';\n" %(3*rtNo+3,dNo+1,descr))
+                    f.write("matlabbatch{%d}.spm.stats.con.consess{%d}.tcon.name = '%d|%s';\n" %(3*rtNo+3,dNo+1,descr[0],descr[1]))
                     thisCond = [-1] + [0]*dNo + [1] + [0]*(len(descrs)-dNo-1)
                     f.write("matlabbatch{%d}.spm.stats.con.consess{%d}.tcon.convec = %s;\n" %(3*rtNo+3,dNo+1,thisCond) )
                     f.write("matlabbatch{%d}.spm.stats.con.consess{%d}.tcon.sessrep = 'both';\n" %(3*rtNo+3,dNo+1))
@@ -1115,5 +1154,5 @@ class Plot(plot.Plot):
         ax.axhline(linestyle='--', color='0.6')
         # plt.xlim(( 0,evdsMean.shape[1]+1 ))
         # plt.ylim((-.5,2.))
-        ax.legend(loc=0)
+        ax.legend(loc=0).set_visible(False)
         return ax
