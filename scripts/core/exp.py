@@ -53,7 +53,7 @@ class Experiment(TrialHandler):
         
         self.parent = parent
         self.name = name
-        #self.win = win
+        self.version = version
         self.extraInfo = extraInfo
         self.runParams = runParams
         self.instructions = instructions
@@ -287,14 +287,14 @@ class Experiment(TrialHandler):
             cross0 = ThickShapeStim(
                 self.win,
                 name='cross1',
-                color=win.color,
+                lineColor=self.win.color,
                 lineWidth=d2,
                 vertices=[(-d1/2,0),(d1/2,0)]
                 )
             cross90 = ThickShapeStim(
                 self.win,
                 name='cross1',
-                color=win.color,
+                lineColor=self.win.color,
                 lineWidth=d2,
                 vertices=[(-d1/2,0),(d1/2,0)],
                 ori=90
@@ -498,7 +498,7 @@ class Experiment(TrialHandler):
         """
         if not noOutput:
             self.try_makedirs(os.path.dirname(datafile))
-            dataFile = open(datafile, 'wb')
+            dataFile = open(datafile, 'ab')
             dataCSV = csv.writer(dataFile, lineterminator = '\n') 
             header = self.extraInfo.keys() + self.trialList[0].keys()
             dataCSV.writerow(header)
@@ -507,7 +507,7 @@ class Experiment(TrialHandler):
         globClock = core.Clock()
         trialClock = core.Clock()
         eventClock = core.Clock()
-
+        
         # go over the trial sequence
         for thisTrial in self:
             trialClock.reset()
@@ -517,9 +517,11 @@ class Experiment(TrialHandler):
             allKeys = []
             for j, thisEvent in enumerate(self.trial):
                 eventClock.reset()
-                eventKeys = thisEvent['defaultFun'](globClock, trialClock, eventClock,
-                    thisTrial, thisEvent, j)
-                if eventKeys is not None: allKeys += eventKeys
+                eventKeys = thisEvent['defaultFun'](globClock=globClock, 
+                    trialClock=trialClock, eventClock=eventClock,
+                    thisTrial=thisTrial, thisEvent=thisEvent, j=j)
+                if eventKeys is not None:
+                    allKeys += eventKeys
                 # this is to get keys if we did not do that during trial
                 allKeys += event.getKeys(
                     keyList = self.comp.validResponses.keys(),
