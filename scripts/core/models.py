@@ -6,40 +6,65 @@ import itertools
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.signal
+import scipy.misc
 import scipy.ndimage
 
 
 class Model(object):
 
-    def getTestImage(self):
+    def get_testim(self, size=(256, 256)):
         """
-        Reads in 'testImage.gray' and returns a numpy.array of it
+        Opens Lena image and resizes it to the specified size ((256, 256) by 
+        default)
         """
-        fid = open('test_image.gray', 'rb')
-        binIm = fid.read()
-        fid.close()
-        stim = np.zeros((len(binIm), ))
-        import struct
-        for i, byte in enumerate(binIm):
-            stim[i] = struct.unpack('B', byte)[0]# 8 bit grays
-        stim = np.reshape(stim, (128, 128))
+        lena = scipy.misc.lena()
+        im = scipy.misc.imresize(lena, (256, 256))
+        im = im.astype(float)
 
-        return stim
+        return im
 
-    def dissimilarity(
-        self,
-        im1,
-        im2
-        ):
+    def train(self, im):
         """
-        Calculate similarity between magnitudes of gabor jet.
+        A placeholder for a function for training a model.
+        If the model is not trainable, then it will default to this function 
+        here that does nothing.
         """
-        return (1-np.corrcoef(im1,im2)[0,1])/2.
+        pass
+
+    def test(self, im):
+        """
+        A placeholder for a function for testing a model.
+        """
+        pass
+
+    def dissimilarity(self, out1, out2):
+        """
+        Calculate a dissimilarity between two outputs of the model
+        """
+        if out1.ndim > 1:
+            out1 = out1.ravel()
+            print ('WARNING: inputs for calculating dissimilarity not '
+                   'one-dimensional as expected')
+        if out2.ndim > 1:
+            out2 = out2.ravel()
+            print ('WARNING: inputs for calculating dissimilarity not '
+                   'one-dimensional as expected')
+        return (1-np.corrcoef(out1,out2)[0,1])/2.
+
+    # def compare(self, ims):
+    #     output = np.array([self.run(im) for im in ims])
+    #     # for out1 in output:
+    #     #     for out2 in output:
+
+    #     out1 = self.run(im1)
+    #     out2 = self.run(im2)
+    #     return self.dissimilarity(out1, out2)
 
 
 class Pixelwise(Model):
     def run(self, im):
+        if im.ndim != 2:
+            sys.exit('ERROR: Input image must be two-dimensional')
         return [im.ravel()]
 
 
@@ -267,13 +292,17 @@ class GaborJet(Model):
         return (JetsMagnitude, JetsPhase, grid_position)    
 
 
-    def dissimilarity(self,g,f):
+    def dissimilarity(self, outputs):
         """
         Calculate similarity between magnitudes of gabor jet.
         """
+        if outputs.ndim != 3:
+            sys.exit('ERROR: 3 dimensions expected')
+        
+        np.sum(outputs*outputs, axis=0)
         g = g.ravel()
         f = f.ravel()
-        return 1 - np.dot(g,f) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
+        return 1 - np.dot(outputs,outputs.T) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
 
 
     def test(self,JetsMagnitude, JetsPhase):
@@ -294,167 +323,192 @@ class HMAX(Model):
 
     Based on the original HMAX (Riesenhuber & Poggio, 1999, doi:10.1038/14819)
     Code rewritten using a Pure MatLab implementation by Minjoon Kouh at the
-    MIT Center for Biological and Computational Learning which used to be on
-    http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code
-    but is not available online anymore. Most of the structure, variable names 
-    and some of the comments come from this implementation. More comments have
-    been added and code was optimized as much as possible while trying to 
-    maintain its structure close to the original. View-tuned units have been
-    added by Hans Op de Beeck.
+    MIT Center for Biological and Computational Learning. Most of the 
+    structure, variable names and some of the comments come from this 
+    implementation. More comments have been added and code was optimized as 
+    much as possible while trying to maintain its structure close to the 
+    original. View-tuned units have been added by Hans Op de Beeck.
 
-    Code's output is tested against the Standard C/MatLab code featured at
+    Code's output is tested against the Pure MatLab output which can be tested 
+    agains the Standard C/MatLab code featured at     
     http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code
-    You can compare the outputs to the testImage.gray between the present and
-    C/MatLab implementation using function compare()
+    You can compare the outputs to the standard Lena image between the present 
+    and C/MatLab implementation using function test_matlab()
 
-    In  order to run HMAX, type
-    > python
-    > hmax()
-    To specify some input image image_name.jog, type
-    > hmax = hmax()
-    > hmax.HMAX_resp_all('image_name.jpg')
+    Note that this implementation is not the most current HMAX 
+    implementation that doesn't rely on hardcoding features anymore (e.g., 
+    Serre et al., 2007).
 
     Copyright 2011-2012 Jonas Kubilius
     Original VTU implementation copyright 2007 Hans P. Op de Beeck
     Original MatLab implementation copyright 2004 Minjoon Kouh
     Since the original code did not specify a license type, I assume GNU GPL v3
-    which is used in Jim Mutch's latest implementation of HMAX
+    since it is used in Jim Mutch's latest implementation of HMAX
     http://cbcl.mit.edu/jmutch/cns/    
     """
-    def __init__(self):
+    def __init__(self, matlab=False, filt_type='gaussian'):
         """
         Initializes key HMAX parameters
+
+        **Parameters**
+
+            matlab: boolean
+                If *True*, Gaussian filters will be implemented using the 
+                original models implementation which mimicks MatLab's behavior.
+                Otherwise, a more efficient numerical method is used.
         """        
-        # For scale band 1, 2, 3, and 4.
-        self.filter_sizes_all = [[7,9],[11,13,15],[17,19,21],[23,25,27,29]] # S1 filter sizes
-        self.C1_pooling_all = [4,6,9,12] # C1 pooling range
-        self.num_orientation = 4 # Number of orientations
+        self.n_ori = 4 # number of orientations
+        # S1 filter sizes for scale band 1, 2, 3, and 4
+        self.filter_sizes_all = [[7, 9], [11, 13, 15], [17, 19, 21],
+                                 [23, 25, 27, 29]]
+        # specify (per scale band) how many S1 units will be used to pool over
+        self.C1_pooling_all = [4, 6, 9, 12]
+        self.S2_config = [2,2]  # how many C1 outputs to put into one "window" in S2 in each direction
 
-        # Gabor parameters
-        # used only with 'new' 
-        self.gabor_k = 2.1 # S1 Gabor wave number
-        self.gabor_sig_xy = np.array([1/3., 1/1.8])*2*np.pi # S1 Gabor sigma
-        self.gabor_phase = 0 # S1 Gabor function phase (0 for cosine and pi/2 for sine)
-
-        self.S2_config = [2,2] # how many C1 outputs to put into one "window" in S2 in each direction
-        self.S2_target = 1 # S2 target
-        self.S2_sigma = 1 #1.25 # S2 sigma: sharpness of S2 tuning
-
-        self.gaussFilters_all = self.gaussian_filters_matlab(
-            self.filter_sizes_all, self.num_orientation)
+        if filt_type == 'gaussian':  # "typically" used
+            if matlab:  # exact replica of the MatLab implementation
+                self.filts = self.get_gaussians_matlab(self.filter_sizes_all,
+                                                       self.n_ori)
+            else:  # a faster and more elegant implementation
+                self.filts = self.get_gaussians(self.filter_sizes_all,
+                                                self.n_ori)
+            self.mask_name = 'square'
+        elif filt_type == 'gabor':
+            self.filts = self.get_gabors(self.filter_sizes_all, self.n_ori)
+            self.mask_name = 'circle'
+        else:
+            raise ValueError, "filter type not recognized"
         
+        self.istrained = False  # initially VTUs are not set up        
 
-    def HMAX_resp_all(self, stim = None, old_new = 'old'):
+    def run(self, im=None, train_im=None):
         """
-        
+        This is the main function to run the model.
+        First, it trains the model, i.e., sets up prototypes for VTU.
+        Next, it runs the model.
         """
-        
-        if stim == None: stim = self.getTestImage()        
+        if train_im is not None:
+            self.train(train_im)
+        if im is None:
+            im = self.get_testim()
+        output = self.test(im)
+
+        return output
+
+    def train(self, train_im):
+        """
+        Train the model, i.e., supply VTUs with C2 responses to 'prototype'
+        images to which these units will be maximally tuned.
+        """
+        prots = [self.test()[3] for im in train_im]
+        self.c2RespProt = np.array(prots)
+        self.istrained = True
+
+    def test(self, im):
+        """
+        Test the model on the given image
+        """
+        if im.dtype == int: im = im.astype(float)
         # Get number of filter sizes
         size_S1 = sum([len(fs) for fs in self.filter_sizes_all])
-        # S1 is stored in case you want to inspect it closer
-        S1 = np.zeros((stim.shape[0], stim.shape[1], size_S1, self.num_orientation))
-        C1 = np.zeros((stim.shape[0], stim.shape[1], self.num_orientation, len(self.filter_sizes_all)))
-        C2_tmp = np.zeros(( (self.S2_config[0]*self.S2_config[1])**self.num_orientation,
+        # outputs from each layer are stored if you want to inspect them closer
+        # but note that S1 is *massive*
+        output = {}
+        output['S1'] = np.zeros((im.shape[0],im.shape[1], size_S1, self.n_ori))
+        output['C1'] = np.zeros((im.shape[0], im.shape[1], self.n_ori,
+                       len(self.filter_sizes_all)))
+        output['S2'] = []
+        C2_tmp = np.zeros(( (self.S2_config[0]*self.S2_config[1])**self.n_ori,
             len(self.filter_sizes_all) )) 
         
         # Go through each scale band
         S1_idx = 0
         for which_band in range(len(self.filter_sizes_all)):
         
-            # calculate S1 responses
-            if old_new == 'old':
-                # For old S1 filters (difference of Gaussians)
-                # This is what we typically use although using Gabors would be cooler
-                S1_tmp = self.S1resp_zeropad(stim, which_band)
-            else:
-                # For new S1 filters (Gabor functions)
-                S1_tmp = self.S1resp_gabor_zeropad(stim)
-
-            num_filter = len(self.filter_sizes_all[which_band])
-            
+            # calculate S1 responses            
+            S1_tmp = self.get_S1(im, which_band)
+            num_filter = len(self.filter_sizes_all[which_band])            
             # store S1 responses for each scale band
-            S1[:,:,S1_idx:S1_idx+num_filter,:] = S1_tmp
+            output['S1'][:,:,S1_idx:S1_idx+num_filter,:] = S1_tmp
             S1_idx += num_filter
-            
             # calculate other layers
-            C1_tmp = self.C1resp_zeropad(S1_tmp, which_band)
-            C1[:,:,:,which_band] = C1_tmp            
-            S2 = self.S2resp_zeropad(C1_tmp, which_band)
-            
-            # C2 is a max over space per an S2 filter quadruplet
-            C2_tmp[:,which_band] = np.max(np.max(S2,0),0)
+            C1_tmp = self.get_C1(S1_tmp, which_band)
+            output['C1'][:,:,:,which_band] = C1_tmp  
+            S2_tmp = self.get_S2(C1_tmp, which_band)
+            output['S2'].append(S2_tmp)
+            C2_tmp[:,which_band] = self.get_C2(S2_tmp, which_band)
 
-        C2 = np.max(C2_tmp,1) # max over all scale bands
+        output['C2'] = np.max(C2_tmp,1) # max over all scale bands
+        # try giving a VTU output
+        if self.istrained:
+            output['VTU'] = self.get_VTU(C2)
+
+        return output
         
-        S1_max = np.sort(S1,axis=None)[-1000:]
-        C1_max = np.sort(C1,axis=None)[-1000:]
-        return S1_max, C1_max, C2
-        
-    def gaussian_filters(
+    def get_gaussians(
         self,
         filter_sizes_all,
-        num_orientation = 4,
+        n_ori = 4,
         sigDivisor = 4.
         ):        
         """
-        Generates 2D Gabor filters
+        Generates 2D difference of Gaussians (DoG) filters.
         This function is a faster, more accurate and more elegant version of 
         the original gaussian_filters_matlab but will not produce identical 
         filters as the original (but very close). For practical purposes, this 
-        one is prefered. In case you want to mimic the identical behavior of the 
-        original HMAX, use gaussian_filters_matlab.
+        one is prefered. In case you want to mimic the identical behavior of 
+        the original HMAX, use gaussian_filters_matlab.
         
         **Parameters**
             filter_sizes_all: list (depth 2))
                 A nested list (grouped by filter bands) of integer filter sizes
-            num_orientation: int
+            n_ori: int
                 A number of filter orientations (default: 4)
-                Orientations are spaced by np.pi/num_orientation
+                Orientations are spaced by np.pi/n_ori
             sigDivisor: float
-                A parameter to adjust Gabor filter frequency (default: 4.)
+                A parameter to adjust DoG filter frequency (default: 4.)
                 
         **Returns**
-            gaussFilters: list (depth 2)
+            gaussians: list (depth 2)
                 A nested list of filters of all orientations
         
-        """
-        
-        gaussFilters = []
+        """        
+        gaussians = []
         # loop over filter bands
         for fNo, filter_sizes in enumerate(filter_sizes_all):
-            gaussFilters.append([])
+            gaussians.append([])
             
             # loop over filter sizes within a filter band
             for filter_size in filter_sizes:  
-                fxx = np.zeros((filter_size,filter_size,num_orientation))
+                fxx = np.zeros((filter_size,filter_size,n_ori))
                 sigmaq = (filter_size/sigDivisor)**2
                 i = np.arange(-filter_size/2+1,filter_size/2+1)
                 ii,jj = np.meshgrid(i,i)
-                for t in range(num_orientation):
-
-                    theta = t*np.pi/num_orientation
+                for t in range(n_ori):
+                    theta = t*np.pi/n_ori
                     x = ii*np.cos(theta) - jj*np.sin(theta)
                     y = ii*np.sin(theta) + jj*np.cos(theta)
-                    # generate a 2D Gabor of a particular orientation
-                    fxx[:,:,t] = (y**2/sigmaq-1)/sigmaq * np.exp(-(x**2+y**2)/(2*sigmaq))
+                    # generate a 2D DoG of a particular orientation
+                    gaussian = (y**2/sigmaq - 1) / sigmaq * \
+                                np.exp(-(x**2 + y**2) / (2*sigmaq))
                     # normalize the filter to zero mean and unit variance
-                    fxx[:,:,t] -= np.mean(fxx[:,:,t])
-                    fxx[:,:,t] /= np.sqrt(np.sum(fxx[:,:,t]**2))
+                    gaussian -= np.mean(gaussian)
+                    gaussian /= np.sqrt(np.sum(gaussian**2))
+                    fxx[:,:,t] = gaussian
                     
-                gaussFilters[fNo].append(fxx)
+                gaussians[fNo].append(fxx)
 
-        return gaussFilters
+        return gaussians
         
                             
-    def gaussian_filters_matlab(
+    def get_gaussians_matlab(
         self,
         filter_sizes_all,
-        num_orientation = 4,
+        n_ori = 4,
         sigDivisor = 4.):
         """
-        Generates 2D Gabor filters
-        This is the original version of Gabor filters used in HMAX. It was 
+        Generates 2D difference of Gaussians (DoG) filters.
+        This is the original version of DoG filters used in HMAX. It was 
         written in a very cumbersome way and thus I replaced it by the 
         gaussian_filters function. If you want to produce identical 
         numerical values of the filters, you should use this function. 
@@ -463,26 +517,26 @@ class HMAX(Model):
         **Parameters**
             filter_sizes_all: list (depth 2))
                 A nested list (grouped by filter bands) of integer filter sizes
-            num_orientation: int
+            n_ori: int
                 A number of filter orientations (default: 4)
-                Orientations are spaced by np.pi/num_orientation
+                Orientations are spaced by np.pi/n_ori
             sigDivisor: float
-                A parameter to adjust Gabor filter frequency (default: 4.)
+                A parameter to adjust DoG filter frequency (default: 4.)
                 
         **Returns**
-            gaussFilters: list (depth 2)
+            gaussians: list (depth 2)
                 A nested list of filters of all orientations
         
         """
         
-        gaussFilters = []
+        gaussians = []
         # loop over filter bands
         for fNo, filter_sizes in enumerate(filter_sizes_all):
-            gaussFilters.append([])
+            gaussians.append([])
             
             # loop over filter sizes within a filter band
             for filter_size in filter_sizes:
-                fx1 = np.zeros((filter_size,filter_size,num_orientation))
+                fx1 = np.zeros((filter_size,filter_size,n_ori))
                 
                 # we gonna use a trick here:
                 # make filters sqrt(2) times bigger so that we can rotate them
@@ -500,11 +554,11 @@ class HMAX(Model):
                 theta = 0
                 x = ii*np.cos(theta) - jj*np.sin(theta)
                 y = ii*np.sin(theta) + jj*np.cos(theta)
-                # generate a 2D Gabor of 0 deg orientation
+                # generate a 2D DoG of 0 deg orientation
                 fxx = (y**2/sigmaq-1)/sigmaq * np.exp(-(x**2+y**2)/(2*sigmaq))
                 
                 # now loop over the orientations, rotate and trim the filter
-                for t in range(num_orientation):
+                for t in range(n_ori):
                     fxx = self.addZeros(fxx,cropOff)
                     fxx = scipy.ndimage.interpolation.rotate(fxx,45,reshape=False,order=1)
                     fxx = fxx[cropOff:fieldSize+cropOff,cropOff:fieldSize+cropOff]
@@ -512,15 +566,92 @@ class HMAX(Model):
                     # and end up with the one having 0 deg, but now having
                     # undergonne all interpolations and rotations
                     # to make things equall
-                    count = (t+1)%num_orientation
-                    fx1[:,:,count] = fxx[cropRange,cropRange]
+                    count = (t+1)%n_ori
+                    # crop the edges
+                    # note that you should assign this cropped version to sth
+                    # like fx1[:,:,count], and not a variable on its own
+                    # as otherwise you only pass a reference to fxx
+                    # so you'd modify fxx as well when normalizing
+                    # and you really don't want that
+                    fx1[:,:,count] = fxx[cropRange, cropRange]
                     # normalize the filter to zero mean and unit variance
                     fx1[:,:,count] -= np.mean(fx1[:,:,count])
                     fx1[:,:,count] /= np.sqrt(np.sum(fx1[:,:,count]**2))
-                    
-                gaussFilters[fNo].append(fx1)
+                gaussians[fNo].append(fx1)
                 
-        return gaussFilters
+        return gaussians
+
+    def get_gabors(
+        self,
+        filter_sizes_all,
+        n_ori = 4,
+        k = 2.1,
+        sx = 2*np.pi * 1/3.,
+        sy = 2*np.pi * 1/1.8,
+        phase = 0 # S1 Gabor function phase (0 for cosine and pi/2 for sine)
+
+        ):
+        """
+        Generates 2D Gabor filters.
+        This is the original version of Gabor filters used in HMAX. 
+        
+        **Parameters**
+            filter_sizes_all: list (depth 2))
+                A nested list (grouped by filter bands) of integer filter sizes
+            n_ori: int
+                A number of filter orientations (default: 4)
+                Orientations are spaced by np.pi/n_ori
+            k: float
+                Gabor wave number (default: 2.1)
+            sx: float
+                Gabor sigma in x-dir (default: 2*np.pi * 1/3.)
+            sy: float
+                Gabor sigma in y-dir (default: 2*np.pi * 1/1.8)
+            phase: int
+                Gabor function phase (0 (default) for cosine (even),
+                                      np.pi/2 for sine (odd))
+                
+        **Returns**
+            gabors: list (depth 2)
+                A nested list of filters of all orientations        
+        """
+        
+        gabors = []
+        # loop over filter bands
+        for fNo, filter_sizes in enumerate(filter_sizes_all):
+            gabors.append([])            
+            # loop over filter sizes within a filter band
+            for filter_size in filter_sizes:
+                fxx = np.zeros((filter_size, filter_size, n_ori))
+                inc = 2. / filter_size
+                i = np.pi * np.arange(-1+inc/2, 1+inc/2, inc)
+                ii,jj = np.meshgrid(i,i)
+
+                circle = self.get_circle(filter_size)
+                circle_sum = np.sum(circle)
+
+                for t in range(n_ori):
+                    theta = t*np.pi/n_ori
+                    x = ii*np.cos(theta) - jj*np.sin(theta)
+                    y = ii*np.sin(theta) + jj*np.cos(theta)
+                    # generate a 2D DoG of a particular orientation
+                    gabor = np.cos(k * x - phase) * \
+                            np.exp(-( (x/sx)**2 + (y/sy)**2) / 2)
+                    # apply circle mask                    
+                    gabor *= circle
+                    # normalize the filter to zero mean and unit variance
+                    gabor -= circle * np.sum(gabor) / np.sum(circle)
+                    gabor /= np.sqrt(np.sum(gabor**2))
+                    fxx[:,:,t] = gabor
+                gabors[fNo].append(fxx)
+
+        return gabors
+
+    def get_circle(self, filter_size, radius=1.):
+            inc = 2./filter_size
+            r = np.arange(-1+inc/2, 1+inc/2, inc)
+            x, y = np.meshgrid(r, r)
+            return x**2 + y**2 <= radius**2
 
         
     def addZeros(self, matrix, numZeros):
@@ -536,8 +667,7 @@ class HMAX(Model):
         **Returns**
             matrix_new: numpy.array
                 A zero-padded 2D numpy array                
-        """
-        
+        """        
         matrix_new = np.zeros((matrix.shape[0]+2*numZeros,
             matrix.shape[1]+2*numZeros))
         matrix_new[numZeros:matrix.shape[0]+numZeros,
@@ -546,37 +676,40 @@ class HMAX(Model):
         return matrix_new
     
 
-    def S1resp_zeropad(self, stim, whichBand):
-
-        # This function returns S1 responses,
-        # using the difference of the Gaussians or Gabors as S1 filters.
-        # Filters are based on the original HMAX model.
-        
+    def get_S1(self, im, whichBand):
+        """
+        This function returns S1 responses,
+        using the difference of the Gaussians or Gabors as S1 filters.
+        Filters are based on the original HMAX model.
+        """        
         filter_sizes = self.filter_sizes_all[whichBand]
         num_filter = len(filter_sizes)
         # make S1 same size as stimulus
-        S1 = np.zeros((stim.shape[0], stim.shape[1], num_filter, self.num_orientation))
+        S1 = np.zeros((im.shape[0], im.shape[1], num_filter, self.n_ori))
 
         for j in range(num_filter):
-            S1_filter = self.gaussFilters_all[whichBand][j]
+            S1_filter = self.filts[whichBand][j]
             fs = filter_sizes[j]
-            norm = scipy.ndimage.convolve(stim**2, np.ones((fs,fs)),mode='constant') + sys.float_info.epsilon
+            if self.mask_name == 'circle':
+                mask = self.get_circle(fs)
+            else:
+                mask = np.ones((fs,fs))
+            # import pdb; pdb.set_trace()
+            norm = scipy.ndimage.convolve(im**2, mask, mode='constant') + \
+                                          sys.float_info.epsilon
+            for i in range(self.n_ori):
+                S1_buf = scipy.ndimage.convolve(im, S1_filter[:,:,i],
+                                                mode='constant')
+                S1[:,:,j,i] = np.abs(S1_buf) / np.sqrt(norm)
 
-            for i in range(self.num_orientation):
-                S1_buf = scipy.ndimage.convolve(stim, S1_filter[:,:,i],mode='constant')
-                S1[:,:,j,i] = np.abs(S1_buf)/np.sqrt(norm)            
-                # Riesenhuber states that this 'contrast invariance' is done at C1
-                # and S1 should rather produce outputs in the range [-1,1]
-                
         return S1
 
         
-    def C1resp_zeropad(self, S1, which_band):
+    def get_C1(self, S1, which_band):
         """
         Computes C1 responses given S1 as a max over a a couple of filter
         (as defined by C1_pooling)
         """
-
         C1_pooling = self.C1_pooling_all[which_band]
         C1 = scipy.ndimage.filters.maximum_filter(
             S1,
@@ -590,70 +723,77 @@ class HMAX(Model):
         return C1
         
         
-    def S2resp_zeropad(self, C1, which_band):
+    def get_S2(self, C1, which_band, target=1., sigma=1.):
+        """
+        Calculates S2 responses given C1.
 
-        """
-        Calculates S2 responses given C1
-        First it pools over C1 activities over various combinations of 4 filters
-        Then computes a distance to self.S2_target        
-        """
-        
+        First it pools over C1 activities over various combinations of 4 
+        filters.
+        Then computes a distance to /target/ using /sigma/ as its tuning 
+        sharpness.
+        """        
         # half overlaped S2 sampling
-        S2_shift = int(np.ceil(self.C1_pooling_all[which_band]/2.)) # S2 sampling
-        
+        S2_shift = int(np.ceil(self.C1_pooling_all[which_band]/2.))        
         # C1 afferents are adjacent for each S2
-        C1_shift = S2_shift * 2 # distance/shift between C1 afferents
-        
-        S2_buf_size = [C1.shape[0] - C1_shift*(self.S2_config[0]-1),
+        C1_shift = S2_shift * 2 # distance/shift between C1 afferents        
+        S2_buf = [C1.shape[0] - C1_shift*(self.S2_config[0]-1),
             C1.shape[1] - C1_shift*(self.S2_config[1]-1)]
         
         # produce a sequence of all possible orientation combinations
-        seq = itertools.product(range(self.num_orientation),
+        seq = itertools.product(range(self.n_ori),
             repeat = self.S2_config[0]*self.S2_config[1])
-        # this is stupid but we have to keep the same order as in the original model
+        # we have to keep the same order as in the original model
         seq = np.fliplr([s for s in seq]) 
         
         S2_permute = np.zeros((
-            (S2_buf_size[0]-1)/S2_shift+1,
-            (S2_buf_size[1]-1)/S2_shift+1,
+            (S2_buf[0]-1)/S2_shift+1,
+            (S2_buf[1]-1)/S2_shift+1,
             len(seq),
             self.S2_config[0]*self.S2_config[1]))        
         
         for c1 in range(self.S2_config[0]):
             for c2 in range(self.S2_config[1]):
                 c = self.S2_config[0]*c2 + c1
-                ii,jj = np.meshgrid(np.arange(C1_shift*c1,S2_buf_size[0] + C1_shift*c1,S2_shift),
-                                    np.arange(C1_shift*c2,S2_buf_size[1] + C1_shift*c2,S2_shift) )
-                for si, s in enumerate(seq):
-                    S2_permute[:,:,si,c] = C1[jj,ii,s[c]] # the window is sliding in the x-dir
-                    
-        
-        S2 = np.sum((S2_permute-self.S2_target)**2,3)
-        S2 = np.exp(-S2/2./self.S2_sigma**2)
+                r1 = np.arange(C1_shift*c1, S2_buf[0] + C1_shift*c1, S2_shift)
+                r2 = np.arange(C1_shift*c2, S2_buf[1] + C1_shift*c2, S2_shift)
+                ii,jj = np.meshgrid(r1, r2)
+                S2_permute[:,:,:,c] = np.take(C1[jj,ii], seq[:,c], axis=2)
+                # for si, s in enumerate(seq):
+                #     S2_permute[:,:,si,c] = C1[jj,ii,s[c]] # the window is 
+                                                         # sliding in the x-dir
+        S2 = np.sum((S2_permute-target)**2,3)
+        S2 = np.exp(-S2/(2.*sigma**2))
         
         return S2
-            
+
+    def get_C2(self, S2, which_band):
+        """C2 is a max over space per an S2 filter quadruplet"""
+        return  np.max(np.max(S2,0),0)            
         
-    def VTU(self, c2RespSpec, c2RespProt, tuningWidth = .1):
+    def get_VTU(self, c2RespSpec, tuningWidth = .1):
         """
         Calculate response of view-tuned units
         
         **Parameters**
             c2RespSpec: numpy.array
                 C2 responses to the stimuli
-            c2RespProt: numpy.array
-                C2 responses to the 'prototype' (view-tuned) units
             tuningWidth: float
                 How sharply VTUs should be tuned; lower values are shaper 
                 tuning (default: .1)
         **Returns**
             output: np.array
-                An array where each column represents view-tuned units responses
-                to a particular image (stimulus)
+                An array where each column represents view-tuned units 
+                responses to a particular image (stimulus)
         
         """
+        if not self.istrained:
+            raise ("ERROR: You must first train VTUs by providing prototype "
+            "images to them using the train() function")
+        else:
+            c2RespProt = self.c2RespProt
+
         if c2RespSpec.shape[0] != c2RespProt.shape[0]:
-            raise "Error: The size of exemplar matrix does not match that " +\
+            raise "ERROR: The size of exemplar matrix does not match that " +\
                 "of the prototype matrix"            
         
         # covariance matrix
@@ -670,11 +810,17 @@ class HMAX(Model):
         
         return output        
     
-    def compare(self, python, matlab):
+    def test_matlab(self):
         """
         Compares output from this Python implementation to the original
         C/MatLab implementation
-        """        
+        """
+        im = self.get_testim()
+        python = self.run(im)
+        fid = open('c2resp_matlab.txt')
+        matlab = np.array([float(i.strip('\n')) for i in fid.readlines()])
+        fid.close()
+
         plt.plot(python,matlab,'x')
         corr = np.corrcoef(python,matlab)[0,1]
         plt.xlabel('Python implementation')
@@ -684,8 +830,21 @@ class HMAX(Model):
 
         
 if __name__ == '__main__':
-    JetsMagnitude, JetsPhase, grid_position=gabor_jet(getTestImage())
+    models = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX}
     
-    test(JetsMagnitude, JetsPhase)
-    import pdb; pdb.set_trace()
+    if len(sys.argv) == 1:
+        m = HMAX()
+    else:
+        model_name = sys.argv[2]
+        if model_name in models: m = models[model_name]()
 
+    if len(sys.argv) > 2:
+        try:  # easy way to give more than one image to process
+            ims = eval(sys.argv[3])
+        except:  # otherwise the user gave a string, hopefully
+            ims = [sys.argv[3]]
+    else:
+        ims = [m.get_testim()]
+
+    for im in ims:
+        output = m.run(im)
