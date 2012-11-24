@@ -190,25 +190,30 @@ class GaborJet(Model):
     Copyright 2011-2012 Jonas Kubilius
     Original implementation copyright 2004 Xiaomin Yue
     """
-    def run(self,
+    def run(self, im=None):
+        if im is None:
+            im = self.get_testim()
+        return self.test(im)
+
+    def test(self,
             im,  # input image; can be (128,128) or (256,256) px size
             cell_type = 'complex',  # 'complex': 40 output values
                                     # 'simple': 80 values
             grid_size = 0,  # how many positions within an image to take
-            sigma = 2*np.pi,  # control the size of gaussion envelope
+            sigma = 2*np.pi,  # control the size of gaussian envelope
             ):
         if im.shape[0]!=im.shape[1]:
             sys.exit('The image has to be square. Please try again')
         
         # generate the grid
-        if len(im) in [128,256]:
+        if len(im) in [128, 256]:
             if grid_size == 0:
-                rangeXY = np.arange(20,110+1,10)  # 10x10
+                rangeXY = np.arange(20, 110+1, 10)  # 10x10
             elif grid_size == 1:
-                rangeXY = np.arange(10,120+1,10)  # 12x12
+                rangeXY = np.arange(10, 120+1, 10)  # 12x12
             else:
-                rangeXY = np.arange(1,128+1)  # 128x128
-            rangeXY *= len(im)/128  # if len(im)==256, scale up by two
+                rangeXY = np.arange(1, 128+1)  # 128x128
+            rangeXY *= len(im) / 128  # if len(im)==256, scale up by two
             rangeXY -= 1  # shift from MatLab indexing to Python
         else:        
             sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
@@ -221,7 +226,6 @@ class GaborJet(Model):
         
         # FFT of the image    
         im_freq = np.fft.fft2(im)
-        #
 
         # setup the paramers
         nScale = 5  # spatial frequency scales
@@ -247,18 +251,15 @@ class GaborJet(Model):
         for LevelL in range(nScale):
             k0 = np.pi/2 * (1/np.sqrt(2))**LevelL
             for DirecL in range(nOrientation):
-                kA = np.pi*DirecL/nOrientation  # gabor angle; SHOULD BE *2?
-                # though in http://geon.usc.edu/~biederman/publications/Fiser_Biederman_Cooper_1996.pdf it's like here
-                k0x = k0*np.cos(kA)
-                k0y = k0*np.sin(kA)
+                kA = np.pi * DirecL / nOrientation
+                k0x = k0 * np.cos(kA)
+                k0y = k0 * np.sin(kA)
                 # generate a kernel specified scale and orientation, which has DC on the center
                 # this is a FFT of a Morlet wavelet (http://en.wikipedia.org/wiki/Morlet_wavelet)
-                #import pdb; pdb.set_trace()
                 freq_kernel = 2*np.pi*(
                     np.exp( -(sigma/k0)**2/2 * ((k0x-tx)**2+(k0y-ty)**2) ) -\
                     np.exp( -(sigma/k0)**2/2 * (k0**2+tx**2+ty**2) )
                     )
-                #import pdb; pdb.set_trace()
                 # use fftshift to change DC to the corners
                 freq_kernel = np.fft.fftshift(freq_kernel)
                 
@@ -285,7 +286,6 @@ class GaborJet(Model):
                     # get magnitude and phase at specific positions
                     tmpMag = TmpGWTMag[rangeXY,:][:,rangeXY]
                     JetsMagnitude[:,LevelL*nOrientation+DirecL] = tmpMag.ravel()
-                    import pdb; pdb.set_trace()
                 else:
                     TmpGWTMag_real = np.real(iTmpFilterImage)
                     TmpGWTMag_imag = np.imag(iTmpFilterImage)                
@@ -297,33 +297,44 @@ class GaborJet(Model):
 
         if cell_type == 'simple':
             JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
-        # use magnitude for similarity    
-        return (JetsMagnitude, JetsPhase, grid_position)    
-
+        # use magnitude for dissimilarity measures
+        return (JetsMagnitude, JetsPhase, grid_position)
 
     def dissimilarity(self, outputs):
         """
         Calculate similarity between magnitudes of gabor jet.
+
+        It may look complex but this is just a linear algebra implementation of
+        1 - np.dot(f,g) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
         """
-        if outputs.ndim != 3:
-            sys.exit('ERROR: 3 dimensions expected')
-        
-        np.sum(outputs*outputs, axis=0)
-        g = g.ravel()
-        f = f.ravel()
-        return 1 - np.dot(outputs,outputs.T) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
+        outputs = np.array(outputs)
+        if outputs.ndim != 2:
+            sys.exit('ERROR: 2 dimensions expected')        
+        length = np.sqrt(np.sum(outputs*outputs, axis=1))
+        length = np.tile(length, (len(length), 1))  # make a square matrix
+        return 1 - np.dot(outputs,outputs.T) / (length * length.T)
 
+    def compare(self, ims):
+        output = []
+        print 'processing image',
+        for imno, im in enumerate(ims):
+            print imno,
+            out = self.run(im)[0].ravel()  # use JetsMagnitude
+            output.append(out)
+        dis = self.dissimilarity(output)
+        print
+        print 'Dissimilarity across stimuli'
+        print '0: similar, 1: dissimilar'
+        print dis
 
-    def test(self,JetsMagnitude, JetsPhase):
-        for fname,jet in zip(['jet_mag.txt','jet_phase.txt'],[JetsMagnitude, JetsPhase]):
-            jet_orig = np.genfromtxt(fname, delimiter=',')
-            #fid = open(fname)
-            #jet_orig = np.array([float(i.strip('\n')) for i in fid.readlines()])
-            #fid.close()
-            #C2 = self.HMAX_resp_all(old_new = 'old', C2='old')
-            plt.plot(jet.ravel(),jet_orig.ravel(),'x')
-            plt.show()
-            print np.corrcoef(jet.ravel(),jet_orig.ravel())[0,1]
+        ax = plt.subplot(111)
+        matrix = ax.imshow(dis, interpolation='none')
+        plt.title('Dissimilarity across stimuli\n'
+                  '(blue: similar, red: dissimilar)')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(matrix, cax=cax)
+        plt.show()
 
 
 class HMAX(Model):
