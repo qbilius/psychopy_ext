@@ -646,6 +646,15 @@ class Experiment(TrialHandler):
         acc = accuracy * 100 / len(df)
         return acc
 
+    def weighted_sample(self, probs):
+        which = np.random.random()
+        ind = 0
+        while which>0:
+            which -= probs[ind]
+            ind +=1
+        ind -= 1
+        return ind
+
     def behav(self, pattern='%s'):
         """
         Extracts data from files for data analysis.
