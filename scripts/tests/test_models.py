@@ -24,5 +24,27 @@ class TestHMAX(unittest.TestCase):
         rsm = np.mean(np.sqrt((c2_matlab - c2_python)**2))
         self.assertEqual(rsm, 0)
 
+
+class TestGaborJets(unittest.TestCase):
+    def setUp(self):
+        m = models.GaborJet()
+        self.mag, self.phase, self.grid = m.run()
+
+    def test_mag(self):
+        mag_matlab = np.genfromtxt('scripts/tests/jet_mag.txt', delimiter=',')
+        mag_python = np.around(self.mag, decimals=5)  # matlab's output has 5 
+                                                      # significant digits
+        rsm = np.mean(np.sqrt((mag_matlab - mag_python)**2))
+        self.assertTrue(rsm, 0)
+
+    def test_phase(self):
+        phase_matlab = np.genfromtxt('scripts/tests/jet_phase.txt',
+                                     delimiter=',')
+        phase_python = np.around(self.mag, decimals=5) # matlab's output has 5
+                                                       # significant digits
+        rsm = np.mean(np.sqrt((phase_matlab - phase_python)**2))
+        self.assertTrue(rsm, 0)
+            
+
 if __name__ == '__main__':
     unittest.main()
