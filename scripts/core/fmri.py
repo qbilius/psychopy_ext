@@ -913,25 +913,26 @@ class Preproc(object):
         funcImg = glob.glob(self.paths['data_fmri']%subjID + 'func_*_*.nii')
         regFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_afunc_*.txt')
         
-        reg = []
-        for regFile in regFiles:
-            with open(regFile) as f: reg.extend( f.readlines() )
-            shutil.move(regFile,
-                        (self.paths['fmri_root'] %subjID)+os.path.basename(regFile))
-        
-        last = 0
-        for func in funcImg:
-            runNo = func.split('.')[0].split('_')[-2]
+        if regFiles != []:  # if split_reg has not been done before
+            reg = []
+            for regFile in regFiles:
+                with open(regFile) as f: reg.extend( f.readlines() )
+                shutil.move(regFile,
+                            (self.paths['fmri_root'] %subjID)+os.path.basename(regFile))
             
-            nim = nb.load(func)
-            dynScans = nim.get_shape()[3] # get number of acquisitions
-            
-            runType = func.split('.')[0].split('_')[-1]
-            outName = self.paths['data_fmri']%subjID + 'rp_%s_%s.txt' %(runNo,runType)
+            last = 0
+            for func in funcImg:
+                runNo = func.split('.')[0].split('_')[-2]
+                
+                nim = nb.load(func)
+                dynScans = nim.get_shape()[3] # get number of acquisitions
+                
+                runType = func.split('.')[0].split('_')[-1]
+                outName = self.paths['data_fmri']%subjID + 'rp_%s_%s.txt' %(runNo,runType)
 
-            with open(outName, 'w') as f:
-                f.writelines(reg[last:last+dynScans])
-                last += dynScans
+                with open(outName, 'w') as f:
+                    f.writelines(reg[last:last+dynScans])
+                    last += dynScans
 
     
     def gen_stats_batch(self, subjID, runType=None, condcol='cond', descrcol='name'):
@@ -940,20 +941,27 @@ class Preproc(object):
         elif type(runType) not in [tuple, list]:
             runType = [runType]
 
-        self.split_reg(subjID)            
-        f = open(os.path.join(self.paths['fmri_root'] %subjID,'jobs','stats.m'),'w')
+        self.split_reg(subjID)
+        # set the path where this stats job will sit
+        # all other paths will be coded as relative to this one
+        curpath = os.path.join(self.paths['fmri_root'] %subjID,'jobs')
+        f = open(os.path.join(curpath,'stats.m'),'w')
         f.write("spm('defaults','fmri');\nspm_jobman('initcfg');\nclear matlabbatch\n\n")
-        
+
         for rtNo, runType in enumerate(runType):
-            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),'analysis',runType))
-            try: os.makedirs(analysisDir)
+            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),'analysis',runType))            
+            try:
+                os.makedirs(analysisDir)
             except:
-                # sys.exit('Analysis folder already exists')
-                pass # the directory already exists
+                print ('WARNING: Analysis folder already exists at %s' %
+                        os.path.abspath(analysisDir))
+            # make analysis path relative to stats.m
+            analysisDir_str = ("cellstr(spm_select('CPath','%s'))" %
+                                os.path.relpath(analysisDir, curpath))
             dataFiles = glob.glob(self.paths['data_behav']%subjID + 'data_*_%s.csv' %runType)
             # import pdb; pdb.set_trace()
             regressorFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_*_%s.txt' %runType)        
-            f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = {'%s'};\n" %(3*rtNo+1,analysisDir))
+            f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = %s;\n" %(3*rtNo+1, analysisDir_str))
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.units = 'secs';\n" %(3*rtNo+1))
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.RT = 2;\n" %(3*rtNo+1))
             
@@ -961,8 +969,10 @@ class Preproc(object):
                 runNo = int(os.path.basename(dataFile).split('_')[1])
                 
                 data = np.recfromcsv(dataFile, case_sensitive = True)
+                swapath = os.path.relpath(self.paths['data_fmri']%subjID, curpath)
                 f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = " %(3*rtNo+1,rnNo+1) +
-                    "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
+                    # "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
+                    "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(swapath,runNo,runType))
                 
                 conds = np.unique(data[condcol])
                 if runType == 'mer':
@@ -992,10 +1002,14 @@ class Preproc(object):
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).onset = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,onsets))
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).duration = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,durs))
                         
-                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).multi_reg = {'%s'};\n\n" %(3*rtNo+1,rnNo+1,os.path.abspath(regressorFiles[rnNo])))
+                regpath = os.path.relpath(regressorFiles[rnNo], curpath)
+                regpath_str = "cellstr(spm_select('FPList','%s','^%s$'))" % (os.path.dirname(regpath), os.path.basename(regpath))
+                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).multi_reg = %s;\n\n" %(3*rtNo+1,rnNo+1,regpath_str))
 
-            f.write("matlabbatch{%d}.spm.stats.fmri_est.spmmat = cellstr(fullfile('%s','SPM.mat'));\n" %(3*rtNo+2,analysisDir))
-            f.write("matlabbatch{%d}.spm.stats.con.spmmat = cellstr(fullfile('%s','SPM.mat'));\n" %(3*rtNo+3,analysisDir))
+            spmmat = "cellstr(fullfile(spm_select('CPath','%s'),'SPM.mat'));\n" % os.path.relpath(analysisDir, curpath)
+            f.write("matlabbatch{%d}.spm.stats.fmri_est.spmmat = %s" % (3*rtNo+2, spmmat))
+            f.write("matlabbatch{%d}.spm.stats.con.spmmat = %s" %(3*rtNo+3,
+                spmmat))
             
             if runType == 'loc':
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.name = 'all > fix';\n" %(3*rtNo+3))
