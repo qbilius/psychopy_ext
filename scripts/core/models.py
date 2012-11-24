@@ -6,6 +6,7 @@ import itertools
 
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import scipy.misc
 import scipy.ndimage
 
@@ -37,35 +38,43 @@ class Model(object):
         """
         pass
 
-    def dissimilarity(self, out1, out2):
+    def dissimilarity(self, outputs):
         """
         Calculate a dissimilarity between two outputs of the model
         """
-        if out1.ndim > 1:
-            out1 = out1.ravel()
-            print ('WARNING: inputs for calculating dissimilarity not '
-                   'one-dimensional as expected')
-        if out2.ndim > 1:
-            out2 = out2.ravel()
-            print ('WARNING: inputs for calculating dissimilarity not '
-                   'one-dimensional as expected')
-        return (1-np.corrcoef(out1,out2)[0,1])/2.
+        outputs = np.array(outputs)
+        if outputs.ndim != 2:
+            raise "ERROR: dissimilarity can be calculated on 2D arrays only"
+        return (1-np.corrcoef(outputs))/2.
 
-    # def compare(self, ims):
-    #     output = np.array([self.run(im) for im in ims])
-    #     # for out1 in output:
-    #     #     for out2 in output:
+    def compare(self, ims):
+        output = []
+        print 'processing image',
+        for imno, im in enumerate(ims):
+            print imno,
+            out = self.run(im)
+            output.append(out)
+        dis = self.dissimilarity(output)
+        print
+        print 'Dissimilarity across stimuli'
+        print '0: similar, 1: dissimilar'
+        print dis
 
-    #     out1 = self.run(im1)
-    #     out2 = self.run(im2)
-    #     return self.dissimilarity(out1, out2)
+        ax = plt.subplot(111)
+        matrix = ax.imshow(dis, interpolation='none')
+        plt.title('Dissimilarity across stimuli\n'
+                  '(blue: similar, red: dissimilar)')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(matrix, cax=cax)
+        plt.show()
 
 
 class Pixelwise(Model):
     def run(self, im):
         if im.ndim != 2:
             sys.exit('ERROR: Input image must be two-dimensional')
-        return [im.ravel()]
+        return im.ravel()
 
 
 class Zoccolan(Model):
@@ -808,25 +817,29 @@ class HMAX(Model):
                 output[i,j] = np.exp(-.5 * np.dot(
                     np.dot(diff, np.linalg.inv(covMat)),diff)) 
         
-        return output        
-    
-    def test_matlab(self):
-        """
-        Compares output from this Python implementation to the original
-        C/MatLab implementation
-        """
-        im = self.get_testim()
-        python = self.run(im)
-        fid = open('c2resp_matlab.txt')
-        matlab = np.array([float(i.strip('\n')) for i in fid.readlines()])
-        fid.close()
+        return output
 
-        plt.plot(python,matlab,'x')
-        corr = np.corrcoef(python,matlab)[0,1]
-        plt.xlabel('Python implementation')
-        plt.ylabel('Original C/MatLab implementation')
-        plt.title('Correlation = %.4f' %corr)
-        plt.show()  
+    def compare(self, ims):
+        output = []
+        print 'processing image',
+        for imno, im in enumerate(ims):
+            print imno,
+            out = self.run(im)['C2']
+            output.append(out)
+        dis = self.dissimilarity(output)
+        print
+        print 'Dissimilarity across stimuli'
+        print '0: similar, 1: dissimilar'
+        print dis
+
+        ax = plt.subplot(111)
+        matrix = ax.imshow(dis, interpolation='none')
+        plt.title('Dissimilarity across stimuli\n'
+                  '(blue: similar, red: dissimilar)')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(matrix, cax=cax)
+        plt.show()
 
         
 if __name__ == '__main__':
@@ -835,16 +848,16 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         m = HMAX()
     else:
-        model_name = sys.argv[2]
+        # import pdb; pdb.set_trace()
+        model_name = sys.argv[1]
         if model_name in models: m = models[model_name]()
 
     if len(sys.argv) > 2:
         try:  # easy way to give more than one image to process
-            ims = eval(sys.argv[3])
+            ims = eval(sys.argv[2])
         except:  # otherwise the user gave a string, hopefully
-            ims = [sys.argv[3]]
+            ims = [sys.argv[2]]
     else:
-        ims = [m.get_testim()]
+        ims = [m.get_testim(), m.get_testim().T]
 
-    for im in ims:
-        output = m.run(im)
+    output = m.compare(ims)
