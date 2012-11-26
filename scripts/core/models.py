@@ -816,19 +816,12 @@ class HMAX(Model):
             raise "ERROR: The size of exemplar matrix does not match that " +\
                 "of the prototype matrix"            
         
-        # covariance matrix
-        covMat = np.eye(c2RespSpec.shape[0]) * tuningWidth
-        output = np.zeros((c2RespProt.shape[1], c2RespSpec.shape[1]))
-        
-        for i in range(c2RespProt.shape[1]):
-            for j in range(c2RespSpec.shape[1]):
-                # distance between an exemplar and a VTU
-                diff = c2RespSpec[:,j] - c2RespProt[:,i]
-                # where on Gaussian it is
-                output[i,j] = np.exp(-.5 * np.dot(
-                    np.dot(diff, np.linalg.inv(covMat)),diff)) 
-        
-        return output
+        def sq(c):
+            return np.dot(c,c)
+        def func(column):            
+            diff = tuning - np.tile(column,(tuning.shape[1],1)).T            
+            return np.exp(-.5 * np.apply_along_axis(sq,0,diff)/tuningWidth)        
+        return np.apply_along_axis(func,0,data)
 
     def compare(self, ims):
         output = []
