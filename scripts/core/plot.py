@@ -603,5 +603,42 @@ class Plot(object):
         
         return fig
 
+    def mds(self, d, ndim=2):
+        """
+        Metric Unweighted Classical Multidimensional Scaling
 
+        Based on Forrest W. Young's notes on Torgerson's (1952) algorithm as 
+        presented in http://forrest.psych.unc.edu/teaching/p230/Torgerson.pdf:
+        Step 0: Make data matrix symmetric with zeros on the diagonal 
+        Step 1: Double center the data matrix (d) to obtain B by removing row 
+        and column means and adding the grand mean of the squared data
+        Step 2: Solve B = U * L * U.T for U and L
+        Step 3: Calculate X = U * L**(-.5)
+
+        **Parameters**
+            d: numpy.ndarray
+                A symmetric dissimilarity matrix
+            ndim: int
+                The number of dimensions to project to
+        **Returns**
+            X[:,:ndim]: numpy.ndarray
+                The projection of d into ndim dimensions
+        """
+        # Step 0
+        # make distances symmetric
+        d = (d + d.T) / 2
+        # diagonal must be 0
+        np.fill_diagonal(d, 0)
+        # Step 1: Double centering
+        # remove row and column mean and add grand mean of d**2
+        oo = d**2
+        rowmean = np.tile(np.mean(oo, 1), (oo.shape[1],1)).T
+        colmean = np.mean(oo, 0)
+        B = -.5 * (oo - rowmean - colmean + np.mean(oo))        
+        # Step2: do singular value decomposition
+        # find U (eigenvectors) and L (eigenvalues)
+        [U, L, V] = np.linalg.svd(B)  # L is already sorted (desceding)
+        # Step 3: X = U*L**(-.5)
+        X = U * np.sqrt(L)
+        return X[:,:ndim]
 
