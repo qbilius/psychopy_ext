@@ -401,50 +401,53 @@ class HMAX(Model):
         
         self.istrained = False  # initially VTUs are not set up        
 
-    def run(self, im=None, train_im=None):
+    def run(self, test_im=None, train_ims=None):
         """
         This is the main function to run the model.
         First, it trains the model, i.e., sets up prototypes for VTU.
         Next, it runs the model.
         """
-        if train_im is not None:
-            self.train(train_im)
-        if im is None:
-            im = self.get_testim()
-        output = self.test(im)
+        if train_ims is not None:
+            for im in train_ims:
+                self.train(im)
+        if test_im is None:
+            test_im = [self.get_testim()]
+        output = self.test(test_im)
 
         return output
 
-    def train(self, train_im):
+    def train(self, train_ims):
         """
         Train the model, i.e., supply VTUs with C2 responses to 'prototype'
         images to which these units will be maximally tuned.
         """
-        prots = [self.test()[3] for im in train_im]
-        self.c2RespProt = np.array(prots)
+        print 'tuning...'
+        self.tuning = np.array([HMAX.test(self,im)['C2'] for im in ims])
         self.istrained = True
 
     def test(self, im):
         """
         Test the model on the given image
         """
-        if im.dtype == int: im = im.astype(float)
+        if type(im) == str:
+            im = scipy.misc.imread(im)
+        if im.dtype == int:
+            im = im.astype(float)
         # Get number of filter sizes
         size_S1 = sum([len(fs) for fs in self.filter_sizes_all])
         # outputs from each layer are stored if you want to inspect them closer
         # but note that S1 is *massive*
         output = {}
-        output['S1'] = np.zeros((im.shape[0],im.shape[1], size_S1, self.n_ori))
+        output['S1'] = np.zeros((im.shape[0], im.shape[1], size_S1, self.n_ori))
         output['C1'] = np.zeros((im.shape[0], im.shape[1], self.n_ori,
-                       len(self.filter_sizes_all)))
+                                len(self.filter_sizes_all)))
         output['S2'] = []
-        C2_tmp = np.zeros(( (self.S2_config[0]*self.S2_config[1])**self.n_ori,
-            len(self.filter_sizes_all) )) 
+        C2_tmp = np.zeros(((self.S2_config[0]*self.S2_config[1])**self.n_ori,
+                            len(self.filter_sizes_all))) 
         
         # Go through each scale band
         S1_idx = 0
-        for which_band in range(len(self.filter_sizes_all)):
-        
+        for which_band in range(len(self.filter_sizes_all)):            
             # calculate S1 responses            
             S1_tmp = self.get_S1(im, which_band)
             num_filter = len(self.filter_sizes_all[which_band])            
@@ -461,7 +464,7 @@ class HMAX(Model):
         output['C2'] = np.max(C2_tmp,1) # max over all scale bands
         # try giving a VTU output
         if self.istrained:
-            output['VTU'] = self.get_VTU(C2)
+            output['VTU'] = self.get_VTU(output['C2'])
 
         return output
         
@@ -790,7 +793,7 @@ class HMAX(Model):
         """C2 is a max over space per an S2 filter quadruplet"""
         return  np.max(np.max(S2,0),0)            
         
-    def get_VTU(self, c2RespSpec, tuningWidth = .1):
+    def get_VTU(self, c2Resp, tuningWidth = .1):
         """
         Calculate response of view-tuned units
         
@@ -803,25 +806,21 @@ class HMAX(Model):
         **Returns**
             output: np.array
                 An array where each column represents view-tuned units 
-                responses to a particular image (stimulus)
-        
+                responses to a particular image (stimulus)        
         """
-        if not self.istrained:
-            raise ("ERROR: You must first train VTUs by providing prototype "
-            "images to them using the train() function")
-        else:
-            c2RespProt = self.c2RespProt
-
-        if c2RespSpec.shape[0] != c2RespProt.shape[0]:
-            raise "ERROR: The size of exemplar matrix does not match that " +\
-                "of the prototype matrix"            
-        
         def sq(c):
             return np.dot(c,c)
         def func(column):            
-            diff = tuning - np.tile(column,(tuning.shape[1],1)).T            
-            return np.exp(-.5 * np.apply_along_axis(sq,0,diff)/tuningWidth)        
-        return np.apply_along_axis(func,0,data)
+            diff = self.tuning - np.tile(column,(self.tuning.shape[0],1)).T
+            return np.exp(-.5 * np.apply_along_axis(sq,0,diff) / tuningWidth)
+
+        if not self.istrained:
+            raise Exception("You must first train VTUs by providing prototype "
+                            "images to them using the train() function")
+        if c2Resp.shape[0] != self.tuning.shape[0]:
+            raise Exception("The size of exemplar matrix does not match "
+                            "that of the prototype matrix")
+        return np.apply_along_axis(func, 0, c2Resp)
 
     def compare(self, ims):
         output = []
