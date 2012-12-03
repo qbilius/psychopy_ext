@@ -3,6 +3,7 @@
 
 import sys
 import itertools
+import cPickle as pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -52,6 +53,8 @@ class Model(object):
         print 'processing image',
         for imno, im in enumerate(ims):
             print imno,
+            if type(im) == str:
+                im = scipy.misc.imread(im)
             out = self.run(im)
             output.append(out)
         dis = self.dissimilarity(output)
@@ -71,10 +74,11 @@ class Model(object):
 
 
 class Pixelwise(Model):
-    def run(self, im):
-        if im.ndim != 2:
-            sys.exit('ERROR: Input image must be two-dimensional')
-        return im.ravel()
+    def run(self, test_ims):
+        ims = self.input2array(test_ims)
+        if ims.ndim != 3:
+            sys.exit('ERROR: Input images must be two-dimensional')
+        return ims.reshape((ims.shape[0], -1))
 
 
 class Zoccolan(Model):
@@ -401,70 +405,82 @@ class HMAX(Model):
         
         self.istrained = False  # initially VTUs are not set up        
 
-    def run(self, test_im=None, train_ims=None):
+    def run(self, test_ims=None, train_ims=None):
         """
         This is the main function to run the model.
         First, it trains the model, i.e., sets up prototypes for VTU.
         Next, it runs the model.
         """
+        print '==== Running HMAX... ===='
         if train_ims is not None:
-            for im in train_ims:
-                self.train(im)
-        if test_im is None:
-            test_im = [self.get_testim()]
-        output = self.test(test_im)
+            self.train(train_ims)
+        if test_ims is None:
+            test_ims = [self.get_testim()]
+        output = self.test(test_ims)
 
         return output
-
+    
     def train(self, train_ims):
         """
         Train the model, i.e., supply VTUs with C2 responses to 'prototype'
         images to which these units will be maximally tuned.
-        """
-        print 'tuning...'
-        self.tuning = np.array([HMAX.test(self,im)['C2'] for im in ims])
-        self.istrained = True
+        """        
+        print 'training:',
+        try:
+            self.tuning = pickle.load(open(train_ims,'rb'))
+            print 'done'
+        except:
+            train_ims = self.input2array(train_ims)
+            self.tuning = self.test(train_ims, op='training')['C2']
+        self.istrained = True        
 
-    def test(self, im):
+    def test(self, ims, op='testing'):
         """
         Test the model on the given image
         """
-        if type(im) == str:
-            im = scipy.misc.imread(im)
-        if im.dtype == int:
-            im = im.astype(float)
+        ims = self.input2array(ims)
         # Get number of filter sizes
         size_S1 = sum([len(fs) for fs in self.filter_sizes_all])
         # outputs from each layer are stored if you want to inspect them closer
         # but note that S1 is *massive*
         output = {}
-        output['S1'] = np.zeros((im.shape[0], im.shape[1], size_S1, self.n_ori))
-        output['C1'] = np.zeros((im.shape[0], im.shape[1], self.n_ori,
+        # S1 will not be in the output because it's too large:
+        # with default parameters S1 takes 256*256*12*4*64bits = 24Mb per image
+        S1 = np.zeros((ims.shape[1], ims.shape[2], size_S1, self.n_ori))
+        output['C1'] = np.zeros(ims.shape + (self.n_ori,
                                 len(self.filter_sizes_all)))
-        output['S2'] = []
+        # S2 has an irregular shape which depends on the spatial frequency band
+        # so we'll omit it as well
+        S2 = []
         C2_tmp = np.zeros(((self.S2_config[0]*self.S2_config[1])**self.n_ori,
-                            len(self.filter_sizes_all))) 
+                            len(self.filter_sizes_all)))
+        output['C2'] = np.zeros((len(ims),C2_tmp.shape[0]))
         
-        # Go through each scale band
-        S1_idx = 0
-        for which_band in range(len(self.filter_sizes_all)):            
-            # calculate S1 responses            
-            S1_tmp = self.get_S1(im, which_band)
-            num_filter = len(self.filter_sizes_all[which_band])            
-            # store S1 responses for each scale band
-            output['S1'][:,:,S1_idx:S1_idx+num_filter,:] = S1_tmp
-            S1_idx += num_filter
-            # calculate other layers
-            C1_tmp = self.get_C1(S1_tmp, which_band)
-            output['C1'][:,:,:,which_band] = C1_tmp  
-            S2_tmp = self.get_S2(C1_tmp, which_band)
-            output['S2'].append(S2_tmp)
-            C2_tmp[:,which_band] = self.get_C2(S2_tmp, which_band)
-
-        output['C2'] = np.max(C2_tmp,1) # max over all scale bands
-        # try giving a VTU output
+        for imNo, im in enumerate(ims):
+            sys.stdout.write("\r%s: %d%%" %(op, 100*imNo/len(ims)))
+            sys.stdout.flush()
+            # Go through each scale band
+            S1_idx = 0
+            for which_band in range(len(self.filter_sizes_all)):            
+                # calculate S1 responses            
+                S1_tmp = self.get_S1(im, which_band)
+                num_filter = len(self.filter_sizes_all[which_band])            
+                # store S1 responses for each scale band
+                S1[..., S1_idx:S1_idx + num_filter, :] = S1_tmp
+                S1_idx += num_filter
+                # calculate other layers
+                C1_tmp = self.get_C1(S1_tmp, which_band)
+                output['C1'][imNo, ..., which_band] = C1_tmp  
+                S2_tmp = self.get_S2(C1_tmp, which_band)
+                S2.append(S2_tmp)
+                C2_tmp[:, which_band] = self.get_C2(S2_tmp, which_band)
+            output['C2'][imNo] = np.max(C2_tmp, -1) # max over all scale bands
+        output['S2'] = S2
+        # calculate VTU if trained
         if self.istrained:
             output['VTU'] = self.get_VTU(output['C2'])
+        sys.stdout.write("\r%s: done" %op)
+
 
         return output
         
@@ -793,7 +809,7 @@ class HMAX(Model):
         """C2 is a max over space per an S2 filter quadruplet"""
         return  np.max(np.max(S2,0),0)            
         
-    def get_VTU(self, c2Resp, tuningWidth = .1):
+    def get_VTU(self, C2resp, tuningWidth = .1):
         """
         Calculate response of view-tuned units
         
@@ -810,25 +826,26 @@ class HMAX(Model):
         """
         def sq(c):
             return np.dot(c,c)
-        def func(column):            
-            diff = self.tuning - np.tile(column,(self.tuning.shape[0],1)).T
-            return np.exp(-.5 * np.apply_along_axis(sq,0,diff) / tuningWidth)
+        def func(row):
+            # difference between tuning and each C2 response
+            diff = self.tuning - \
+                    np.tile(row,(self.tuning.shape[0],1))
+            # this difference is then square-summed and then exponentiated :)
+            return np.exp(-.5 * np.apply_along_axis(sq,1,diff) / tuningWidth)
 
         if not self.istrained:
             raise Exception("You must first train VTUs by providing prototype "
                             "images to them using the train() function")
-        if c2Resp.shape[0] != self.tuning.shape[0]:
+        
+        if C2resp.shape[1] != self.tuning.shape[1]:            
             raise Exception("The size of exemplar matrix does not match "
                             "that of the prototype matrix")
-        return np.apply_along_axis(func, 0, c2Resp)
+        # apply func on each row
+        return np.apply_along_axis(func, 1, C2resp)
 
     def compare(self, ims):
-        output = []
-        print 'processing image',
-        for imno, im in enumerate(ims):
-            print imno,
-            out = self.run(im)['C2']
-            output.append(out)
+        print ims
+        output = self.run(ims)['C2']
         dis = self.dissimilarity(output)
         print
         print 'Dissimilarity across stimuli'
@@ -854,12 +871,8 @@ if __name__ == '__main__':
         # import pdb; pdb.set_trace()
         model_name = sys.argv[1]
         if model_name in models: m = models[model_name]()
-
-    if len(sys.argv) > 2:
-        try:  # easy way to give more than one image to process
-            ims = eval(sys.argv[2])
-        except:  # otherwise the user gave a string, hopefully
-            ims = [sys.argv[2]]
+    if len(sys.argv) > 2:  # give image file names using glob syntax
+        ims = sys.argv[2:]
     else:
         ims = [m.get_testim(), m.get_testim().T]
 
