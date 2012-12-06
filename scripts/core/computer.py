@@ -29,8 +29,8 @@ class Computer:
         if not 'size' in self.params:
             # default window is half the screen size
             self.params['size'] = (
-                int(self.dispSize[0]/1.2),
-                int(self.dispSize[1]/1.2) )
+                int(self.dispSize[0]/2),
+                int(self.dispSize[1]/2) )
 
         if not 'pos' in self.params:
             # center window on the display
