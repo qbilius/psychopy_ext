@@ -498,16 +498,16 @@ class Experiment(TrialHandler):
         """
         if not noOutput:
             self.try_makedirs(os.path.dirname(datafile))
+            try:
             dataFile = open(datafile, 'ab')
-            dataCSV = csv.writer(dataFile, lineterminator = '\n') 
-            header = self.extraInfo.keys() + self.trialList[0].keys()
-            dataCSV.writerow(header)
-
+            except:
+                raise IOError('Cannot write anything to the data file %s!' %
+                              datafile)
         # set up clocks
         globClock = core.Clock()
         trialClock = core.Clock()
         eventClock = core.Clock()
-        
+        write_head = True
         # go over the trial sequence
         for thisTrial in self:
             trialClock.reset()
@@ -528,7 +528,13 @@ class Experiment(TrialHandler):
                     timeStamped = trialClock)
 
             thisTrial = self.postTrial(thisTrial, allKeys)
+
             if not noOutput:
+                if write_head:
+                    dataCSV = csv.writer(dataFile, lineterminator = '\n')
+                    header = self.extraInfo.keys() + thisTrial.keys()
+                    dataCSV.writerow(header)
+                    write_head = False
                 out = self.extraInfo.values() + thisTrial.values()
                 dataCSV.writerow(out)
                 
@@ -538,17 +544,10 @@ class Experiment(TrialHandler):
         """
         Automatically runs experiment by simulating key responses.
 
-        Best practice is to extend this function to simulate responses according to your hypothesis.
+        This is just the absolute minimum for autorunning. Best practice would
+        be extend this function to simulate responses according to your
+        hypothesis.
         """
-        def sample(probs):
-            which = np.random.random()
-            ind = 0
-            while which>0:
-                which -= probs[ind]
-                ind +=1
-            ind -= 1
-            return ind
-
         def rt(mean):
             add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
             return self.trial[0]['dur'] + add            
@@ -556,14 +555,12 @@ class Experiment(TrialHandler):
         invValidResp = dict([[v,k] for k,v in self.comp.validResponses.items()])
         sortKeys = sorted(invValidResp.keys())
         invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
-
         # speed up the experiment
         for event in self.trial:
             event['dur'] /= self.runParams['autorun']
         self.trialDur /= self.runParams['autorun']
 
         for trial in trialList:
-            ind = sample(probs)
             trial['autoResp'] = random.choice(invValidResp.values())
             trial['autoRT'] = rt(.5)
         return trialList  
