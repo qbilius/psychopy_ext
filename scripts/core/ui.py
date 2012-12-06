@@ -25,7 +25,7 @@ class StaticBox(wx.StaticBox):
                                            )
             #if len(color): inputLabel.SetForegroundColour(color)
             grid.Add(inputLabel, 1, wx.ALIGN_LEFT)
-            #create input control            
+            #create input control
             if type(initial)==bool:
                 inputBox = wx.CheckBox(parent, -1)
                 inputBox.SetValue(initial)
@@ -44,35 +44,35 @@ class StaticBox(wx.StaticBox):
             #if len(color): inputBox.SetForegroundColour(color)
             #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
             self.inputFields.append(inputBox)#store this to get data back on button click
-            grid.Add(inputBox, 1, wx.ALIGN_LEFT)            
-        
-        self.sizer.Add(grid)            
+            grid.Add(inputBox, 1, wx.ALIGN_LEFT)
+
+        self.sizer.Add(grid)
         #self.SetSizer(self.sizer)
 
 class Page(wx.Panel):
     def __init__(self, parent, module):
         wx.Panel.__init__(self, parent,-1)
         self.sb1 = StaticBox(self, label="Information",
-            content=module.extraInfo)        
+            content=module.extraInfo)
         self.sb2 = StaticBox(self, label="Parameters",
             content=module.runParams)
-        
+
         buttons = wx.GridSizer(rows=1,cols=len(module.actions))
         for i, (label,action) in enumerate(module.actions):
-            run = wx.Button(self, label=label, size=(150, 30))            
+            run = wx.Button(self, label=label, size=(150, 30))
             buttons.Add(run, 1)
             run.module = module  # when clicked, what to do
             run.action = action
             run.Bind(wx.EVT_BUTTON,self.OnButtonClick)
             if i==0: run.SetFocus()
-        
+
         pagesizer = wx.BoxSizer(wx.VERTICAL)
         pagesizer.Add(self.sb1.sizer)
         pagesizer.Add(self.sb2.sizer)
         pagesizer.Add(buttons, 1, wx.EXPAND|wx.ALL)
-        
+
         self.SetSizer(pagesizer)
-        
+
     def OnButtonClick(self, event):
         module = event.GetEventObject().module
         # first update extraInfo and runParams
@@ -80,8 +80,8 @@ class Page(wx.Panel):
             module.extraInfo[key] = field.GetValue()
         for key, field in zip(module.runParams.keys(),self.sb2.inputFields):
             module.runParams[key] = field.GetValue()
-            
-        rp = event.GetEventObject()       
+
+        rp = event.GetEventObject()
         getattr(module, rp.action)()
 
 
@@ -141,10 +141,10 @@ class Control(object):
             pagepanel = wx.Panel(lb)
             lb.AddPage(pagepanel, choice[0], select=num==0)
         # lb.ChangeSelection(0)
-        
+
         # nicely size the entire window
         panelsizer = wx.BoxSizer()
-        panelsizer.Add(lb, 1,  wx.EXPAND|wx.ALL)   
+        panelsizer.Add(lb, 1,  wx.EXPAND|wx.ALL)
         panel.SetSizer(panelsizer)
 
         frame.Layout()
@@ -152,7 +152,7 @@ class Control(object):
         frame.Show()
         app.MainLoop()
 
-    def cmd(self, modules):
+    def cmd(self, modules, raw_args=None):
         def add_arg(mod_parse, arg, default):
             if type(default) == bool:
                 if default:
@@ -183,8 +183,9 @@ class Control(object):
         # module.set_defaults(func=do_action)
         # def do_action(args):
         #     eval(args.action()
-
-        rp = parser.parse_args()
+        if raw_args is not None:
+            raw_args = raw_args.split(' ')
+        rp = parser.parse_args(args=raw_args)
         module = mods[rp.moduleName]
         for key in mod.extraInfo.keys():
             try:
@@ -204,7 +205,7 @@ class Control(object):
         #         value = rp.__dict__[key]
         #     extraInfo.append((key,value))
         # for key in mod.runParams.keys():
-        #     runParams.append((key,rp.__dict__[key]))            
+        #     runParams.append((key,rp.__dict__[key]))
         # module = module(extraInfo=OrderedDict(extraInfo),
         #                 runParams=OrderedDict(runParams))
         getattr(module, rp.action)()
@@ -217,7 +218,7 @@ def setup_page(choice, pagepanel):
         mods = sys.modules[exp_path].modules
     else:
         mods = exp_path
-    #if type(exp) in [tuple,list]:                
+    #if type(exp) in [tuple,list]:
         #pagepanel = wx.Panel(lb)
         #lb.AddPage(pagepanel, label)
     nb = wx.Notebook(pagepanel)
@@ -226,10 +227,10 @@ def setup_page(choice, pagepanel):
         m = mod()
         nb.AddPage(Page(nb,m), m.name)
     panelsizer = wx.BoxSizer()
-    panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)   
+    panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)
     pagepanel.SetSizer(panelsizer)
     # else:
-        #m = exp(parent=exp_parent)            
+        #m = exp(parent=exp_parent)
         # lb.AddPage(Page(lb, exp), label)
 
 
