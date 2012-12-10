@@ -43,15 +43,14 @@ class MVPA(object):
         self.noOutput = noOutput
 
     #def loop(method):
-    def run_method(self, subjIDs, runType, rois, method='mvpa', offset=None,
-                   dur=None):
+    def run_method(self, subjIDs, runType, rois, method='mvpa', values='raw', offset=None, dur=None):
         if type(subjIDs) not in [list, tuple]:
             subjIDs = [subjIDs]            
         results = []        
         for subjID in subjIDs:
             print subjID
             try:
-                filename = self.filename % subjID
+                filename = self.filename % (values, subjID)
             except:
                 filename = self.filename
             loaded = False
@@ -64,29 +63,47 @@ class MVPA(object):
                     # for res in result:
                     #     results.append([r[1] for r in res])
                     
-                    print '%s: loaded stored svm results' %subjID
+                    print '%s: loaded stored svm %s results' % (subjID, values)
                     loaded = True
                 except:
                     pass
 
             if not loaded:
                 temp_res = []
-                for r, ROI_list in enumerate(rois):
+                for r, ROI_list in enumerate(rois):                    
                     print ROI_list[1],
-                    ds = self.extract_samples(subjID, runType, ROI_list)
-                    ds = self.detrend(ds)
-                    # if ROI_list[1] == 'pFs':
-                    #     offset = 2
-                    # else: 
-                    #     offset = 3
-                    evds = self.ds2evds(ds, offset=offset, dur=dur)
-                    if method == 'time_course':
-                        header, result = self.get_psc(evds)
-                    elif method == 'univariate':
-                        header, result = self.psc_diff(evds)
+                    if values in ['raw', 'raw_avg']:
+                        ds = self.extract_samples(subjID, runType, ROI_list, values=values)
+                        ds = self.detrend(ds)
+                        if ROI_list[1] in ['pFs', 'LO']:
+                            offset = 3#2
+                        else: 
+                            offset = 4#3
+                        evds = self.ds2evds(ds, offset=offset, dur=dur)
+                        if method == 'time_course':
+                            header, result = self.get_psc(evds)
+                        elif method == 'univariate':
+                            header, result = self.psc_diff(evds)
+                        else:
+                            evds = evds[evds.sa.targets != 0]
+                            header, result = self.svm(evds, nIter=100)
+                    elif values in ['t', 'beta']:
+                        ds = self.extract_samples(subjID, runType, ROI_list, 
+                                                  values=values)
+                        ds = ds[ds.sa.targets != 0]
+                        # SPM sets certain voxels to NaNs
+                        # we just gonna convert them to 0
+                        # import pdb; pdb.set_trace()
+                        # ds = ds[np.logical_not(np.isnan(ds.samples))]
+                        # import pdb; pdb.set_trace()
+                        ds.samples = np.nan_to_num(ds.samples)
+
+                        # ds.samples = ds.samples[:,keep]
+                        header, result = self.svm(ds, nIter=100)
                     else:
-                        evds = evds[evds.sa.targets != 0]
-                        header, result = self.svm(evds, nIter=100)
+                        raise NotImplementedError('MVPA for %s values is not '
+                                                  'implemented yet')
+
                     header.extend(['subjID', 'ROI'])
                     for line in result:
                         line.extend([subjID, ROI_list[1]])
@@ -148,6 +165,7 @@ class MVPA(object):
         # runNo,
         runType,
         ROIs,
+        values='raw',
         # tabData = None,
         # ROIs = None,
         # # filter = None,
@@ -180,9 +198,16 @@ class MVPA(object):
         """
 
         reuse = True
-        roiname = self.paths['data_rois'] %subjID + ROIs[1] + '.gz.hdf5'
+        if values in ['raw', 'raw_avg']:
+            add = ''
+        else:
+            add = '_' + values
+        suffix = ROIs[1] + add + '.gz.hdf5'
+        roiname = self.paths['data_rois'] %subjID + suffix
+        # import pdb; pdb.set_trace()
         if reuse and os.path.isfile(roiname):
             ds = mvpa2.suite.h5load(roiname)
+            print '(loaded)',
 
         else:
             # make a mask by combining all ROIs
@@ -204,18 +229,61 @@ class MVPA(object):
             thisMask = thisMask[::-1]
 
             if self.visualize: self.plot_struct(self.paths['data_fmri']
-                 %subjID + 'swmeanafunc_*.nii')                
+                 %subjID + 'swmeanafunc_*.nii')             
+             
+            if values in ['raw', 'raw_avg']:            
+                # find all functional runs of a given runType
+                allImg = glob.glob((self.paths['data_fmri'] + 'swa*' + \
+                                   runType + '.nii') % subjID)
+                data_path = self.paths['data_behav']+'data_%02d_%s.csv'
+                labels = self.extract_labels(allImg, data_path, subjID,
+                                             runType)
+                ds = self.fmri_dataset(allImg, labels, thisMask)
+            elif values == 't':
+                data_path = self.paths['data_behav'] + 'data_*_%s.csv'
+                behav_data = self.get_behav_data(data_path %(subjID, runType))
+                labels = np.unique(behav_data['stim1.cond']).tolist()
+                labels = labels[1:]  # we skip fixation in t-values
+                numRuns = len(np.unique(behav_data['runNo']))
+                analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
+                tval = np.array(glob.glob(analysis_path + 'spmT_*.img'))
+                allImg = tval[np.arange(len(tval)) % (numRuns+1) != numRuns]
+                ds = mvpa2.suite.fmri_dataset(
+                    samples = allImg.tolist(),
+                    targets = np.repeat(labels, numRuns).tolist(),
+                    chunks = np.tile(np.arange(numRuns), len(labels)).tolist(),
+                    mask = thisMask
+                    )      
+            elif values == 'beta':
+                data_path = self.paths['data_behav'] + 'data_*_%s.csv'
+                behav_data = self.get_behav_data(data_path %(subjID, runType))
+                labels = np.unique(behav_data['stim1.cond']).tolist()
+                numRuns = len(np.unique(behav_data['runNo']))
+                analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
+                betaval = np.array(glob.glob(analysis_path + 'beta_*.img'))
+                select = [True]*len(labels) + [False]*6
+                select = np.array(select*numRuns + [False]*numRuns)
+                # if subjID == 'twolines2_03':
+                #     import pdb; pdb.set_trace()
+                allImg = betaval[select]
 
-            # find all functional runs of a given runType
-            allImg = glob.glob((self.paths['data_fmri']+'swa*'+runType+'.nii')
-                               %subjID)
-            data_path = self.paths['data_behav']+'data_%02d_%s.csv'
-            labels = self.extract_labels(allImg, data_path, subjID, runType)
-            ds = self.fmri_dataset(allImg, labels, thisMask)
+                ds = []
+                nLabels = len(labels)                
+                for runNo in range(numRuns):
+                    ds.append( mvpa2.suite.fmri_dataset(
+                        samples = allImg[runNo*nLabels:(runNo+1)*nLabels].tolist(),
+                        targets = labels,
+                        chunks = runNo,
+                        mask = thisMask
+                        ))
+                ds = mvpa2.suite.vstack(ds)
+                # ds = self.tvalue_dataset(allImg, labels, analysis_path, thisMask)
 
             if True:
-                try: os.makedirs(self.paths['data_roi'] %subjID)
-                except: pass
+                try:
+                    os.makedirs(self.paths['data_rois'] %subjID)
+                except:
+                    pass
                 mvpa2.suite.h5save(roiname, ds, compression=9)
 
         return ds
@@ -243,7 +311,7 @@ class MVPA(object):
         return labels
 
 
-    def fmri_dataset(self, samples, labels, thisMask = None):
+    def fmri_dataset(self, samples, labels, thisMask=None):
         """
         Create a dataset from an fMRI timeseries image.
 
@@ -256,7 +324,6 @@ class MVPA(object):
         for thisImg, thisLabel in zip(samples,labels):            
             # load the appropriate func file with a mask
             if thisMask is None:
-                # import pdb; pdb.set_trace()
                 tempNim = mvpa2.suite.dataset_wizard(
                     samples=thisImg,
                     targets=thisLabel,
@@ -279,6 +346,13 @@ class MVPA(object):
             chunkCount += 1
 
         return ds
+
+    def tvalue_dataset(self, samples, labels, analysis_path, thisMask=None):
+        
+          
+        return ds
+
+
 
     def detrend(self, ds):
         dsmean = np.mean(ds.samples)
@@ -466,8 +540,11 @@ class MVPA(object):
 
     def svm(self,
             evds,
-            nIter = 100  # how many iterations for
+            nIter = 100,  # how many iterations for
+            clf=None  # classifier
             ):
+        if clf is None:
+            clf = clf = mvpa2.suite.LinearNuSVMC()
 
         # calculate the mean per target per chunk (across trials)
         run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
@@ -523,9 +600,18 @@ class MVPA(object):
                         evds_train_ij = evds_train[ind_train]
 
                         ind_test = np.array([k in targets for k in evds_test.sa.targets])
+                        # keep = np.logical_not(np.isnan(evds_test))
                         evds_test_ij = evds_test[ind_test]
+                        # import pdb; pdb.set_trace()
+                        
+                        
+                        # evds_test_ij = evds_test_ij[:,keep]
+                        # fsel = mvpa2.suite.StaticFeatureSelection(keep)
+                        # clf = mvpa2.suite.LinearNuSVMC()
+                        # clf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)   
 
-                        clf = mvpa2.suite.LinearNuSVMC()
+
+                        
                         clf.train(evds_train_ij) 
                         #fsel = mvpa2.suite.SensitivityBasedFeatureSelection(
                             #mvpa2.suite.OneWayAnova(),
