@@ -39,14 +39,56 @@ class Model(object):
         """
         pass
 
-    def dissimilarity(self, outputs):
+    def dissimilarity2(self, outputs):
         """
-        Calculate a dissimilarity between two outputs of the model
+        Calculate similarity between magnitudes of gabor jet.
+
+        It may look complex but this is just a linear algebra implementation of
+        1 - np.dot(f,g) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
         """
         outputs = np.array(outputs)
         if outputs.ndim != 2:
-            raise "ERROR: dissimilarity can be calculated on 2D arrays only"
-        return (1-np.corrcoef(outputs))/2.
+            sys.exit('ERROR: 2 dimensions expected')        
+        length = np.sqrt(np.sum(outputs*outputs, axis=1))
+        length = np.tile(length, (len(length), 1))  # make a square matrix
+        return 1 - np.dot(outputs,outputs.T) / (length * length.T)
+
+    def dissimilarity(self, outputs):
+        outputs = np.array(outputs)
+        if outputs.ndim != 2:
+            sys.exit('ERROR: 2 dimensions expected')
+        def sq(c):
+            return np.dot(c,c)
+        def func(row):
+            # difference between tuning and each C2 response
+            diff = outputs - \
+                    np.tile(row,(outputs.shape[0],1))
+            # import pdb; pdb.set_trace()
+            # this difference is then square-summed and then exponentiated :)
+            return np.apply_along_axis(sq,1,diff)
+        return np.apply_along_axis(func, 1, outputs)
+
+    def input2array(self, names):
+        try:
+            names = eval(names)
+        except:
+            pass
+
+        if type(names) == str:
+            array = scipy.misc.imread(names)
+        elif type(names) in [list, tuple]:
+            if type(names[0]) == str:
+                array = np.array([scipy.misc.imread(n) for n in names])
+            else:
+                array = np.array(names)
+        elif type(names) == np.ndarray:
+            array = np.ndarray
+        else:
+            raise ValueError('input type not recognized')
+
+        array = array.astype(float)
+        return array
+
 
     def compare(self, ims):
         output = []
@@ -845,6 +887,7 @@ class HMAX(Model):
 
     def compare(self, ims):
         print ims
+        print 'processing image',
         output = self.run(ims)['C2']
         dis = self.dissimilarity(output)
         print
