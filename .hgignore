@@ -5,4 +5,4 @@ syntax: glob
 *redoData*
 
 syntax: regexp
-^paper$
+^core$

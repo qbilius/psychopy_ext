@@ -1,0 +1,17 @@
+v0.4a2, 2013-03-06
+------------------
+Initial release as a package
+
+v0.3, 2012
+----------
+Separation from other projects into a package
+
+v0.2, 2011
+----------
+Thorough rewrite using classes
+
+v0.1, 2010
+------------
+Initial implementation for the confsup experiment
+(https://bitbucket.org/qbilius/confsup)
+Used only functions
