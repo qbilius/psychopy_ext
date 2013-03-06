@@ -3,6 +3,6 @@ syntax: glob
 *pyc
 *pyo
 *redoData*
+*argparse.py*
 
 syntax: regexp
-^core$
