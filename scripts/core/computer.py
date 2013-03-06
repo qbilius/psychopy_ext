@@ -25,7 +25,7 @@ class Computer:
 
         self.getMonitor(mac)
         self.monitor.setSizePix(self.dispSize)
-        
+
         if not 'size' in self.params:
             # default window is half the screen size
             self.params['size'] = (
@@ -42,7 +42,7 @@ class Computer:
             # # when debugging
             # self.params['pos'] = None
             # self.params['size'] = self.dispSize
-            
+
         # create parameters for stereo displays
         params_tmp = {}
         for key, value in self.params.items(): params_tmp[key] = value
@@ -50,7 +50,7 @@ class Computer:
         # set special stereo settings for this monitor
         for key, value in self.params2.items(): params_tmp[key] = value
         self.params2 = params_tmp
-        
+
         # initial set up
         if not hasattr(self,'path'):
             self.path = '.' # indicates that working directory is here
@@ -68,6 +68,7 @@ class Computer:
                 self.monitor = monitors.Monitor('My LEP computer', distance = 80, width = 37.5*2)
                 size = ( self.dispSize[0]/4, self.dispSize[1]/2 )
                 pos = ( (self.dispSize[0]/2-size[0])/2, (self.dispSize[1]-size[1])/2 )
+                self.path = '/media/qbilius/Data/data/'
             else:
                 self.monitor = monitors.Monitor('My LEP computer', distance = 80, width = 37.5)
                 size = ( self.dispSize[0]/2, self.dispSize[1]/2 )
@@ -107,6 +108,13 @@ class Computer:
         elif mac == 269295399767497L:  # Home computer
             self.monitor = monitors.Monitor('Home computer', distance = 120, width = 47.7)
             self.path = '/home/qbilius/Dropbox/data/'
+
+        elif mac == 159387622736430L:  # Hendrik Desktop computer
+            self.monitor = monitors.Monitor('Hendrik desktop', distance = 65, width = 41)
+
+        elif mac == 61959089469690L:  # Hendrik netbook
+            self.monitor = monitors.Monitor('Hendrik netbook', distance = 45, width = 22)
+
 
         else:
             warnings.warn('Computer not recognized, will use default monitor parameters')
