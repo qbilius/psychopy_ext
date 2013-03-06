@@ -16,7 +16,7 @@ class Model(object):
 
     def get_testim(self, size=(256, 256)):
         """
-        Opens Lena image and resizes it to the specified size ((256, 256) by 
+        Opens Lena image and resizes it to the specified size ((256, 256) by
         default)
         """
         lena = scipy.misc.lena()
@@ -28,7 +28,7 @@ class Model(object):
     def train(self, im):
         """
         A placeholder for a function for training a model.
-        If the model is not trainable, then it will default to this function 
+        If the model is not trainable, then it will default to this function
         here that does nothing.
         """
         pass
@@ -39,7 +39,30 @@ class Model(object):
         """
         pass
 
-    def dissimilarity2(self, outputs):
+    def dissimilarity(self, outputs, kind='simple'):
+        if kind == 'simple':
+            self._dis_simple(outputs)
+        elif kind == 'gaborjet':
+            self._dis_gj_simple(outputs)
+        elif kind == 'gaborjet-fast':
+            self._dis_gj_fast(outputs)
+        elif kind == 'corr':
+            #self._dis_corr(outputs)
+            raise NotImplemented
+        else:
+            raise ValueError('Dissimilarity of %s not recognized' % kind)
+
+    def _dis_simple(self, outputs):
+        # used in Grill-Spector et al. (1999), Op de Beeck et al. (2001),
+        # Panis et al. (2011)
+        outputs = np.array(outputs)
+        dis = np.zeros((outputs.shape[0],outputs.shape[0]))
+        for (i,j), value in np.ndenumerate(dis):
+            dis[i,j] = np.sqrt(np.sum((outputs[i] - outputs[j])**2) / outputs.shape[1])
+        return dis
+
+
+    def _dis_gj_simple(self, outputs):
         """
         Calculate similarity between magnitudes of gabor jet.
 
@@ -48,12 +71,41 @@ class Model(object):
         """
         outputs = np.array(outputs)
         if outputs.ndim != 2:
-            sys.exit('ERROR: 2 dimensions expected')        
+            raise Exception('ERROR: 2 dimensions expected')
         length = np.sqrt(np.sum(outputs*outputs, axis=1))
         length = np.tile(length, (len(length), 1))  # make a square matrix
         return 1 - np.dot(outputs,outputs.T) / (length * length.T)
 
-    def dissimilarity(self, outputs):
+    def _dis_corr(self, outputs):
+        """
+        Calculate a correlation between magnitudes of gabor jet.
+
+        DOESN'T WORK YET
+        """
+        outputs = np.array(outputs)
+        outputs -= np.tile(np.mean(outputs, axis=1), (outputs.shape[1],1)).T
+        if outputs.ndim != 2:
+            sys.exit('ERROR: 2 dimensions expected')
+        length = np.sqrt(np.sum(outputs*outputs, axis=1))
+        length = np.tile(length, (len(length), 1))  # make a square matrix
+        return .5 - np.dot(outputs,outputs.T) / (2 * length * length.T)
+
+    def _dis_corr2(self, outputs):
+        """
+        Calculate a correlation between magnitudes of gabor jet.
+
+        DOESN'T WORK YET
+        """
+        outputs = np.array(outputs)
+        import pdb; pdb.set_trace()
+        outputs -= np.tile(np.mean(outputs, axis=0), (outputs.shape[0],1))
+        if outputs.ndim != 2:
+            sys.exit('ERROR: 2 dimensions expected')
+        length = np.sqrt(np.sum(outputs*outputs, axis=1))
+        length = np.tile(length, (len(length), 1))  # make a square matrix
+        return 1 - np.dot(outputs,outputs.T) / (2 * length * length.T)
+
+    def _dis_fast(self, outputs):
         outputs = np.array(outputs)
         if outputs.ndim != 2:
             sys.exit('ERROR: 2 dimensions expected')
@@ -82,7 +134,7 @@ class Model(object):
             else:
                 array = np.array(names)
         elif type(names) == np.ndarray:
-            array = np.ndarray
+            array = names
         else:
             raise ValueError('input type not recognized')
 
@@ -236,10 +288,16 @@ class GaborJet(Model):
     Copyright 2011-2012 Jonas Kubilius
     Original implementation copyright 2004 Xiaomin Yue
     """
-    def run(self, im=None):
-        if im is None:
-            im = self.get_testim()
-        return self.test(im)
+    def run(self, ims=None):
+        if ims is None:
+            ims = [self.get_testim()]
+        JetsMagnitudes = []
+        JetsPhases = []
+        for im in ims:
+            JetsMagnitude, JetsPhase, grid_position = self.test(im)
+            JetsMagnitudes.append(JetsMagnitude.ravel())
+            JetsPhases.append(JetsPhase.ravel())
+        return (np.array(JetsMagnitudes), np.array(JetsPhases), grid_position)
 
     def test(self,
             im,  # input image; can be (128,128) or (256,256) px size
@@ -250,7 +308,7 @@ class GaborJet(Model):
             ):
         if im.shape[0]!=im.shape[1]:
             sys.exit('The image has to be square. Please try again')
-        
+
         # generate the grid
         if len(im) in [128, 256]:
             if grid_size == 0:
@@ -261,27 +319,27 @@ class GaborJet(Model):
                 rangeXY = np.arange(1, 128+1)  # 128x128
             rangeXY *= len(im) / 128  # if len(im)==256, scale up by two
             rangeXY -= 1  # shift from MatLab indexing to Python
-        else:        
+        else:
             sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
 
         [xx,yy] = np.meshgrid(rangeXY,rangeXY)
-        
+
         grid = xx + 1j*yy
         grid = grid.T.ravel()  # transpose just to match MatLab's grid(:) behavior
         grid_position = np.hstack([grid.imag, grid.real]).T
-        
-        # FFT of the image    
+
+        # FFT of the image
         im_freq = np.fft.fft2(im)
 
         # setup the paramers
         nScale = 5  # spatial frequency scales
-        nOrientation = 8  # orientation spacing; angle = 2*np.pi/nOrientations
+        nOrientation = 8  # orientation spacing; angle = np.pi/nOrientations
         xHalfResL = im.shape[0]/2
         yHalfResL = im.shape[1]/2
         kxFactor = 2*np.pi/im.shape[0]
         kyFactor = 2*np.pi/im.shape[1]
 
-        # setup space coordinate 
+        # setup space coordinate
         [tx,ty] = np.meshgrid(np.arange(-xHalfResL,xHalfResL),np.arange(-yHalfResL,yHalfResL))
         tx = kxFactor*tx
         ty = kyFactor*(-ty)
@@ -308,7 +366,7 @@ class GaborJet(Model):
                     )
                 # use fftshift to change DC to the corners
                 freq_kernel = np.fft.fftshift(freq_kernel)
-                
+
                 # convolve the image with a kernel of the specified scale and orientation
                 TmpFilterImage = im_freq*freq_kernel
                 #
@@ -321,12 +379,12 @@ class GaborJet(Model):
                 #imag = np.imag(iTmpFilterImage)
                 #imag[imag<eps] = 0
                 #iTmpFilterImage = real + 1j*imag
-                
+
                 TmpGWTPhase = np.angle(iTmpFilterImage)
                 tmpPhase = TmpGWTPhase[rangeXY,:][:,rangeXY] + np.pi
                 JetsPhase[:,LevelL*nOrientation+DirecL] = tmpPhase.ravel()
                 #import pdb; pdb.set_trace()
-                    
+
                 if cell_type == 'complex':
                     TmpGWTMag = np.abs(iTmpFilterImage)
                     # get magnitude and phase at specific positions
@@ -334,7 +392,7 @@ class GaborJet(Model):
                     JetsMagnitude[:,LevelL*nOrientation+DirecL] = tmpMag.ravel()
                 else:
                     TmpGWTMag_real = np.real(iTmpFilterImage)
-                    TmpGWTMag_imag = np.imag(iTmpFilterImage)                
+                    TmpGWTMag_imag = np.imag(iTmpFilterImage)
                     # get magnitude and phase at specific positions
                     tmpMag_real = TmpGWTMag_real[rangeXY,:][:,rangeXY]
                     tmpMag_imag = TmpGWTMag_imag[rangeXY,:][:,rangeXY]
@@ -355,7 +413,7 @@ class GaborJet(Model):
         """
         outputs = np.array(outputs)
         if outputs.ndim != 2:
-            sys.exit('ERROR: 2 dimensions expected')        
+            sys.exit('ERROR: 2 dimensions expected')
         length = np.sqrt(np.sum(outputs*outputs, axis=1))
         length = np.tile(length, (len(length), 1))  # make a square matrix
         return 1 - np.dot(outputs,outputs.T) / (length * length.T)
@@ -389,20 +447,20 @@ class HMAX(Model):
 
     Based on the original HMAX (Riesenhuber & Poggio, 1999, doi:10.1038/14819)
     Code rewritten using a Pure MatLab implementation by Minjoon Kouh at the
-    MIT Center for Biological and Computational Learning. Most of the 
-    structure, variable names and some of the comments come from this 
-    implementation. More comments have been added and code was optimized as 
-    much as possible while trying to maintain its structure close to the 
+    MIT Center for Biological and Computational Learning. Most of the
+    structure, variable names and some of the comments come from this
+    implementation. More comments have been added and code was optimized as
+    much as possible while trying to maintain its structure close to the
     original. View-tuned units have been added by Hans Op de Beeck.
 
-    Code's output is tested against the Pure MatLab output which can be tested 
-    agains the Standard C/MatLab code featured at     
+    Code's output is tested against the Pure MatLab output which can be tested
+    agains the Standard C/MatLab code featured at
     http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code
-    You can compare the outputs to the standard Lena image between the present 
+    You can compare the outputs to the standard Lena image between the present
     and C/MatLab implementation using function test_matlab()
 
-    Note that this implementation is not the most current HMAX 
-    implementation that doesn't rely on hardcoding features anymore (e.g., 
+    Note that this implementation is not the most current HMAX
+    implementation that doesn't rely on hardcoding features anymore (e.g.,
     Serre et al., 2007).
 
     Copyright 2011-2012 Jonas Kubilius
@@ -410,7 +468,7 @@ class HMAX(Model):
     Original MatLab implementation copyright 2004 Minjoon Kouh
     Since the original code did not specify a license type, I assume GNU GPL v3
     since it is used in Jim Mutch's latest implementation of HMAX
-    http://cbcl.mit.edu/jmutch/cns/    
+    http://cbcl.mit.edu/jmutch/cns/
     """
     def __init__(self, matlab=False, filt_type='gaussian'):
         """
@@ -419,10 +477,10 @@ class HMAX(Model):
         **Parameters**
 
             matlab: boolean
-                If *True*, Gaussian filters will be implemented using the 
+                If *True*, Gaussian filters will be implemented using the
                 original models implementation which mimicks MatLab's behavior.
                 Otherwise, a more efficient numerical method is used.
-        """        
+        """
         self.n_ori = 4 # number of orientations
         # S1 filter sizes for scale band 1, 2, 3, and 4
         self.filter_sizes_all = [[7, 9], [11, 13, 15], [17, 19, 21],
@@ -444,8 +502,8 @@ class HMAX(Model):
             self.mask_name = 'circle'
         else:
             raise ValueError, "filter type not recognized"
-        
-        self.istrained = False  # initially VTUs are not set up        
+
+        self.istrained = False  # initially VTUs are not set up
 
     def run(self, test_ims=None, train_ims=None):
         """
@@ -461,12 +519,12 @@ class HMAX(Model):
         output = self.test(test_ims)
 
         return output
-    
+
     def train(self, train_ims):
         """
         Train the model, i.e., supply VTUs with C2 responses to 'prototype'
         images to which these units will be maximally tuned.
-        """        
+        """
         print 'training:',
         try:
             self.tuning = pickle.load(open(train_ims,'rb'))
@@ -474,7 +532,7 @@ class HMAX(Model):
         except:
             train_ims = self.input2array(train_ims)
             self.tuning = self.test(train_ims, op='training')['C2']
-        self.istrained = True        
+        self.istrained = True
 
     def test(self, ims, op='testing'):
         """
@@ -497,22 +555,22 @@ class HMAX(Model):
         C2_tmp = np.zeros(((self.S2_config[0]*self.S2_config[1])**self.n_ori,
                             len(self.filter_sizes_all)))
         output['C2'] = np.zeros((len(ims),C2_tmp.shape[0]))
-        
+
         for imNo, im in enumerate(ims):
             sys.stdout.write("\r%s: %d%%" %(op, 100*imNo/len(ims)))
             sys.stdout.flush()
             # Go through each scale band
             S1_idx = 0
-            for which_band in range(len(self.filter_sizes_all)):            
-                # calculate S1 responses            
+            for which_band in range(len(self.filter_sizes_all)):
+                # calculate S1 responses
                 S1_tmp = self.get_S1(im, which_band)
-                num_filter = len(self.filter_sizes_all[which_band])            
+                num_filter = len(self.filter_sizes_all[which_band])
                 # store S1 responses for each scale band
                 S1[..., S1_idx:S1_idx + num_filter, :] = S1_tmp
                 S1_idx += num_filter
                 # calculate other layers
                 C1_tmp = self.get_C1(S1_tmp, which_band)
-                output['C1'][imNo, ..., which_band] = C1_tmp  
+                output['C1'][imNo, ..., which_band] = C1_tmp
                 S2_tmp = self.get_S2(C1_tmp, which_band)
                 S2.append(S2_tmp)
                 C2_tmp[:, which_band] = self.get_C2(S2_tmp, which_band)
@@ -525,21 +583,21 @@ class HMAX(Model):
 
 
         return output
-        
+
     def get_gaussians(
         self,
         filter_sizes_all,
         n_ori = 4,
         sigDivisor = 4.
-        ):        
+        ):
         """
         Generates 2D difference of Gaussians (DoG) filters.
-        This function is a faster, more accurate and more elegant version of 
-        the original gaussian_filters_matlab but will not produce identical 
-        filters as the original (but very close). For practical purposes, this 
-        one is prefered. In case you want to mimic the identical behavior of 
+        This function is a faster, more accurate and more elegant version of
+        the original gaussian_filters_matlab but will not produce identical
+        filters as the original (but very close). For practical purposes, this
+        one is prefered. In case you want to mimic the identical behavior of
         the original HMAX, use gaussian_filters_matlab.
-        
+
         **Parameters**
             filter_sizes_all: list (depth 2))
                 A nested list (grouped by filter bands) of integer filter sizes
@@ -548,19 +606,19 @@ class HMAX(Model):
                 Orientations are spaced by np.pi/n_ori
             sigDivisor: float
                 A parameter to adjust DoG filter frequency (default: 4.)
-                
+
         **Returns**
             gaussians: list (depth 2)
                 A nested list of filters of all orientations
-        
-        """        
+
+        """
         gaussians = []
         # loop over filter bands
         for fNo, filter_sizes in enumerate(filter_sizes_all):
             gaussians.append([])
-            
+
             # loop over filter sizes within a filter band
-            for filter_size in filter_sizes:  
+            for filter_size in filter_sizes:
                 fxx = np.zeros((filter_size,filter_size,n_ori))
                 sigmaq = (filter_size/sigDivisor)**2
                 i = np.arange(-filter_size/2+1,filter_size/2+1)
@@ -576,12 +634,12 @@ class HMAX(Model):
                     gaussian -= np.mean(gaussian)
                     gaussian /= np.sqrt(np.sum(gaussian**2))
                     fxx[:,:,t] = gaussian
-                    
+
                 gaussians[fNo].append(fxx)
 
         return gaussians
-        
-                            
+
+
     def get_gaussians_matlab(
         self,
         filter_sizes_all,
@@ -589,12 +647,12 @@ class HMAX(Model):
         sigDivisor = 4.):
         """
         Generates 2D difference of Gaussians (DoG) filters.
-        This is the original version of DoG filters used in HMAX. It was 
-        written in a very cumbersome way and thus I replaced it by the 
-        gaussian_filters function. If you want to produce identical 
-        numerical values of the filters, you should use this function. 
+        This is the original version of DoG filters used in HMAX. It was
+        written in a very cumbersome way and thus I replaced it by the
+        gaussian_filters function. If you want to produce identical
+        numerical values of the filters, you should use this function.
         Otherwise, gaussian_filters does the job just as well, but much nicer.
-        
+
         **Parameters**
             filter_sizes_all: list (depth 2))
                 A nested list (grouped by filter bands) of integer filter sizes
@@ -603,22 +661,22 @@ class HMAX(Model):
                 Orientations are spaced by np.pi/n_ori
             sigDivisor: float
                 A parameter to adjust DoG filter frequency (default: 4.)
-                
+
         **Returns**
             gaussians: list (depth 2)
                 A nested list of filters of all orientations
-        
+
         """
-        
+
         gaussians = []
         # loop over filter bands
         for fNo, filter_sizes in enumerate(filter_sizes_all):
             gaussians.append([])
-            
+
             # loop over filter sizes within a filter band
             for filter_size in filter_sizes:
                 fx1 = np.zeros((filter_size,filter_size,n_ori))
-                
+
                 # we gonna use a trick here:
                 # make filters sqrt(2) times bigger so that we can rotate them
                 # without getting zeros around the edges
@@ -628,16 +686,16 @@ class HMAX(Model):
                 cropOff = (fieldSize-filter_size)/2
                 cropRange = slice(cropOff, cropOff+filter_size)
                 sigmaq = (filter_size/sigDivisor)**2
-                
-                i = np.arange(-fieldSize/2+1,fieldSize/2+1)            
+
+                i = np.arange(-fieldSize/2+1,fieldSize/2+1)
                 ii,jj = np.meshgrid(i,i)
-                
+
                 theta = 0
                 x = ii*np.cos(theta) - jj*np.sin(theta)
                 y = ii*np.sin(theta) + jj*np.cos(theta)
                 # generate a 2D DoG of 0 deg orientation
                 fxx = (y**2/sigmaq-1)/sigmaq * np.exp(-(x**2+y**2)/(2*sigmaq))
-                
+
                 # now loop over the orientations, rotate and trim the filter
                 for t in range(n_ori):
                     fxx = self.addZeros(fxx,cropOff)
@@ -659,7 +717,7 @@ class HMAX(Model):
                     fx1[:,:,count] -= np.mean(fx1[:,:,count])
                     fx1[:,:,count] /= np.sqrt(np.sum(fx1[:,:,count]**2))
                 gaussians[fNo].append(fx1)
-                
+
         return gaussians
 
     def get_gabors(
@@ -674,8 +732,8 @@ class HMAX(Model):
         ):
         """
         Generates 2D Gabor filters.
-        This is the original version of Gabor filters used in HMAX. 
-        
+        This is the original version of Gabor filters used in HMAX.
+
         **Parameters**
             filter_sizes_all: list (depth 2))
                 A nested list (grouped by filter bands) of integer filter sizes
@@ -691,16 +749,16 @@ class HMAX(Model):
             phase: int
                 Gabor function phase (0 (default) for cosine (even),
                                       np.pi/2 for sine (odd))
-                
+
         **Returns**
             gabors: list (depth 2)
-                A nested list of filters of all orientations        
+                A nested list of filters of all orientations
         """
-        
+
         gabors = []
         # loop over filter bands
         for fNo, filter_sizes in enumerate(filter_sizes_all):
-            gabors.append([])            
+            gabors.append([])
             # loop over filter sizes within a filter band
             for filter_size in filter_sizes:
                 fxx = np.zeros((filter_size, filter_size, n_ori))
@@ -718,7 +776,7 @@ class HMAX(Model):
                     # generate a 2D DoG of a particular orientation
                     gabor = np.cos(k * x - phase) * \
                             np.exp(-( (x/sx)**2 + (y/sy)**2) / 2)
-                    # apply circle mask                    
+                    # apply circle mask
                     gabor *= circle
                     # normalize the filter to zero mean and unit variance
                     gabor -= circle * np.sum(gabor) / np.sum(circle)
@@ -734,35 +792,35 @@ class HMAX(Model):
             x, y = np.meshgrid(r, r)
             return x**2 + y**2 <= radius**2
 
-        
+
     def addZeros(self, matrix, numZeros):
         """
         Pads matrix with zeros
-        
+
         **Parameters**
             matrix: numpy.array
                 A 2D numpy array to be padded
             numZeros: int
                 Number of rows and colums of zeros to pad
-                
+
         **Returns**
             matrix_new: numpy.array
-                A zero-padded 2D numpy array                
-        """        
+                A zero-padded 2D numpy array
+        """
         matrix_new = np.zeros((matrix.shape[0]+2*numZeros,
             matrix.shape[1]+2*numZeros))
         matrix_new[numZeros:matrix.shape[0]+numZeros,
             numZeros:matrix.shape[1]+numZeros] = matrix
-        
+
         return matrix_new
-    
+
 
     def get_S1(self, im, whichBand):
         """
         This function returns S1 responses,
         using the difference of the Gaussians or Gabors as S1 filters.
         Filters are based on the original HMAX model.
-        """        
+        """
         filter_sizes = self.filter_sizes_all[whichBand]
         num_filter = len(filter_sizes)
         # make S1 same size as stimulus
@@ -785,7 +843,7 @@ class HMAX(Model):
 
         return S1
 
-        
+
     def get_C1(self, S1, which_band):
         """
         Computes C1 responses given S1 as a max over a a couple of filter
@@ -802,36 +860,36 @@ class HMAX(Model):
         # Max over scales;
         C1 = np.squeeze(np.max(C1,2))
         return C1
-        
-        
+
+
     def get_S2(self, C1, which_band, target=1., sigma=1.):
         """
         Calculates S2 responses given C1.
 
-        First it pools over C1 activities over various combinations of 4 
+        First it pools over C1 activities over various combinations of 4
         filters.
-        Then computes a distance to /target/ using /sigma/ as its tuning 
+        Then computes a distance to /target/ using /sigma/ as its tuning
         sharpness.
-        """        
+        """
         # half overlaped S2 sampling
-        S2_shift = int(np.ceil(self.C1_pooling_all[which_band]/2.))        
+        S2_shift = int(np.ceil(self.C1_pooling_all[which_band]/2.))
         # C1 afferents are adjacent for each S2
-        C1_shift = S2_shift * 2 # distance/shift between C1 afferents        
+        C1_shift = S2_shift * 2 # distance/shift between C1 afferents
         S2_buf = [C1.shape[0] - C1_shift*(self.S2_config[0]-1),
             C1.shape[1] - C1_shift*(self.S2_config[1]-1)]
-        
+
         # produce a sequence of all possible orientation combinations
         seq = itertools.product(range(self.n_ori),
             repeat = self.S2_config[0]*self.S2_config[1])
         # we have to keep the same order as in the original model
-        seq = np.fliplr([s for s in seq]) 
-        
+        seq = np.fliplr([s for s in seq])
+
         S2_permute = np.zeros((
             (S2_buf[0]-1)/S2_shift+1,
             (S2_buf[1]-1)/S2_shift+1,
             len(seq),
-            self.S2_config[0]*self.S2_config[1]))        
-        
+            self.S2_config[0]*self.S2_config[1]))
+
         for c1 in range(self.S2_config[0]):
             for c2 in range(self.S2_config[1]):
                 c = self.S2_config[0]*c2 + c1
@@ -840,31 +898,31 @@ class HMAX(Model):
                 ii,jj = np.meshgrid(r1, r2)
                 S2_permute[:,:,:,c] = np.take(C1[jj,ii], seq[:,c], axis=2)
                 # for si, s in enumerate(seq):
-                #     S2_permute[:,:,si,c] = C1[jj,ii,s[c]] # the window is 
+                #     S2_permute[:,:,si,c] = C1[jj,ii,s[c]] # the window is
                                                          # sliding in the x-dir
         S2 = np.sum((S2_permute-target)**2,3)
         S2 = np.exp(-S2/(2.*sigma**2))
-        
+
         return S2
 
     def get_C2(self, S2, which_band):
         """C2 is a max over space per an S2 filter quadruplet"""
-        return  np.max(np.max(S2,0),0)            
-        
+        return  np.max(np.max(S2,0),0)
+
     def get_VTU(self, C2resp, tuningWidth = .1):
         """
         Calculate response of view-tuned units
-        
+
         **Parameters**
             c2RespSpec: numpy.array
                 C2 responses to the stimuli
             tuningWidth: float
-                How sharply VTUs should be tuned; lower values are shaper 
+                How sharply VTUs should be tuned; lower values are shaper
                 tuning (default: .1)
         **Returns**
             output: np.array
-                An array where each column represents view-tuned units 
-                responses to a particular image (stimulus)        
+                An array where each column represents view-tuned units
+                responses to a particular image (stimulus)
         """
         def sq(c):
             return np.dot(c,c)
@@ -878,8 +936,8 @@ class HMAX(Model):
         if not self.istrained:
             raise Exception("You must first train VTUs by providing prototype "
                             "images to them using the train() function")
-        
-        if C2resp.shape[1] != self.tuning.shape[1]:            
+
+        if C2resp.shape[1] != self.tuning.shape[1]:
             raise Exception("The size of exemplar matrix does not match "
                             "that of the prototype matrix")
         # apply func on each row
@@ -904,10 +962,10 @@ class HMAX(Model):
         plt.colorbar(matrix, cax=cax)
         plt.show()
 
-        
+
 if __name__ == '__main__':
     models = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX}
-    
+
     if len(sys.argv) == 1:
         m = HMAX()
     else:
