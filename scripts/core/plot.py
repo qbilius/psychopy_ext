@@ -1,7 +1,9 @@
 import numpy as np
+import scipy.stats
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import ImageGrid
+from matplotlib.patches import Rectangle
 import pandas
 
 """
@@ -9,15 +11,45 @@ A library of simple and beautiful plots.
 """
 
 class Plot(object):
-    # def __init__(self, ax=None):
-    #     if ax is None:
-    #         self.ax = plt.subplot(111)
-    #     else:
-    #         self.ax = ax
 
-    def subplots(self, **kwargs):
-        fig, axes = plt.subplots(**kwargs)
-        return (fig, axes)
+    def __init__(self, kind='', figsize=None, nrows_ncols=(1, 1)):
+        self.subplots(kind=kind, figsize=figsize, nrows_ncols=nrows_ncols)
+
+    def subplots(self, kind='', figsize=None, nrows_ncols=(1, 1),direction="row",
+                 axes_pad = 0.05, add_all=True, label_mode="L", share_all=True,
+                 cbar_location="right", cbar_mode="single", cbar_size="10%",
+                 cbar_pad=0.05, **kwargs):
+        if kind == 'matrix':
+            self.fig = self.figure(figsize=figsize)
+            self.axes = self.ImageGrid(self.fig, 111,
+                                  nrows_ncols=nrows_ncols,
+                                  direction=direction,
+                                  axes_pad=axes_pad,
+                                  add_all=add_all,
+                                  label_mode=label_mode,
+                                  share_all=share_all,
+                                  cbar_location=cbar_location,
+                                  cbar_mode=cbar_mode,
+                                  cbar_size=cbar_size,
+                                  cbar_pad=cbar_pad,
+                                  )
+        else:
+            self.fig, self.axes = plt.subplots(
+                nrows=nrows_ncols[0],
+                ncols=nrows_ncols[1],
+                sharex=False,
+                sharey=False,
+                squeeze=True,
+                figsize=figsize,
+                **kwargs
+                )
+            try:
+                self.axes[0]
+            except:
+                self.axes = [self.axes]
+        self.subplotno = 0
+        self.nrows_ncols = nrows_ncols
+        return (self.fig, self.axes)
 
     def subplots_adjust(self, *args, **kwargs):
         plt.subplots_adjust(*args, **kwargs)
@@ -27,6 +59,8 @@ class Plot(object):
 
     def figure(self, *args, **kwargs):
         return plt.figure(*args, **kwargs)
+    def savefig(self, *args, **kwargs):
+        return plt.savefig(*args, **kwargs)
 
     def ImageGrid(self, *args, **kwargs):
         return ImageGrid(*args, **kwargs)
@@ -36,6 +70,23 @@ class Plot(object):
 
     def imshow(self, *args, **kwargs):
         plt.imshow(*args, **kwargs)
+
+    def scatter(self, x, y, labels=None, title='', *args, **kwargs):
+        try:
+            row = self.subplotno / self.axes[0][0].numCols
+            col = self.subplotno % self.axes[0][0].numCols
+            ax = self.axes[row][col]
+        except:
+            ax = self.axes[self.subplotno]
+
+        ax.scatter(x, y, marker='o', color=mpl.cm.Paired(.5))
+        #self.show()
+        #import pdb; pdb.set_trace()
+        for c, (pointx, pointy) in enumerate(zip(x,y)):
+            ax.text(pointx, pointy, labels[c])
+        ax.set_title(title)
+        self.subplotno += 1
+        return ax
 
     def sample_paired(self, ncolors=2):
         """
@@ -51,60 +102,149 @@ class Plot(object):
 
 
     def sample_cmap(self, cmap='Paired', ncolors=2):
-        cmap = mpl.cm.get_cmap(thisCmap)
+        thisCmap = mpl.cm.get_cmap(cmap)
         norm = mpl.colors.Normalize(0, 1)
-        z = np.linspace(0, 1, numColors + 2)
+        z = np.linspace(0, 1, ncolors + 2)
         z = z[1:-1]
-        colors = cmap(norm(z))
+        colors = thisCmap(norm(z))
         return colors
 
     def nan_outliers(self, df, values=None, group=None):
-        # remove outliers
+        """
+        Remove outliers 3 standard deviations away from the mean
+
+        Args:
+            df (pandas.DataFrame): A DataFrame with your data
+        Kwargs:
+            values (str): Name of the column that needs to have outliers removed
+            group (str): Name of the column to group reponses by. Typically, this
+            is the column with subject IDs, so that you remove outliers for each
+            participant separately (based on their mean and std)
+        Returns:
+            df (pandas.DataFrame): A DataFrame without outliers
+        """
         zscore = lambda x: (x - x.mean()) / x.std()
         tdf = df.groupby(group)[values].transform(zscore)
         df[values] = np.select([tdf<-3, tdf>3],[np.nan, np.nan],
                                default=df[values])
         return df
 
+    #def plot(self, x, y=None, ax=None, **kwargs):
+        #if ax is None:
+            #ax = plt.subplot(111)
 
-    def plot(self, x,y=None, ax=None, **kwargs):
-        if ax is None:
-            ax = plt.subplot(111)
-
-        if y is None:
-            x_values = np.arange(len(x))
-            y = x
-        else:
-            x_values = x
-        ax.errorbar(x_values,y, **kwargs)
+        #if y is None:
+            #x_values = np.arange(len(x))
+            #y = x
+        #else:
+            #x_values = x
+        #ax.errorbar(x_values,y, **kwargs)
 
     # def subplot():
 
-    def aggregate(self, df, rows=None,cols=None,values=None,yerr=None):
+    def aggregate(self, df, rows=None, cols=None, values=None,
+        value_filter=None, yerr=None, func='mean'):
+        """
+        Aggregates data over specified dimensions
+
+        Args:
+            df (pandas.DataFrame): A DataFrame with your data
+        Kwargs:
+            rows (str or list of str): Name(s) of column(s) that will be
+                aggregated and plotted on the x-axis
+            columns (str or list of str): ame(s) of column(s) that will be
+                aggregated and plotted in the legend
+            values (str): Name of the column that are aggregated
+            yerr (str): Name of the column to group reponses by. Typically, this
+            is the column with subject IDs, so that you remove outliers for each
+            participant separately (based on their mean and std)
+        Returns:
+            df (pandas.DataFrame): A DataFrame without outliers
+        """
         if type(rows) != list: rows = [rows]
-        if type(cols) != list: cols = [cols]
-        if yerr is None:
-            yerr = []
-        else:
+        #if yerr is None:
+            #yerr = []
+        if yerr is not None:
             if type(yerr) in [list, tuple]:
                 if len(yerr) > 1:
                     raise ValueError('Only one field can be used for calculating'
-                        'error.')
+                        'error bars.')
                 else:
                     yerr = yerr[0]
 
-        if df[values].dtype == str:  # calculate accuracy
-            agg = df.groupby(rows+cols+[yerr])[values].size()
+        if cols is None:
+            if yerr is None:
+                allconds = rows
+            else:
+                allconds = rows + [yerr]
         else:
-            agg = df.groupby(rows+cols+[yerr])[values].mean()
+            if type(cols) != list: cols = [cols]
+            if yerr is None:
+                allconds = rows + cols
+            else:
+                allconds = rows + cols + [yerr]
 
-        agg = agg.unstack(yerr)
-        panel = {}
-        for col in agg.columns:
-            df_col = agg[col].reset_index()
-            panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
-                                            values=col)
+        if yerr is None:
+            panel = self._agg_df(df, rows=rows, cols=cols, values=values,
+                value_filter=value_filter, func=func)
+        else:
+
+            if df[values].dtype in [str, object]:  # calculate accuracy
+                size = df.groupby(allconds)[values].size()
+                if value_filter is not None:
+                    dff = df[df[values] == value_filter]
+                else:
+                    raise Exception('value_filter must be defined when aggregating '
+                        'over str or object types')
+                size_filter = dff.groupby(allconds)[values].size()
+                agg = size_filter / size.astype(float)
+            else:
+                if func == 'mean':
+                    agg = df.groupby(allconds)[values].mean()
+                elif func == 'median':
+                    agg = df.groupby(allconds)[values].median()
+
+            agg = agg.unstack(yerr)
+            columns = agg.columns
+            panel = {}
+
+            for col in columns:
+                if cols is None:
+                    #if yerr is None:
+                        #df_col = pandas.DataFrame({'data': agg})
+                    #else:
+                    df_col = pandas.DataFrame({'data': agg[col]})
+                    panel[col] = df_col
+                else:
+                    df_col = agg[col].reset_index()
+                    #import pdb; pdb.set_trace()
+                    panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
+                                                values=col)
+
         return pandas.Panel(panel)
+
+    def _agg_df(self, df, rows=None, cols=None, values=None,
+                value_filter=None, func='mean'):
+        if df[values].dtype in [str, object]:  # calculate accuracy
+            size = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
+                aggfunc=np.size)
+                #df.groupby(allconds)[values].size()
+            if value_filter is not None:
+                dff = df[df[values] == value_filter]
+            else:
+                raise Exception('value_filter must be defined when aggregating '
+                    'over str or object types')
+            size_filter = pandas.pivot_table(dff, rows=rows, cols=cols, values=values,
+                aggfunc=np.size)
+            agg = size_filter / size.astype(float)
+        else:
+            if func == 'mean':
+                aggfunc = np.mean
+            elif func == 'median':
+                aggfunc = np.median
+            agg = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
+                aggfunc=aggfunc)
+        return {'column': agg}
 
     def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,
                    **kwargs):
@@ -118,13 +258,31 @@ class Plot(object):
 
     def _plot(self, agg, ax=None,
                    title='', kind='bar', xtickson=True, ytickson=True,
-                   no_yerr=False, **kwargs):
-        if ax is None:
-            ax = plt.subplot(111)
-        mean, p_yerr = self.errorbars(agg)
-        p_yerr = np.array(p_yerr)
+                   no_yerr=False, numb=False, autoscale=True, **kwargs):
+        self.plot(agg, ax=ax,
+                   title=title, kind=kind, xtickson=xtickson, ytickson=ytickson,
+                   no_yerr=no_yerr, numb=numb, autoscale=autoscale, **kwargs)
 
-        p_yerr_zeros = np.zeros((p_yerr.shape[0],))
+    def plot(self, agg, ax=None,
+                   title='', kind='bar', xtickson=True, ytickson=True,
+                   no_yerr=False, numb=False, autoscale=True, order=None,
+                   **kwargs):
+        if ax is None:
+            try:
+                row = self.subplotno / self.axes[0][0].numCols
+                col = self.subplotno % self.axes[0][0].numCols
+                ax = self.axes[row][col]
+            except:
+                ax = self.axes[self.subplotno]
+
+        if type(agg) == pandas.Panel:
+            mean, p_yerr = self.errorbars(agg)
+            p_yerr = np.array(p_yerr)
+        else:
+            mean = agg
+            p_yerr = np.zeros((len(agg), 1))
+
+        p_yerr_zeros = np.ones((p_yerr.shape[0],)) * np.nan
         colors = self.sample_paired(len(mean.columns))
         edgecolors = []
         for c in colors:
@@ -134,55 +292,126 @@ class Plot(object):
             mean.plot(kind='bar', ax=ax, **{
                 'yerr':p_yerr_zeros,  # otherwise get_lines doesn't work
                 'color': colors,
+                'linewidth': 0,
                 #'edgecolor': edgecolors,  # get rid of ugly black edges
                 })
+            xdata = ax.get_lines()
             for i, col in enumerate(mean.columns):
-                x = ax.get_lines()[i * len(mean.columns)].get_xdata()
+                #x = xdata[i * len(mean.columns)].get_xdata()
+                x = xdata[2*i].get_xdata()
                 y = mean[col]
                 try:
-                    ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
+                    ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None, elinewidth=2,
                         ecolor='black')
                 except:
                     import pdb; pdb.set_trace()
+
+            # create legend outside the axes
+            handles, labels = ax.get_legend_handles_labels()
+            #l = ax.legend(handles[:i+1], labels[:i+1],
+                #loc='center left', bbox_to_anchor=(1.3, 0.5))
+            l = ax.legend(handles[:i+1], labels[:i+1],
+                loc='upper right', frameon=False)
+
         elif kind == 'line':
+            if len(colors) == 1: colors = colors[0]
             mean.plot(kind='line', ax=ax, **{
-                #'color': colors,
+                'color': colors,
+                'linewidth': 2,
                 })
             for i, col in enumerate(mean.columns):
                 x = ax.get_lines()[i].get_xdata()
                 y = mean[col]
                 ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
                     ecolor='black')
+            # create legend outside the axes
+            handles, labels = ax.get_legend_handles_labels()
+            #l = ax.legend(handles[:i+1], labels[:i+1],
+                #loc='center left', bbox_to_anchor=(1.3, 0.5))
+            l = ax.legend(handles[:i+1], labels[:i+1],
+                loc='upper right', frameon=False)
+        elif kind == 'bean':
+            if len(mean.columns) == 2:
+                #kk = pandas.Series([float(agg[s]['morph']) for s in agg.items])
+                #import pdb; pdb.set_trace()
+                ax, l = self.beanplot(agg, ax=ax, order=order)#, pos=range(len(mean.index)))
+            else:
+                raise Exception('Beanplot is not available for more than two '
+                                'classes.')
+
+
 
         if 'xticklabels' in kwargs:
             ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
         if not xtickson:
             ax.set_xticklabels(['']*len(ax.get_xticklabels()))
-        # else:
-        #     labels = ax.get_xticklabels()
-        #     for label in labels:
-        #         label.set_rotation(90)
+
+        labels = ax.get_xticklabels()
+        max_len = max([len(label.get_text()) for label in labels])
+        #import pdb; pdb.set_trace()
+        for label in labels:
+            if max_len > 10:
+                label.set_rotation(90)
+            else:
+                label.set_rotation(0)
+            #label.set_size('x-large')
+        #ax.set_xticklabels(labels, rotation=0, size='x-large')
+
         if not ytickson:
             ax.set_yticklabels(['']*len(ax.get_yticklabels()))
         ax.set_xlabel('')
 
+        # set y-axis limits
         if 'ylim' in kwargs:
             ax.set_ylim(kwargs['ylim'])
-
+        elif autoscale:
+            mean_array = np.asarray(mean)
+            r = np.max(mean_array) - np.min(mean_array)
+            ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
+            #import pdb; pdb.set_trace()
+            ymin = np.min(np.asarray(mean) - 3*ebars)
+            ymax = np.max(np.asarray(mean) + 3*ebars)
+            ax.set_ylim([ymin, ymax])
+        #if 'xlabel' in kwargs:
+            #ax.set_xlabel(kwargs['xlabel'], size='x-large')
         if 'ylabel' in kwargs:
-            ax.set_ylabel(kwargs['ylabel'])
+            ax.set_ylabel(kwargs['ylabel'], size='x-large')
         # else:
         #     import pdb; pdb.set_trace()
         #     ax.set_ylabel(grouped.name)
 
-        ax.set_title(title)
-        l = ax.legend(loc=8)
+        ax.set_title(title, size='x-large')
+
         l.legendPatch.set_alpha(0.5)
-        l.set_visible(False)
-        if 'numb' in kwargs:
-            t = self.add_inner_title(ax, title=kwargs['numb'], loc=2)
-        #import pdb; pdb.set_trace()
+        if 'legend_visible' in kwargs:
+            l.set_visible(kwargs['legend_visible'])
+        elif len(l.texts) == 1:  # showing a single legend entry is useless
+            l.set_visible(False)
+        else:
+            if self.subplotno == 0:
+                l.set_visible(True)
+            else:
+                l.set_visible(False)
+        if numb == True:
+            self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
+        self.subplotno += 1
         return ax
+
+    def hide_plots(self, nums):
+        # check if nums is iterable
+        try:
+            num_iter = iter(nums)
+        except TypeError:
+            num_iter = [nums]
+
+        for num in num_iter:
+            try:
+                row = num / self.axes[0][0].numCols
+                col = num % self.axes[0][0].numCols
+                ax = self.axes[row][col]
+            except:
+                ax = self.axes[num]
+            ax.axis('off')
 
     def matrix_plot(self, matrix, ax=None, title='', **kwargs):
         """
@@ -268,7 +497,6 @@ class Plot(object):
         # Set up error bar information
         if yerr_type == 'sem':
             mean = panel.mean(0)  # mean across items
-            #import pdb; pdb.set_trace()
             # std already has ddof=1
             sem = panel.std(0) / np.sqrt(len(panel.items))
         elif yerr_type == 'binomial':
@@ -311,44 +539,117 @@ class Plot(object):
             print binom
             return binom
 
+    @classmethod
+    def oneway_anova(cls, data):
+        """
+        Calculates one-way ANOVA on a pandas.DataFrame.
+
+        Args:
+            data (pandas.DataFrame): rows contain groups (e.g., different
+            conditions), while columns have samples (e.g., participants)
+
+        Returns:
+            F (float): F-value
+            p (float): p-value
+            k-1 (int): Between Group degrees of freedom
+            N-k (int): Within Group degrees of freedom
+
+        """
+        F, p = scipy.stats.f_oneway(*[d[1] for d in data.iterrows()])
+        k = len(data)  # number of conditions
+        N = k*len(data.columns)  # conditions times participants
+        return F, p, k-1, N-k
+
+    @classmethod
+    def p_corr(cls, df1, df2):
+        """
+        Computes Pearson correlation and its significance (using a t
+        distribution) on a pandas.DataFrame.
+
+        Ignores null values when computing significance. Based on
+        http://en.wikipedia.org/wiki/Pearson_product-moment_correlation_coefficient#Testing_using_Student.27s_t-distribution
+
+        Args:
+            df1 (pandas.DataFrame): one dataset
+            df2 (pandas.DataFrame): another dataset
+
+        Returns:
+            corr (float): correlation between the two datasets
+            t (float): an associated t-value
+            p (float): one-tailed p-value that the two datasets differ
+        """
+        corr = df1.corr(df2)
+        N = np.sum(df1.notnull())
+        t = corr*np.sqrt((N-2)/(1-corr**2))
+        p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
+        return corr, t, p
+
+    @classmethod
+    def reliability(cls, panel, level=1, niter=100):
+        subjIDs = panel.items.tolist()
+        corrs = []
+        for n in range(niter):
+            np.random.shuffle(subjIDs)
+            split1inds = subjIDs[:len(subjIDs)/2]
+            split2inds = subjIDs[len(subjIDs)/2:]
+            split1 = pandas.concat([panel[item] for item in panel.items
+                                    if item in split1inds])
+            split2 = pandas.concat([panel[item] for item in panel.items
+                                    if item in split2inds])
+            split1 = split1.mean(0)
+            split2 = split2.mean(0)
+            for lev in range(level):
+                split1 = split1.stack()
+                split2 = split2.stack()
+            corrs.append(split1.corr(split2))
+
+        N = np.sum(split1.notnull())
+        corr = np.mean(corrs)
+        t = corr*np.sqrt((N-2)/(1-corr**2))
+        p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
+        p = 2*p/(1.+p) # Spearman-Brown prediction for twice
+                       # the amount of data
+                       # we need this because we use only half
+                       # of the data here
+        return corr, t, p
 
     def ttestPrint(self, title = '****', values = None, xticklabels = None, legend = None, bon = None):
 
-            d = 8
-            # check if there are any negative t values (for formatting purposes)
-            if np.any([np.any(val < 0) for val in values]): neg = True
-            else: neg = False
+        d = 8
+        # check if there are any negative t values (for formatting purposes)
+        if np.any([np.any(val < 0) for val in values]): neg = True
+        else: neg = False
 
-            print '\n' + title
-            for xi, xticklabel in enumerate(xticklabels):
-                print xticklabel
+        print '\n' + title
+        for xi, xticklabel in enumerate(xticklabels):
+            print xticklabel
 
-                maxleg = max([len(leg) for leg in legend])
-    #            if type == 1: legendnames = ['%*s' %(maxleg,p) for p in plotOpt['subplot']['legend.names']]
-    #            elif type == 2:
-                pairs = q.combinations(legend,2)
-                legendnames = ['%*s' %(maxleg,p[0]) + ' vs ' + '%*s' %(maxleg,p[1]) for p in pairs]
-                #print legendnames
-                for yi, legendname in enumerate(legendnames):
-                    if values[0].ndim == 1:
-                        t = values[0][xi]
-                        p = values[1][xi]
-                    else:
-                        t = values[0][yi,xi]
-                        p = values[1][yi,xi]
-                    if p < .001/bon: star = '***'
-                    elif p < .01/bon: star = '**'
-                    elif p < .05/bon: star = '*'
-                    else: star = ''
+            maxleg = max([len(leg) for leg in legend])
+#            if type == 1: legendnames = ['%*s' %(maxleg,p) for p in plotOpt['subplot']['legend.names']]
+#            elif type == 2:
+            pairs = q.combinations(legend,2)
+            legendnames = ['%*s' %(maxleg,p[0]) + ' vs ' + '%*s' %(maxleg,p[1]) for p in pairs]
+            #print legendnames
+            for yi, legendname in enumerate(legendnames):
+                if values[0].ndim == 1:
+                    t = values[0][xi]
+                    p = values[1][xi]
+                else:
+                    t = values[0][yi,xi]
+                    p = values[1][yi,xi]
+                if p < .001/bon: star = '***'
+                elif p < .01/bon: star = '**'
+                elif p < .05/bon: star = '*'
+                else: star = ''
 
-                    if neg and t > 0:
-                        outputStr = '    %(s)s: t(%(d)d) =  %(t).3f, p = %(p).3f %(star)s'
-                    else:
-                        outputStr = '    %(s)s: t(%(d)d) = %(t).3f, p = %(p).3f %(star)s'
+                if neg and t > 0:
+                    outputStr = '    %(s)s: t(%(d)d) =  %(t).3f, p = %(p).3f %(star)s'
+                else:
+                    outputStr = '    %(s)s: t(%(d)d) = %(t).3f, p = %(p).3f %(star)s'
 
-                    print outputStr \
-                        %{'s': legendname, 'd':(d-1), 't': t,
-                        'p': p, 'star': star}
+                print outputStr \
+                    %{'s': legendname, 'd':(d-1), 't': t,
+                    'p': p, 'star': star}
 
 
     def plotrc(self, theme = 'default'):
@@ -604,10 +905,10 @@ class Plot(object):
         """
         Metric Unweighted Classical Multidimensional Scaling
 
-        Based on Forrest W. Young's notes on Torgerson's (1952) algorithm as 
+        Based on Forrest W. Young's notes on Torgerson's (1952) algorithm as
         presented in http://forrest.psych.unc.edu/teaching/p230/Torgerson.pdf:
-        Step 0: Make data matrix symmetric with zeros on the diagonal 
-        Step 1: Double center the data matrix (d) to obtain B by removing row 
+        Step 0: Make data matrix symmetric with zeros on the diagonal
+        Step 1: Double center the data matrix (d) to obtain B by removing row
         and column means and adding the grand mean of the squared data
         Step 2: Solve B = U * L * U.T for U and L
         Step 3: Calculate X = U * L**(-.5)
@@ -631,7 +932,7 @@ class Plot(object):
         oo = d**2
         rowmean = np.tile(np.mean(oo, 1), (oo.shape[1],1)).T
         colmean = np.mean(oo, 0)
-        B = -.5 * (oo - rowmean - colmean + np.mean(oo))        
+        B = -.5 * (oo - rowmean - colmean + np.mean(oo))
         # Step2: do singular value decomposition
         # find U (eigenvectors) and L (eigenvalues)
         [U, L, V] = np.linalg.svd(B)  # L is already sorted (desceding)
@@ -639,3 +940,162 @@ class Plot(object):
         X = U * np.sqrt(L)
         return X[:,:ndim]
 
+    def plot_mds(self, results, labels, fonts='freesansbold.ttf', title='',
+        ax = None):
+        """Plots Multidimensional scaling results"""
+        if ax is None:
+            try:
+                row = self.subplotno / self.axes[0][0].numCols
+                col = self.subplotno % self.axes[0][0].numCols
+                ax = self.axes[row][col]
+            except:
+                ax = self.axes[self.subplotno]
+        ax.set_title(title)
+        # plot each point with a name
+        dims = results.ndim
+        try:
+            if results.shape[1] == 1:
+                dims = 1
+        except:
+            pass
+        if dims == 1:
+            df = pandas.DataFrame(results, index=labels, columns=['data'])
+            df = df.sort(columns='data')
+            self._plot(df)
+        elif dims == 2:
+            for c, coord in enumerate(results):
+                ax.plot(coord[0], coord[1], 'o', color=mpl.cm.Paired(.5))
+                ax.text(coord[0], coord[1], labels[c], fontproperties=fonts[c])
+        else:
+            print 'Cannot plot more than 2 dims'
+
+
+    # Based on code by Teemu Ikonen <tpikonen@gmail.com>,
+    # http://matplotlib.1069221.n5.nabble.com/Violin-and-bean-plots-tt27791.html
+    # which was based on code by Flavio Codeco Coelho,
+    # http://pyinsci.blogspot.com/2009/09/violin-plot-with-matplotlib.html
+
+    def violinplot(self, data, ax=None, pos=None, bp=False, cut=None):
+        """Make a violin plot of each dataset in the `data` sequence.
+        """
+        if pos is None:
+            pos = [0,1]
+        dist = np.max(pos)-np.min(pos)
+        w = min(0.15*max(dist,1.0),0.5)
+
+        for major_xs in range(data.shape[1]):
+            p = pos[major_xs]
+            d1 = data.ix[:,major_xs,0]
+            d2 = data.ix[:,major_xs,1]
+
+            k1 = scipy.stats.gaussian_kde(d1) #calculates the kernel density
+            k2 = scipy.stats.gaussian_kde(d2) #calculates the kernel density
+            #s = 0.0
+            cutoff = .001
+            if cut is None:
+                #s = 5*max(np.std(d1), np.std(d2)) #FIXME: magic constant 1.5
+                stepsize = (d1.max()-d1.min()) / 100
+                area_low1 = 1  # max cdf value
+                area_low2 = 1  # max cdf value
+                low = min(d1.min(), d2.min())
+                while area_low1 > cutoff or area_low2 > cutoff:
+                    area_low1 = k1.integrate_box_1d(-np.inf, low)
+                    area_low2 = k2.integrate_box_1d(-np.inf, low)
+                    low -= stepsize
+                    #print area_low, low, '.'
+                area_high1 = 1  # max cdf value
+                area_high2 = 1  # max cdf value
+                high = max(d1.max(), d2.max())
+                while area_high1 > cutoff or area_high2 > cutoff:
+                    area_high1 = k1.integrate_box_1d(high, np.inf)
+                    area_high2 = k2.integrate_box_1d(high, np.inf)
+                    high += stepsize
+            else:
+                low, high = cut
+
+            m = low #lower bound of violin
+            M = high #upper bound of violin
+            x = np.linspace(m, M, 100) # support for violin
+            v1 = k1.evaluate(x) # violin profile (density curve)
+            v1 = w*v1/v1.max() # scaling the violin to the available space
+            v2 = k2.evaluate(x) # violin profile (density curve)
+            v2 = w*v2/v2.max() # scaling the violin to the available space
+            ax.fill_betweenx(x, -v1 + p, p, facecolor='black', edgecolor='black')
+            ax.fill_betweenx(x, p, p + v2, facecolor='gray', edgecolor='gray')
+
+        # a work-around for generating a legend for the PolyCollection
+        # from http://matplotlib.org/users/legend_guide.html#using-proxy-artist
+        left = Rectangle((0, 0), 1, 1, fc="black", ec='black')
+        right = Rectangle((0, 0), 1, 1, fc="gray", ec='gray')
+        l = ax.legend((left, right), data.minor_axis.tolist(), frameon=False)
+        #import pdb; pdb.set_trace()
+        #ax.set_xlim(pos[0]-3*w, pos[-1]+3*w)
+        #if bp:
+            #ax.boxplot(data,notch=1,positions=pos,vert=1)
+        return ax, l
+
+
+    def stripchart(self, data, ax=None, pos=None, mean=False, median=False,
+        width=None, discrete=True, bins=50):
+        """Plot samples given in `data` as horizontal lines.
+
+        Keyword arguments:
+            mean: plot mean of each dataset as a thicker line if True
+            median: plot median of each dataset as a dot if True.
+            width: Horizontal width of a single dataset plot.
+        """
+        if width:
+            w = width
+        else:
+            if pos is None:
+                pos = [0,1]
+            dist = np.max(pos)-np.min(pos)
+            w = min(0.15*max(dist,1.0),0.5)
+        sides = [(-1,0), (0,1)]  # left side or right side to work on
+        for major_xs in range(data.shape[1]):
+            p = pos[major_xs]
+            for side, minor_xs in zip(sides, range(data.shape[2])):
+                d = data.ix[:,major_xs,minor_xs]
+                if discrete:
+                    hist, bin_edges = np.histogram(d, bins=bins)
+                    maxcount = np.max(hist)
+                    bin_edges = bin_edges[:-1]  # upper edges not needed
+                    hw = hist * w / (2.*maxcount)
+                else:
+                    bin_edges = d
+                    hw = w / 2.
+
+                ax.hlines(bin_edges, side[0]*hw + p, side[1]*hw + p, color='white')
+                if mean:  # draws a longer black line
+                    ax.hlines(np.mean(d), side[0]*2*w + p, side[1]*2*w + p,
+                        lw=2, color='black')
+                if median:  # puts a white dot
+                    ax.plot(p, np.median(d), 'o', color='white', markeredgewidth=0)
+        ax.set_xlim(min(pos)-3*w, max(pos)+3*w)
+        #ax.set_xticks([-1]+pos+[1])
+        ax.set_xticks(pos)
+        #import pdb; pdb.set_trace()
+        #ax.set_xticklabels(['-1']+np.array(data.major_axis).tolist()+['1'])
+        ax.set_xticklabels(data.major_axis)
+
+        #return ax
+
+
+    def beanplot(self, data, ax, pos=None, mean=True, median=True, cut=None, order=None):
+        """Make a bean plot of each dataset in the `data` sequence.
+
+        Reference: http://www.jstatsoft.org/v28/c01/paper
+        """
+        #FIXME: Implement also the asymmetric beanplot
+        #if pos is None:
+            #pos = range(len(data.major_axis))
+        if order is None:
+            pos = range(len(data.major_axis))
+        else:
+            pos = np.lexsort((np.array(data.major_axis).tolist(),order))
+        dist = np.max(pos)-np.min(pos)
+        w = min(0.15*max(dist,1.0),0.5)
+        self.stripchart(data=data, ax=ax, pos=pos, mean=mean, median=median, width=0.8*w)
+        ax,l = self.violinplot(data=data, ax=ax, pos=pos, bp=False, cut=cut)
+
+        return ax,l
