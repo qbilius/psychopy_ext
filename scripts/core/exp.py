@@ -7,12 +7,12 @@ A library of helper functions for running experiments
 
 """
 
-import sys, os, csv, time, glob, random
-import cPickle as pickle
+import sys, os, csv, glob, random
+#import cPickle as pickle
 
 import numpy as np
-from psychopy import visual, core, event, gui, logging, misc
-from psychopy.data import ExperimentHandler, TrialHandler
+from psychopy import visual, core, event, logging, misc
+from psychopy.data import TrialHandler
 #import winsound
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
@@ -20,8 +20,8 @@ try:
     import pandas
 except:
     pass
-import wx
-import matplotlib.pyplot as plt
+#import wx
+#import matplotlib.pyplot as plt
 
 from computer import Computer
 
@@ -41,33 +41,33 @@ class Experiment(TrialHandler):
         runParams = None,
         instructions = {'text': '', 'wait': 0},
         actions = None,
-        seed=None,        
+        seed=None,
         nReps=1,
         method='random',
         dataTypes=None,
         originPath=None,
-        ):   
+        ):
         """Add a loop such as a `~psychopy.data.TrialHandler` or `~psychopy.data.StairHandler`
         Data from this loop will be included in the resulting data files.
         """
-        
+
         self.parent = parent
         self.name = name
         self.version = version
         self.extraInfo = extraInfo
         self.runParams = runParams
         self.instructions = instructions
-        self.actions=actions    
+        self.actions=actions
         self.nReps = nReps
         self.method = method
         self.dataTypes = dataTypes
         self.originPath = originPath
-        
+
         if seed is None:
             self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
         else:
             self.seed = seed
-        
+
         self.defaultFilter = "(plotData['cond'] != 0) & (plotData['accuracy'] != 'No response')"
         self.signalDet = {
             False: 'Incorrect',
@@ -77,13 +77,13 @@ class Experiment(TrialHandler):
             1: 'index finger',
             2: 'middle finger',
             3: 'ring finger',
-            4: 'little finger'}  
+            4: 'little finger'}
         self.comp = Computer()
         # if self.parent is None:
         #     Control(exp_choices=[(name,self)], title=name)
-            
+
         #if self.trialList not in [None, []]: self.create_TrialHandler()
-            
+
     # def __init__(self,
                 # name='',
                 # version='',
@@ -93,7 +93,7 @@ class Experiment(TrialHandler):
                 # savePickle=True,
                 # saveWideText=True,
                 # dataFileName=''):
-# 
+#
         # ExperimentHandler.__init__(self,
                 # name=name,
                 # version=version,
@@ -104,7 +104,7 @@ class Experiment(TrialHandler):
                 # saveWideText=saveWideText,
                 # dataFileName=dataFileName)
 
-        
+
 
     def guess_participant(self, data_path, default_subjID='01'):
         """Attempts to guess participant ID (it must be int).
@@ -149,12 +149,12 @@ class Experiment(TrialHandler):
                 # print 'Guessing runNo: %d' %runNo
 
         return runNo
-        
-    
+
+
     #def get_input(self, info):
         #"""Creates a dialog to get user input and loads stored values.
         #"""
-                
+
         #dlg = gui.DlgFromDict(dictionary=info,title=self.name)
         #if dlg.OK == False:
             #core.quit() # user pressed cancel
@@ -163,7 +163,7 @@ class Experiment(TrialHandler):
 
 
     def setup(self):
-        if 'logs' in self.paths:
+        if 'logs' in self.paths and not self.runParams['noOutput']:
             self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
         # self.try_makedirs(self.paths['data'])
         #self.dataFileName = self.dataFileName %self.extraInfo['subjID']
@@ -176,14 +176,14 @@ class Experiment(TrialHandler):
             trialList = self.autorun(trialList)
         self.create_TrialHandler(trialList)
         #dataFileName=self.paths['data']%self.extraInfo['subjID'])
-        
+
         ## guess participant ID based on the already completed sessions
         #self.extraInfo['subjID'] = self.guess_participant(
             #self.paths['data'],
             #default_subjID=self.extraInfo['subjID'])
-            
+
         #self.dataFileName = self.paths['data'] + '%s.csv'
-        
+
 
     def try_makedirs(self, path):
         """Attempts to create a new dir. If fails, exists gracefully.
@@ -211,7 +211,7 @@ class Experiment(TrialHandler):
         if len(logname.split('.')) == 0: logname += '.log'
 
         # Setup logging file
-        #self.try_makedirs(os.path.dirname(logname))
+        self.try_makedirs(os.path.dirname(logname))
         self.logFile = logging.LogFile(
             logname,
             filemode = 'a',
@@ -225,8 +225,8 @@ class Experiment(TrialHandler):
         #"""
         #self.win.close()
         #core.quit()
-        
-    
+
+
     def create_win(self, debug = False, color = (100/255.*2-1,100/255.*2-1,100/255.*2-1)):
         """Generates a window from presenting stimuli.
         """
@@ -237,7 +237,6 @@ class Experiment(TrialHandler):
             #self.comp.params['size'] = self.comp.params['size']
             self.comp.params2['pos'] = (0,0)
             #self.comp.params2['size'] = self.comp.params['size']/2
-            
         self.win = visual.Window(
             monitor = self.comp.monitor,
             units = 'deg',
@@ -301,7 +300,7 @@ class Experiment(TrialHandler):
                 )
             self.fixation = [oval, cross0, cross90, center]
 
-        elif shape == 'dot':            
+        elif shape == 'dot':
             self.fixation = [visual.PatchStim(
                 self.win,
                 name   = 'fixation',
@@ -310,40 +309,40 @@ class Experiment(TrialHandler):
                 mask   = 'circle',
                 size   = .2,
             )]
-    
+
     def latin_square(self, n = 6):
         """
         Generates a Latin square of size n. n must be even.
-        
+
         Based on
         http://rintintin.colorado.edu/~chathach/balancedlatinsquares.html
-        """        
+        """
         if n%2 != 0: sys.exit('n is not even!')
-        
+
         latin = []
         col = np.arange(1,n+1)
-        
+
         firstLine = []
         for i in range(n):
-            if i%2 == 0: firstLine.append((n-i/2)%n + 1)        
+            if i%2 == 0: firstLine.append((n-i/2)%n + 1)
             else: firstLine.append((i+1)/2+1)
-        
+
         latin = np.array([np.roll(col,i-1) for i in firstLine])
-        
+
         return latin.T
-        
+
     def make_para(self, n = 6):
         """
         Generates a symmetric para file with fixation periods in between. n must be even.
         """
         latin = self.latin_square(n = n).tolist()
-        
+
         out = []
         for j, thisLatin in enumerate(latin):
-            
+
             thisLatin = thisLatin + thisLatin[::-1]
             # para = open('para%02d.txt' %(j+1),'w')
-            
+
             temp = []
             for i, item in enumerate(thisLatin):
                 if i%4 == 0: temp.append(0) #para.write('0\n')
@@ -370,7 +369,7 @@ class Experiment(TrialHandler):
             else:
                 return thisKey
         else:
-            return None   
+            return None
 
     def wait_for_response(self, RT_clock=False, fakeKey=None):
         """
@@ -382,7 +381,7 @@ class Experiment(TrialHandler):
                 A clock used as a reference for measuring response time
 
             fakeKey: None or (key pressed, response time)
-                This is used for simulating key presses in order to test that 
+                This is used for simulating key presses in order to test that
                 the experiment is working.
 
         """
@@ -392,7 +391,7 @@ class Experiment(TrialHandler):
             if fakeKey is not None:
                 if RT_clock.getTime() > fakeKey[1]:
                     allKeys = [fakeKey]
-            else:    
+            else:
                 allKeys = event.getKeys(
                     keyList = self.comp.validResponses.keys(),
                     timeStamped = RT_clock)
@@ -452,7 +451,7 @@ class Experiment(TrialHandler):
         #     if not self.extraInfo['noOutput']: self.save_data()
         self.win.close()
         core.quit()
-            
+
     def show_instructions(self, text = '', wait = 0):
         """
         Displays instructions on the screen.
@@ -478,9 +477,9 @@ class Experiment(TrialHandler):
                 thisKey = self.last_keypress()
             if self.runParams['autorun']: wait /= self.runParams['autorun']
         core.wait(wait) # wait a little bit before starting the experiment
-        self.win.flip()   
-    
-    def create_TrialHandler(self, trialList):        
+        self.win.flip()
+
+    def create_TrialHandler(self, trialList):
         TrialHandler.__init__(self,
             trialList,
             nReps=self.nReps,
@@ -498,8 +497,14 @@ class Experiment(TrialHandler):
         """
         if not noOutput:
             self.try_makedirs(os.path.dirname(datafile))
+            # no header needed if the file already exists
+            if os.path.isfile(datafile):
+                write_head = False
+            else:
+                write_head = True
             try:
-            dataFile = open(datafile, 'ab')
+                dataFile = open(datafile, 'ab')
+                dataCSV = csv.writer(dataFile, lineterminator = '\n')
             except:
                 raise IOError('Cannot write anything to the data file %s!' %
                               datafile)
@@ -507,17 +512,19 @@ class Experiment(TrialHandler):
         globClock = core.Clock()
         trialClock = core.Clock()
         eventClock = core.Clock()
-        write_head = True
+        trialNo = 0
         # go over the trial sequence
         for thisTrial in self:
             trialClock.reset()
             thisTrial['onset'] = globClock.getTime()
+            #sys.stdout.write("\rtrial %s" % (trialNo+1))
+            #sys.stdout.flush()
 
             # go over each event in a trial
             allKeys = []
             for j, thisEvent in enumerate(self.trial):
                 eventClock.reset()
-                eventKeys = thisEvent['defaultFun'](globClock=globClock, 
+                eventKeys = thisEvent['defaultFun'](globClock=globClock,
                     trialClock=trialClock, eventClock=eventClock,
                     thisTrial=thisTrial, thisEvent=thisEvent, j=j)
                 if eventKeys is not None:
@@ -528,6 +535,9 @@ class Experiment(TrialHandler):
                     timeStamped = trialClock)
 
             thisTrial = self.postTrial(thisTrial, allKeys)
+            if self.runParams['autorun'] > 0:  # correct timing
+                #thisTrial['autoRT'] *= self.runParams['autorun']
+                thisTrial['RT'] *= self.runParams['autorun']
 
             if not noOutput:
                 if write_head:
@@ -537,8 +547,11 @@ class Experiment(TrialHandler):
                     write_head = False
                 out = self.extraInfo.values() + thisTrial.values()
                 dataCSV.writerow(out)
-                
+
+            trialNo += 1
+        #sys.stdout.write("\r")  # clean up outputs
         if not noOutput: dataFile.close()
+
 
     def autorun(self, trialList):
         """
@@ -550,7 +563,7 @@ class Experiment(TrialHandler):
         """
         def rt(mean):
             add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
-            return self.trial[0]['dur'] + add            
+            return self.trial[0]['dur'] + add
 
         invValidResp = dict([[v,k] for k,v in self.comp.validResponses.items()])
         sortKeys = sorted(invValidResp.keys())
@@ -561,9 +574,11 @@ class Experiment(TrialHandler):
         self.trialDur /= self.runParams['autorun']
 
         for trial in trialList:
+            # here you could do if/else to assign different values to
+            # different conditions according to your hypothesis
             trial['autoResp'] = random.choice(invValidResp.values())
             trial['autoRT'] = rt(.5)
-        return trialList  
+        return trialList
 
     def _astype(self,type='pandas'):
         """
@@ -632,16 +647,16 @@ class Experiment(TrialHandler):
     def aspandas(self):
         """
         Convert trialList into a pandas DataFrame object
-        """        
+        """
         return self._astype(type='pandas')
 
-    def accuracy(self):
-        df = self._astype(list)
-        for line in df:
-            if line['accuracy']=='Correct':
-                accuracy += 1
-        acc = accuracy * 100 / len(df)
-        return acc
+    #def accuracy(self):
+        #df = self._astype(list)
+        #for line in df:
+            #if line['accuracy']=='Correct':
+                #accuracy += 1
+        #acc = accuracy * 100 / len(df)
+        #return acc
 
     def weighted_sample(self, probs):
         which = np.random.random()
@@ -652,7 +667,7 @@ class Experiment(TrialHandler):
         ind -= 1
         return ind
 
-    def behav(self, pattern='%s'):
+    def get_behav_df(self, pattern='%s'):
         """
         Extracts data from files for data analysis.
         """
@@ -661,21 +676,19 @@ class Experiment(TrialHandler):
         else:
             subjID_list = self.extraInfo['subjID']
 
-        df_fnames = []        
+        df_fnames = []
         for subjID in subjID_list:
-            df_fnames += glob.glob(pattern % subjID)        
+            df_fnames += glob.glob(pattern % subjID)
         dfs = []
         for dtf in df_fnames:
-            data = pandas.io.parsers.read_csv(dtf)
+            data = pandas.read_csv(dtf)
             if data is not None:
                 dfs.append(data)
         if dfs == []:
             print df_fnames
-            import pdb; pdb.set_trace()            
-            sys.exit('ERROR: behavioral data files not found')
-        
+            raise IOError('Behavioral data files not found')
         df = pandas.concat(dfs, ignore_index=True)
-        
+
         return df
 
 
@@ -777,30 +790,15 @@ class Experiment(TrialHandler):
                     thisParaNo = lines.next()[ind]
                     paraNos.append(int(thisParaNo))
                 except: pass
-                
+
             if paraNos != []:
                 countUsed = np.bincount(paraNos)
                 countUsed = np.hstack((countUsed,np.zeros(n-len(countUsed))))
                 possParaNos = np.arange(n)
                 paraNo = random.choice(possParaNos[countUsed == np.min(countUsed)].tolist())
             else: paraNo = random.choice(range(n))
-            
+
         return paraNo
-
-
-def make_roi_pattern(rois):
-    def makePatt(ROI):
-        return ['*'+thisROI+'*' for thisROI in ROI]
-    
-    ROIs = []
-    for ROI in rois:
-        # renaming is provided
-        if type(ROI) == tuple: ROIs.append(ROI + (makePatt(ROI[0]),))
-        # a list of ROIs is provived
-        elif type(ROI) == list: ROIs.append((ROI,'-'.join(ROI),makePatt(ROI)))
-        # just a single ROI name provided
-        else: ROIs.append((ROI,ROI,makePatt([ROI])))
-    return ROIs
 
 
 class ThickShapeStim(visual.ShapeStim):
@@ -885,8 +883,10 @@ class ThickShapeStim(visual.ShapeStim):
         self.pos = newPos
 
     def setVertices(self, value = None):
-        if type(value[0][0]) in [int, float]: self.vertices = [value]
-        else: self.vertices = value
+        if isinstance(value[0][0], int) or isinstance(value[0][0], float):
+            self.vertices = [value]
+        else:
+            self.vertices = value
         self.stimulus = []
 
         theta = self.ori/180.*np.pi #(newOri - self.ori)/180.*np.pi
@@ -1053,8 +1053,8 @@ def combinations(iterable, r):
         yield tuple(pool[i] for i in indices)
 
 
-# From Python 2.7 docs under the Python Software Foundation License 
-# http://docs.python.org/library/itertools.html#itertools.combinations_with_replacement       
+# From Python 2.7 docs under the Python Software Foundation License
+# http://docs.python.org/library/itertools.html#itertools.combinations_with_replacement
 def combinations_with_replacement(iterable, r):
     # combinations_with_replacement('ABC', 2) --> AA AB AC BB BC CC
     pool = tuple(iterable)
