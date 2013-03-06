@@ -1,24 +1,10 @@
-import mvpa2.suite
+import os, sys, glob, shutil
+import cPickle as pickle
+
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import mpl
-import scipy.stats
-# import tabular as tb
-import random
-import csv
-import os, sys, glob, shutil
-import nibabel as nb
-import itertools
-
 import pandas
-
-# import svm_plot
-import exp
-import plot
-
-# import Orange
-import cPickle as pickle
 
 # some modules are only available in Python 2.6
 try:
@@ -26,35 +12,74 @@ try:
 except:
     from exp import OrderedDict
 
+# stuff from psychopy_ext
+import plot
 
-class MVPA(object):
+import mvpa2.suite
+import nibabel as nb
+
+#class Analysis(object):
+
+    #def __init__(self):
+        #pass
+
+    #def time_course(self):
+        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+
+    #def signal(self):
+        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+
+    #def univariate(self):
+        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+
+    #def mvpa(self):
+        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+
+
+
+class Analysis(object):
 
     def __init__(self,
                  paths,
                  tr,
-                 filename = 'svm100.pkl',
                  visualize = False,
                  noOutput = False
                  ):
-        self.filename = filename
+        #self.filename = filename
         self.visualize = visualize
         self.paths = paths
         self.tr = tr
         self.noOutput = noOutput
 
-    #def loop(method):
-    def run_method(self, subjIDs, runType, rois, method='mvpa', values='raw', offset=None, dur=None):
-        if type(subjIDs) not in [list, tuple]:
-            subjIDs = [subjIDs]            
-        results = []        
+    def run_method(self, subjIDs, runType, rois, method='svm', values='raw',
+                offset=None, dur=None, filename = 'RENAME.pkl',):
+
+        if type(subjIDs) not in [list, tuple]: subjIDs = [subjIDs]
+        results = []
+        #loadable = []
+        ## quick way to see if we need to import mvpa2.suite
+        #for sNo, subjID in enumerate(subjIDs):
+            #try:
+                #filename_full = filename % (method, values, subjID)
+            #except:
+                #pass
+            #loadable.append(os.path.isfile(filename_full))
+        #import pdb; pdb.set_trace()
+        #if not np.all(loadable):
+
+
         for subjID in subjIDs:
             print subjID
             try:
-                filename = self.filename % (values, subjID)
+                filename = filename % (method, values, subjID)
             except:
-                filename = self.filename
+                pass
             loaded = False
-            if method=='mvpa':
+            if method in ['corr', 'svm']:
                 try:
                     header, result = pickle.load(open(filename,'rb'))
                     results.extend(result)
@@ -62,65 +87,109 @@ class MVPA(object):
                     # header = [i[0] for i in result[0]]
                     # for res in result:
                     #     results.append([r[1] for r in res])
-                    
-                    print '%s: loaded stored svm %s results' % (subjID, values)
+                    print '%s: loaded stored %s %s results' % (subjID, values)
                     loaded = True
                 except:
-                    pass
+                    print "WARNING: %s: Could't load from the file %s" % (subjID, filename)
 
             if not loaded:
                 temp_res = []
-                for r, ROI_list in enumerate(rois):                    
+                for r, ROI_list in enumerate(rois):
                     print ROI_list[1],
-                    if values in ['raw', 'raw_avg']:
-                        ds = self.extract_samples(subjID, runType, ROI_list, values=values)
-                        ds = self.detrend(ds)
-                        if ROI_list[1] in ['pFs', 'LO']:
-                            offset = 3#2
-                        else: 
-                            offset = 4#3
-                        evds = self.ds2evds(ds, offset=offset, dur=dur)
-                        if method == 'time_course':
-                            header, result = self.get_psc(evds)
-                        elif method == 'univariate':
-                            header, result = self.psc_diff(evds)
-                        else:
-                            evds = evds[evds.sa.targets != 0]
-                            header, result = self.svm(evds, nIter=100)
-                    elif values in ['t', 'beta']:
-                        ds = self.extract_samples(subjID, runType, ROI_list, 
+                    ds = self.extract_samples(subjID, runType, ROI_list,
                                                   values=values)
-                        ds = ds[ds.sa.targets != 0]
+                    if values in ['raw', 'raw_top']:
+                        ds = self.detrend(ds)
+                        if type(offset) == dict:  # different offsets for ROIs
+                            off = offset[ROI_list[1]]
+                        else:
+                            off = offset
+                        evds = self.ds2evds(ds, offset=off, dur=dur)
+                    elif values in ['t', 'beta']:
                         # SPM sets certain voxels to NaNs
                         # we just gonna convert them to 0
                         # import pdb; pdb.set_trace()
                         # ds = ds[np.logical_not(np.isnan(ds.samples))]
                         # import pdb; pdb.set_trace()
                         ds.samples = np.nan_to_num(ds.samples)
+                        evds = ds
 
-                        # ds.samples = ds.samples[:,keep]
-                        header, result = self.svm(ds, nIter=100)
+                    if method == 'timecourse':
+                        header, result = self.get_timecourse(evds)
+                    elif method == 'signal':
+                        header, result = self.get_signal(evds, values)
+                    elif method == 'univariate':
+                        header, result = self.get_univariate(evds, values)
+                    elif method == 'corr':
+                        evds = evds[evds.sa.targets != 0]
+                        header, result = self.get_correlation(evds, nIter=100)
+                    elif method == 'svm':
+                        evds = evds[evds.sa.targets != 0]
+                        header, result = self.get_svm(evds, nIter=100)
+
+
+                    #if values in ['raw', 'raw_top']:
+                        #ds = self.extract_samples(subjID, runType, ROI_list, values=values)
+                        #ds = self.detrend(ds)
+                        #if type(offset) == dict:  # different offsets for ROIs
+                            #off = offset[ROI_list[1]]
+                        #else:
+                            #off = offset
+                        #evds = self.ds2evds(ds, offset=off, dur=dur)
+                        #if method == 'time_course':
+                            #header, result = self.get_psc(evds)
+                        #elif method == 'univariate':
+                            #header, result = self.psc_diff(evds)
+                        #else:
+                            #evds = evds[evds.sa.targets != 0]
+                            #if method == 'corr':
+                                #header, result = self.correlation(evds, nIter=100)
+                            #elif method == 'svm':
+                                #header, result = self.svm(evds, nIter=100)
+                    #elif values in ['t', 'beta']:
+                        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+                        #ds = ds[ds.sa.targets != 0]
+                        ## SPM sets certain voxels to NaNs
+                        ## we just gonna convert them to 0
+                        ## import pdb; pdb.set_trace()
+                        ## ds = ds[np.logical_not(np.isnan(ds.samples))]
+                        ## import pdb; pdb.set_trace()
+                        #ds.samples = np.nan_to_num(ds.samples)
+
+                        ## ds.samples = ds.samples[:,keep]
+                        #if method == 'corr':
+                            #header, result = self.correlation(ds, nIter=100)
+                        #elif method == 'svm':
+                            #header, result = self.svm(ds, nIter=100)
                     else:
-                        raise NotImplementedError('MVPA for %s values is not '
-                                                  'implemented yet')
+                        raise NotImplementedError('Analysis for %s values is not '
+                                                  'implemented')
 
                     header.extend(['subjID', 'ROI'])
                     for line in result:
                         line.extend([subjID, ROI_list[1]])
                         temp_res.append(line)
+                print
                 results.extend(temp_res)
 
                 # import pdb; pdb.set_trace()
-                if not self.noOutput:
+                if not self.noOutput and method in ['corr', 'svm']:
                     # mvpa2.suite.h5save(rp.o, results)
                     try:
                         os.makedirs(self.paths['analysis'])
                     except:
                         pass
-                    
+
                     pickle.dump([header,temp_res], open(filename,'wb'))
 
         return header, results
+
+    #def time_course(self):
+        #ds = self.extract_samples(subjID, runType, ROI_list,
+                                                  #values=values)
+
+
         #return thisloop
 
     #@loop
@@ -147,17 +216,17 @@ class MVPA(object):
     #         clf: 'SMLR', 'LinearCSVMC', 'LinearNuSVMC', 'RbfNuSVMC', or 'RbfCSVMC', or a list of them
     #             A name of the classifier to be used
 
-    #     """        
+    #     """
     #     ds = self.extract_samples(subjID, runType, ROI_list)
     #     ds = self.detrend(ds)
     #     evds = self.ds2evds(ds, offset=offset, dur=dur)
     #     evds = evds[evds.sa.targets != 0]
     #     return self.svm(evds)
-        
+
 
     def get_evds(self, ds):
         pass
-        
+
 
 
     def extract_samples(self,
@@ -198,7 +267,7 @@ class MVPA(object):
         """
 
         reuse = True
-        if values in ['raw', 'raw_avg']:
+        if values in ['raw', 'raw_top']:
             add = ''
         else:
             add = '_' + values
@@ -229,9 +298,9 @@ class MVPA(object):
             thisMask = thisMask[::-1]
 
             if self.visualize: self.plot_struct(self.paths['data_fmri']
-                 %subjID + 'swmeanafunc_*.nii')             
-             
-            if values in ['raw', 'raw_avg']:            
+                 %subjID + 'swmeanafunc_*.nii')
+
+            if values in ['raw', 'raw_top']:
                 # find all functional runs of a given runType
                 allImg = glob.glob((self.paths['data_fmri'] + 'swa*' + \
                                    runType + '.nii') % subjID)
@@ -242,25 +311,37 @@ class MVPA(object):
             elif values == 't':
                 data_path = self.paths['data_behav'] + 'data_*_%s.csv'
                 behav_data = self.get_behav_data(data_path %(subjID, runType))
-                labels = np.unique(behav_data['stim1.cond']).tolist()
+                try:
+                    labels = np.unique(behav_data['stim1.cond']).tolist()
+                except:
+                    labels = np.unique(behav_data['cond']).tolist()
                 labels = labels[1:]  # we skip fixation in t-values
                 numRuns = len(np.unique(behav_data['runNo']))
                 analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
-                tval = np.array(glob.glob(analysis_path + 'spmT_*.img'))
+                tval = np.array(sorted(glob.glob(analysis_path + 'spmT_*.img')))
+                if len(tval) != (numRuns + 1) * len(labels):
+                    raise Exception('Number of t value files is incorrect '
+                        'for participant %s' % subjID)
                 allImg = tval[np.arange(len(tval)) % (numRuns+1) != numRuns]
                 ds = mvpa2.suite.fmri_dataset(
                     samples = allImg.tolist(),
                     targets = np.repeat(labels, numRuns).tolist(),
                     chunks = np.tile(np.arange(numRuns), len(labels)).tolist(),
                     mask = thisMask
-                    )      
+                    )
             elif values == 'beta':
                 data_path = self.paths['data_behav'] + 'data_*_%s.csv'
                 behav_data = self.get_behav_data(data_path %(subjID, runType))
-                labels = np.unique(behav_data['stim1.cond']).tolist()
+                try:
+                    labels = np.unique(behav_data['stim1.cond']).tolist()
+                except:
+                    labels = np.unique(behav_data['cond']).tolist()
                 numRuns = len(np.unique(behav_data['runNo']))
                 analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
-                betaval = np.array(glob.glob(analysis_path + 'beta_*.img'))
+                betaval = np.array(sorted(glob.glob(analysis_path + 'beta_*.img')))
+                if len(betaval) != (len(labels) + 6) * numRuns + numRuns:
+                    raise Exception('Number of beta value files is incorrect '
+                        'for participant %s' % subjID)
                 select = [True]*len(labels) + [False]*6
                 select = np.array(select*numRuns + [False]*numRuns)
                 # if subjID == 'twolines2_03':
@@ -268,7 +349,7 @@ class MVPA(object):
                 allImg = betaval[select]
 
                 ds = []
-                nLabels = len(labels)                
+                nLabels = len(labels)
                 for runNo in range(numRuns):
                     ds.append( mvpa2.suite.fmri_dataset(
                         samples = allImg[runNo*nLabels:(runNo+1)*nLabels].tolist(),
@@ -277,6 +358,7 @@ class MVPA(object):
                         mask = thisMask
                         ))
                 ds = mvpa2.suite.vstack(ds)
+                #import pdb; pdb.set_trace()
                 # ds = self.tvalue_dataset(allImg, labels, analysis_path, thisMask)
 
             if True:
@@ -304,7 +386,7 @@ class MVPA(object):
             run_labels = []
             for lineNo, line in behav_data.iterrows():
                 # how many TRs per block or condition
-                repeat = int(line['dur'] / self.tr) 
+                repeat = int(line['dur'] / self.tr)
                 run_labels.extend( [line['stim1.cond']] * repeat )
             labels.append(run_labels)
 
@@ -315,28 +397,20 @@ class MVPA(object):
         """
         Create a dataset from an fMRI timeseries image.
 
-        Overrides mvpa2.datasets.mri.fmri_dataset which has a buggy multiple 
+        Overrides mvpa2.datasets.mri.fmri_dataset which has a buggy multiple
         images reading.
         """
         # Load in data for all runs and all ROIs
         chunkCount = 0
         first = True
-        for thisImg, thisLabel in zip(samples,labels):            
+        for thisImg, thisLabel in zip(samples,labels):
             # load the appropriate func file with a mask
-            if thisMask is None:
-                tempNim = mvpa2.suite.dataset_wizard(
-                    samples=thisImg,
-                    targets=thisLabel,
-                    chunks = chunkCount
+            tempNim = mvpa2.suite.fmri_dataset(
+                    samples = thisImg,
+                    targets = thisLabel,
+                    chunks = chunkCount,
+                    mask = thisMask
                     )
-
-            else:
-                tempNim = mvpa2.suite.fmri_dataset(
-                        samples = thisImg,
-                        targets = thisLabel,
-                        chunks = chunkCount,
-                        mask = thisMask
-                        )
             # combine all functional runs into one massive NIfTI Dataset
             if first:
                 ds = tempNim
@@ -347,27 +421,20 @@ class MVPA(object):
 
         return ds
 
-    def tvalue_dataset(self, samples, labels, analysis_path, thisMask=None):
-        
-          
-        return ds
-
-
-
     def detrend(self, ds):
         dsmean = np.mean(ds.samples)
         mvpa2.suite.poly_detrend(ds, polyord=2, chunks_attr='chunks')
         ds.samples += dsmean # recover the detrended mean
         return ds
-        
+
     def ds2evds(self, ds, offset=2, dur=2):
-        
+
         # if self.visualize: self.plotChunks(ds, chunks=[0], shiftTp=2)
 
         # convert to an event-related design
         events = mvpa2.suite.find_events(targets=ds.sa.targets, chunks=ds.sa.chunks)
         # import pdb; pdb.set_trace()
-        # Remove the first and the last fixation period of each block        
+        # Remove the first and the last fixation period of each block
         # We don't want any overlap between chunks
         events_temp = []
         for evNo, ev in enumerate(events):
@@ -438,14 +505,14 @@ class MVPA(object):
         plt.plot(meanPerChunk.T)
         plt.show()
 
-    def get_psc(self, evds):
+    def get_timecourse(self, evds):
         """
         For each condition, extracts all timepoints as specified in the evds window, and averages across voxels
         """
         # plt.subplot(111)
         #vx_lty = ['-', '--']
         #t_col = ['b', 'r']
-        
+
         #evds[]
         # allConds = exp.OrderedDict([
         #     ('metric',[1,4,7,10]),
@@ -456,31 +523,48 @@ class MVPA(object):
         baseline = evds[evds.sa.targets == 0].samples
         baseline = evds.a.mapper[-1].reverse(baseline)
         # average across all voxels and all blocks
-        baseline = np.mean(np.mean(baseline,2),0)        
+        baseline = np.mean(np.mean(baseline,2),0)
+        if np.any(baseline<0):
+            print 'WARNING: some baseline values are negative'
         # now plot the mean timeseries and standard error
         header = ['stim1.cond', 'time', 'subjResp']
         results = []
         for cond in evds.UT:
             if cond != 0:
                 evdsMean = evds[np.array([t == cond for t in evds.sa.targets])].samples
+                # recover 3D evds structure: measurements x time points x voxels
                 evdsMean = evds.a.mapper[-1].reverse(evdsMean)
-                # average across all voxels
+                # average across all voxels and measurements
                 evdsMean = np.mean(np.mean(evdsMean,2),0)
                 # import pdb; pdb.set_trace()
                 # l = mvpa2.suite.plot_err_line((evdsMean-baseline)/baseline*100)
-                if np.any(baseline<0):
-                    print 'WARNING: some baseline values are negative'
-                thispsc = (evdsMean-baseline)/baseline*100
+
+                thispsc = (evdsMean - baseline) / baseline * 100
                 #time = np.arange(len(thispsc))*self.tr
                 for pno, p in enumerate(thispsc):
                     results.append([cond, pno*self.tr, p])
         return header, results
 
-    def psc_diff(self, evds):
+    def get_signal(self, evds, values):
+        header = ['stim1.cond', 'subjResp']
+        results = []
+        baseline = evds[evds.sa.targets == 0].samples
+        baseline = np.mean(baseline)
+        for cond in evds.UT:
+            if cond != 0:
+                evds_cond = evds[np.array([t == cond for t in evds.sa.targets])].samples
+                evdsMean = np.mean(evds_cond)
+                if values in ['raw', 'raw_top']:
+                    evdsMean = (evdsMean - baseline) / baseline * 100
+                results.append([cond, evdsMean])
+        return header, results
+
+
+    def get_univariate(self, evds, values):
         # run_averager = mvpa2.suite.mean_group_sample(['targets'])
         # evds_avg = evds.get_mapped(run_averager)
         # numT = len(evds_avg.UT)
-        head, psc = self.get_psc(evds)
+        head, psc = self.get_signal(evds, values)
         df = pandas.DataFrame(psc, columns=head)
         agg = df.groupby('stim1.cond')['subjResp'].mean()
         header = ['stim1.cond', 'stim2.cond', 'subjResp']
@@ -492,7 +576,7 @@ class MVPA(object):
         return header, results
 
 
-    def correlation(self,
+    def get_correlation(self,
                     evds,
                     nIter = 10  # how many iterations for
                     ):
@@ -508,13 +592,15 @@ class MVPA(object):
         # subtract the mean chunk-wise
         evds_avg.samples -= np.repeat(mean, numT, 0)
 
-        results = np.zeros((nIter,numT,numT))
+        #results = np.zeros((nIter,numT,numT))
         runtype = [0,1] * (len(evds_avg.UC)/2) + \
                    [-1] * (len(evds_avg.UC)%2)
                    # for odd number of chunks (will get rid of one)
-
+        targets = evds_avg.UT
+        header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
+        results = []
         for n in range(nIter):
-            print n,
+            #print n,
             np.random.shuffle(runtype)
             evds_avg.sa['runtype'] = np.repeat(runtype,numT)
 
@@ -526,8 +612,11 @@ class MVPA(object):
             run_averager = mvpa2.suite.mean_group_sample(['targets'])
             evds_split2 = evds_split2.get_mapped(run_averager)
 
+            result = mvpa2.clfs.distance.one_minus_correlation(evds_split1.samples, evds_split2.samples)/2
 
-            results[n] = mvpa2.clfs.distance.one_minus_correlation(evds_split1.samples, evds_split2.samples)/2
+            for i in range(0, numT):
+                for j in range(0, numT):
+                    results.append([n, targets[i], targets[j], result[i,j]])
 
         print
         # meanPerIter = np.mean(np.mean(results, 2), 1)
@@ -535,10 +624,10 @@ class MVPA(object):
         # plt.plot(cumMean)
     #    plt.show()
 
-        return np.mean(results, 0)
+        return header, results
 
 
-    def svm(self,
+    def get_svm(self,
             evds,
             nIter = 100,  # how many iterations for
             clf=None  # classifier
@@ -574,7 +663,7 @@ class MVPA(object):
         #    runtype = [0]*(len(evds_avg.UC)-2) + [1]*2
         ###
 
-        targets = evds_avg.UT
+        #targets = evds_avg.UT
         header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
         results = []
         for n in range(nIter):
@@ -603,21 +692,21 @@ class MVPA(object):
                         # keep = np.logical_not(np.isnan(evds_test))
                         evds_test_ij = evds_test[ind_test]
                         # import pdb; pdb.set_trace()
-                        
-                        
+
+
                         # evds_test_ij = evds_test_ij[:,keep]
                         # fsel = mvpa2.suite.StaticFeatureSelection(keep)
                         # clf = mvpa2.suite.LinearNuSVMC()
-                        # clf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)   
+                        # clf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)
 
 
-                        
-                        clf.train(evds_train_ij) 
+
+                        clf.train(evds_train_ij)
                         #fsel = mvpa2.suite.SensitivityBasedFeatureSelection(
                             #mvpa2.suite.OneWayAnova(),
                             #mvpa2.suite.FractionTailSelector(0.05, mode='select', tail='upper'))
-                        #fclf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)                
-                        #fclf.train(evds_train_ij)                
+                        #fclf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)
+                        #fclf.train(evds_train_ij)
 
                         # sensana = clf.get_sensitivity_analyzer()
                         # sens = sensana(evds_train_ij)
@@ -626,14 +715,14 @@ class MVPA(object):
                         # evds_train_ij.samples = evds_train_ij.samples[:,inds>=len(inds)-100]
                         # #import pdb; pdb.set_trace()
                         # clf.train(evds_train_ij)
-                        
+
                         # test_samp = evds_test_ij.samples[:,inds>=len(inds)-100]
                         # predictions = clf.predict(test_samp)
                         predictions = clf.predict(evds_test_ij.samples)
                         pred = np.mean(predictions == evds_test_ij.sa.targets)
                     results.append([n, targets[0], targets[1], pred])
-                    
-                    
+
+
 
         print
     #    meanPerIter = np.mean(np.mean(results, 2), 1)
@@ -650,11 +739,11 @@ class MVPA(object):
                    method = 'svm',
                    nIter = 10,  # how many iterations for  # have more for SVM
                    meanFunc = 'across voxels',
-                   ):        
+                   ):
         """
         DEPRECATED.
-        Computes a dissimilarity (0 - very similar, 1 - very dissimilar) between 
-        two splits of data over multiple iterations. If method is correlation, 
+        Computes a dissimilarity (0 - very similar, 1 - very dissimilar) between
+        two splits of data over multiple iterations. If method is correlation,
         dataset is split in half. If svm, leave-one-chunk.
         """
 
@@ -703,7 +792,7 @@ class MVPA(object):
             # filling in the results matrix
             for index,value in np.ndenumerate(results[n]):
                 # target pair for that particular matrix cell
-                indexT = (targets[index[0]],  targets[index[1]])  
+                indexT = (targets[index[0]],  targets[index[1]])
 
                 ind_train = np.array([i in indexT  for i in ds_split_train.sa.targets])
                 ds_train = ds_split_train[ind_train]
@@ -725,11 +814,11 @@ class MVPA(object):
                 if method=='corr':
                     cr = mvpa2.clfs.distance.one_minus_correlation(ds_train.samples,ds_test.samples)
                     # if one target then there's one correlation only
-                    if index[0] == index[1]: acc = cr  
+                    if index[0] == index[1]: acc = cr
                     else: acc = np.mean([ cr[0,1], cr[1,0] ])
                     results[n,index[0],index[1]] = acc
 
-                elif method=='svm':                    
+                elif method=='svm':
                     if index[0] == index[1]:  # can't do svm, so assume
                         results[n,index[0],index[1]] = 1
                     else:
@@ -826,9 +915,6 @@ class MVPA(object):
         plt.imshow(meanFunc[:,:,coords[2]].T, cmap=mpl.cm.gray,
             origin='lower', interpolation='nearest')
         plt.show()
-    
-
-    
 
 
     def genFakeData(self, nChunks = 4):
@@ -872,10 +958,10 @@ class MVPA(object):
         space = 'talairach',
         spm = False
         ):
-        
+
         """
         Calculates mean coordinates and the number of voxels of each given ROI.
-        
+
         **Parameters**
             rp: Namespace (required)
                 Run parameters that are parsed from the command line
@@ -888,18 +974,18 @@ class MVPA(object):
             spm: True or False
                 If True, then the coordinates in the voxel space are provided with
                 indices +1 to match MatLab's convention of starting arrays from 1.
-        
+
         """
-        
+
         if subROIs: names = ['subjID','ROI','subROI','x','y','z','numVoxels']
         else: names = ['subjID','ROI','x','y','z','numVoxels']
         recs = []
-        
+
         # allCoords = np.zeros((1,4))
         for subjIDno, subjID in enumerate(rp.subjID_list):
-        
+
             for ROI_list in rp.rois:
-                
+
                 allROIs = []
                 for thisROI in ROI_list[2]:
                     allROIs.extend(q.listDir(scripts.core.init.paths['recDir'] %subjID,
@@ -907,57 +993,57 @@ class MVPA(object):
                 #import pdb; pdb.set_trace()
                 if allROIs != []:
                     SForm = nb.load(allROIs[0]).get_header().get_sform()
-                    
+
                     # check for overlap
                     # if subjID == 'twolines_06': import pdb; pdb.set_trace()
                     print [os.path.basename(subROI) for subROI in allROIs]
                     #
-                    mask = sum([np.squeeze(nb.load(subROI).get_data()) for subROI in allROIs])            
+                    mask = sum([np.squeeze(nb.load(subROI).get_data()) for subROI in allROIs])
                     if not suppressText:
                         overlap = mask > 2
                         if np.sum(overlap) > 0:
                             print 'WARNING: Overlap in %(subjID)s %(ROI)s detected.'\
                             %{'subjID': subjID, 'ROI': ROI_list[1]}
-                        
-                    
-                    if not subROIs: allROIs = [mask]            
+
+
+                    if not subROIs: allROIs = [mask]
                     for subROI in allROIs:
-                        
+
                         if subROIs: subROIname = os.path.basename(os.path.abspath(subROI)).split('.')[0]
                         else: subROIname = ROI_list[1]
                         #import pdb; pdb.set_trace()
                         if subROIs: thisROI = nb.load(subROI).get_data()
                         else: thisROI = subROI
                         transROI = np.transpose(thisROI.nonzero())
-                        
+
                         meanROI = np.mean(transROI,0)[1:]
                         meanROI = meanROI[::-1] # reverse the order per convention
-                    
-                        # convert to the Talairach coordinates 
+
+                        # convert to the Talairach coordinates
                         if space == 'talairach':
                             meanROI = np.dot(SForm, np.concatenate((meanROI,[1]))) # convert
                             meanROI = meanROI[:-1] # remove the last coordinate (slice number)
                         else:
                             meanROI = [m+spm for m in meanROI] # +1 to correct for SPM coords
-                        
+
                         if subROIs:
                             recs.append((subjID,ROI_list[1],subROIname)+tuple(meanROI)+(transROI.shape[0],))
                         else:
                             recs.append((subjID,subROIname)+tuple(meanROI)+(transROI.shape[0],))
-        
-        
-            
+
+
+
         ROIparams = tb.tabarray(records = recs, names = names)
-        
+
         if not suppressText:
             if subROIs: on = ['ROI','subROI']
             else: on = ['ROI']
             ROImean = ROIparams.aggregate(On = on, AggFunc = np.mean,
                 AggFuncDict = {'subjID': lambda x: None})
-            
+
             xyz = ROIparams[['x','y','z']].extract().reshape((len(rp.subjID_list),-1,3))
             xyzErr = np.std(xyz, axis = 0, ddof = 1)
-            
+
             # sort ROImean
             numPerSubj = xyz.shape[1]
             order = ROIparams[:numPerSubj][on]
@@ -966,22 +1052,22 @@ class MVPA(object):
             ROImean.sort(order=on)
             ROImean = ROImean.addcols(order[['order']].extract(), names = 'order')
             ROImean.sort(order = 'order')
-            
+
             lenROI = min([len(ROI) for ROI in ROImean['ROI']])
             if subROIs: lenSubROI = min([len(ROI) for ROI in ROImean['subROI']])
             print
             print ROIparams.dtype.names[1:]
             for i, line in enumerate(ROImean):
-                print line['ROI'].ljust(lenROI+2),            
-                if subROIs: print line['subROI'].ljust(lenSubROI+2),            
+                print line['ROI'].ljust(lenROI+2),
+                if subROIs: print line['subROI'].ljust(lenSubROI+2),
                 print '%3d' %np.round(line['x']),
                 print u'\xb1 %d  ' %np.round(xyzErr[i,0]),
                 print '%3d' %np.round(line['y']),
                 print u'\xb1 %d  ' %np.round(xyzErr[i,1]),
                 print '%3d' %np.round(line['z']),
                 print u'\xb1 %d  ' %np.round(xyzErr[i,2]),
-                print '%4d' %np.round(line['numVoxels'])    
-        
+                print '%4d' %np.round(line['numVoxels'])
+
         return ROIparams
 
 
@@ -995,24 +1081,24 @@ class Preproc(object):
         """
         Splits the file that has realignment information by run.
         This is used for stats as each run with its covariates has to be entered separately.
-        """        
+        """
         funcImg = glob.glob(self.paths['data_fmri']%subjID + 'func_*_*.nii')
         regFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_afunc_*.txt')
-        
+
         if regFiles != []:  # if split_reg has not been done before
             reg = []
             for regFile in regFiles:
                 with open(regFile) as f: reg.extend( f.readlines() )
                 shutil.move(regFile,
                             (self.paths['fmri_root'] %subjID)+os.path.basename(regFile))
-            
+
             last = 0
             for func in funcImg:
                 runNo = func.split('.')[0].split('_')[-2]
-                
+
                 nim = nb.load(func)
                 dynScans = nim.get_shape()[3] # get number of acquisitions
-                
+
                 runType = func.split('.')[0].split('_')[-1]
                 outName = self.paths['data_fmri']%subjID + 'rp_%s_%s.txt' %(runNo,runType)
 
@@ -1020,7 +1106,7 @@ class Preproc(object):
                     f.writelines(reg[last:last+dynScans])
                     last += dynScans
 
-    
+
     def gen_stats_batch(self, subjID, runType=None, condcol='cond', descrcol='name'):
         if runType is None:
             runType = ['main','loc','mer']
@@ -1035,7 +1121,7 @@ class Preproc(object):
         f.write("spm('defaults','fmri');\nspm_jobman('initcfg');\nclear matlabbatch\n\n")
 
         for rtNo, runType in enumerate(runType):
-            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),'analysis',runType))            
+            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),'analysis',runType))
             try:
                 os.makedirs(analysisDir)
             except:
@@ -1046,20 +1132,20 @@ class Preproc(object):
                                 os.path.relpath(analysisDir, curpath))
             dataFiles = glob.glob(self.paths['data_behav']%subjID + 'data_*_%s.csv' %runType)
             # import pdb; pdb.set_trace()
-            regressorFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_*_%s.txt' %runType)        
+            regressorFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_*_%s.txt' %runType)
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = %s;\n" %(3*rtNo+1, analysisDir_str))
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.units = 'secs';\n" %(3*rtNo+1))
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.RT = 2;\n" %(3*rtNo+1))
-            
+
             for rnNo, dataFile in enumerate(dataFiles):
                 runNo = int(os.path.basename(dataFile).split('_')[1])
-                
+
                 data = np.recfromcsv(dataFile, case_sensitive = True)
                 swapath = os.path.relpath(self.paths['data_fmri']%subjID, curpath)
                 f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = " %(3*rtNo+1,rnNo+1) +
                     # "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
                     "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(swapath,runNo,runType))
-                
+
                 conds = np.unique(data[condcol])
                 if runType == 'mer':
                     conds = conds[conds!=0]
@@ -1074,7 +1160,7 @@ class Preproc(object):
                     if 'blockNo' in agg.dtype.names:
                         onsets = []
                         durs = []
-                        for block in np.unique(agg['blockNo']): 
+                        for block in np.unique(agg['blockNo']):
                             onsets.append( agg[agg['blockNo']==block]['onset'][0] )
                             durs.append( np.around(sum( agg[agg['blockNo']==block]['dur'] ), decimals = 1) )
                     else:
@@ -1087,7 +1173,7 @@ class Preproc(object):
 
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).onset = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,onsets))
                     f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).duration = %s;\n" %(3*rtNo+1,rnNo+1,cNo+1,durs))
-                        
+
                 regpath = os.path.relpath(regressorFiles[rnNo], curpath)
                 regpath_str = "cellstr(spm_select('FPList','%s','^%s$'))" % (os.path.dirname(regpath), os.path.basename(regpath))
                 f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).multi_reg = %s;\n\n" %(3*rtNo+1,rnNo+1,regpath_str))
@@ -1096,7 +1182,7 @@ class Preproc(object):
             f.write("matlabbatch{%d}.spm.stats.fmri_est.spmmat = %s" % (3*rtNo+2, spmmat))
             f.write("matlabbatch{%d}.spm.stats.con.spmmat = %s" %(3*rtNo+3,
                 spmmat))
-            
+
             if runType == 'loc':
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.name = 'all > fix';\n" %(3*rtNo+3))
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.convec = [-2 1 1];\n" %(3*rtNo+3))
@@ -1110,11 +1196,11 @@ class Preproc(object):
                 f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.sessrep = 'repl';\n\n\n" %(3*rtNo+3))
             else:
                 # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.name = 'all > fix';\n" %(3*rtNo+3))
-                
+
                 conds = np.unique(data[condcol])
                 descrs = []
                 # skip fixation condition as it's our baseline
-                for cond in conds[1:]: 
+                for cond in conds[1:]:
                     descrs.append((cond,
                         data[data[condcol]==cond][descrcol][0]))
                 # descrs = np.unique(data['descr'])
@@ -1124,7 +1210,7 @@ class Preproc(object):
                 # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.convec = [%s];\n" %(3*rtNo+3,thisCond))
                 # f.write("matlabbatch{%d}.spm.stats.con.consess{1}.tcon.sessrep = 'repl';\n" %(3*rtNo+3))
 
-                # dNo is corrected with +2: +1 for Matlab and +1 because we 
+                # dNo is corrected with +2: +1 for Matlab and +1 because we
                 # have 'all > fix'
                 # for now disabled
                 for dNo, descr in enumerate(descrs):
@@ -1140,112 +1226,155 @@ class Preproc(object):
         f.close()
 
 
-class Plot(plot.Plot):
-    def make_symmetric(self, similarity):
-        res = np.zeros(similarity.shape)
-        for i in range(similarity.shape[0]):
-            for j in range(similarity.shape[1]):
-                res[i,j] = (similarity[i,j]+similarity[j,i])/2
-        return res
+"""
+Plotting tools
+"""
+class Plot(object):
 
-    def make_full(self, distance):
-        res = np.nan*np.ones(distance.shape)
-        iu = np.triu_indices(len(distance),k=1)  # upper triangle less diagonal
-        il = np.tril_indices(len(distance),k=-1)  # lower triangle less diagonal
-        res[iu] = distance[iu]
-        res = res.T
-        res[iu] = distance[iu]
-        return res
+    def __init__(self):
+        pass
 
-    def plot_similarity(self, similarity, names=None, percent=False):
-        similarity = make_symmetric(similarity)
-        trace = similarity.trace()/len(similarity)
-        offdiag = (np.sum(similarity) - similarity.trace()) / len(similarity) / (len(similarity)-1)
-        print '%.2f' %trace,
-        print '%.2f' %offdiag,
-        iu = np.triu_indices(len(similarity),k=1)  # upper triangle less diagonal
-        rel = np.corrcoef(similarity[iu],similarity.T[iu])[0,1]
-        print '%.2f' %rel
-    #    import pdb; pdb.set_trace()
-        if percent: plot_data = similarity*100
-        else: plot_data = similarity
-        im = plt.imshow(plot_data,interpolation='none',vmin=.45,vmax=.86)
-        plt.colorbar(im, use_gridspec=True)
-        # plt.tight_layout()
-        
-        if not names is None:
-            names = [n[1] for n in names]
-            locs, labels = plt.xticks(range(plot_data.shape[1]), names)
-            plt.setp(labels, 'rotation', 'vertical')
-            locs, labels = plt.yticks(range(plot_data.shape[0]), names)
-        for index,value in np.ndenumerate(plot_data):
-            if np.isnan(value): h = ''
-            else:
-                if percent: h = '%d' %(value*100)
-                else: h = '.%d' %(value*100)
-            plt.text(index[1]-.5,index[0]+.5,h)
-        return im
-        
-    def plot_hcluster(self, similarity, names):
-        import hcluster
-        similarity = make_symmetric(similarity)
-        sim2 = similarity - .5
-        sim2[sim2<0] = 0
-        # distance = Orange.core.SymMatrix(1-similarity)
-        # root = Orange.clustering.hierarchical.HierarchicalClustering(distance)
-        tree = hcluster.hcluster(sim2)
-        imlist = [ str(i[0]) + '-' + i[1] for i in names]
-        dendogram = hcluster.drawdendrogram(tree,imlist,jpeg='sunset.jpg')
-        plt.imshow(dendogram, cmap=plt.cm.gray)
+def make_symmetric(similarity):
+    res = np.zeros(similarity.shape)
+    for i in range(similarity.shape[0]):
+        for j in range(similarity.shape[1]):
+            res[i,j] = (similarity[i,j]+similarity[j,i])/2
+    return res
 
-    def plot_mds(self, similarity, names):
-        # 
-        similarity = make_symmetric(similarity)
-        sim2 = similarity - .5
-        sim2[sim2<0] = 0
-        #import pdb; pdb.set_trace()
-        distance = Orange.core.SymMatrix(sim2)
-        #import pdb; pdb.set_trace()
-        mds = Orange.projection.mds.MDS(distance)
-        mds.run(100)
-        for (x, y), name in zip(mds.points,names):
-            plt.plot((x,),(y,),'ro')
-            plt.text(x,y,name[1])
-            
-    def mean_diag_off(self, matrix):
-        trace = matrix.trace()/len(matrix)
-        offdiag = (np.sum(matrix) - matrix.trace()) / len(matrix) / (len(matrix)-1)
-        return [trace,offdiag]
+def make_full(distance):
+    res = np.nan*np.ones(distance.shape)
+    iu = np.triu_indices(len(distance),k=1)  # upper triangle less diagonal
+    il = np.tril_indices(len(distance),k=-1)  # lower triangle less diagonal
+    res[iu] = distance[iu]
+    res = res.T
+    res[iu] = distance[iu]
+    return res
 
-    def avg_blocks(self, matrix, coding):
-        coding = np.array(coding)
-        coding_int = coding[np.not_equal(coding, None)] # remove nones
-    #    try:
-    #        np.bincount(coding_int)>1
-    #    except:
-    #        import pdb; pdb.set_trace()
-        coding_int = coding_int.astype(np.int)
-        if not np.all(np.bincount(coding_int)>1):
-            print np.bincount(coding_int)
-            sys.exit('You have a single occurence of some entry')
+def plot_similarity(similarity, names=None, percent=False):
+    similarity = make_symmetric(similarity)
+    trace = similarity.trace()/len(similarity)
+    offdiag = (np.sum(similarity) - similarity.trace()) / len(similarity) / (len(similarity)-1)
+    print '%.2f' %trace,
+    print '%.2f' %offdiag,
+    iu = np.triu_indices(len(similarity),k=1)  # upper triangle less diagonal
+    rel = np.corrcoef(similarity[iu],similarity.T[iu])[0,1]
+    print '%.2f' %rel
+#    import pdb; pdb.set_trace()
+    if percent: plot_data = similarity*100
+    else: plot_data = similarity
+    im = plt.imshow(plot_data,interpolation='none',vmin=.45,vmax=.86)
+    plt.colorbar(im, use_gridspec=True)
+    # plt.tight_layout()
+
+    if not names is None:
+        names = [n[1] for n in names]
+        locs, labels = plt.xticks(range(plot_data.shape[1]), names)
+        plt.setp(labels, 'rotation', 'vertical')
+        locs, labels = plt.yticks(range(plot_data.shape[0]), names)
+    for index,value in np.ndenumerate(plot_data):
+        if np.isnan(value): h = ''
         else:
-            uniquec = np.unique(coding_int)
-            avg = np.zeros( (len(uniquec),len(uniquec)) )
-            for i,ui in enumerate(uniquec):
-                indi = coding == ui
-                for j,uj in enumerate(uniquec):
-                    indj = coding == uj
-                    ind = np.outer(indi,indj)
-                    np.fill_diagonal(ind,False)
-                    avg[i,j] = np.mean(matrix[ind])
-        return avg
+            if percent: h = '%d' %(value*100)
+            else: h = '.%d' %(value*100)
+        plt.text(index[1]-.5,index[0]+.5,h)
+    return im
 
-    def plot_psc(self, *args, **kwargs):
-        ax = self.pivot_plot(marker='o', kind='line', *args, **kwargs)        
-        ax.set_xlabel('Time since trial onset, s')            
-        ax.set_ylabel('Signal change, %')
-        ax.axhline(linestyle='--', color='0.6')
-        # plt.xlim(( 0,evdsMean.shape[1]+1 ))
-        # plt.ylim((-.5,2.))
-        ax.legend(loc=0).set_visible(False)
-        return ax
+def plot_hcluster(similarity, names):
+    import hcluster
+    similarity = make_symmetric(similarity)
+    sim2 = similarity - .5
+    sim2[sim2<0] = 0
+    # distance = Orange.core.SymMatrix(1-similarity)
+    # root = Orange.clustering.hierarchical.HierarchicalClustering(distance)
+    tree = hcluster.hcluster(sim2)
+    imlist = [ str(i[0]) + '-' + i[1] for i in names]
+    dendogram = hcluster.drawdendrogram(tree,imlist,jpeg='sunset.jpg')
+    plt.imshow(dendogram, cmap=plt.cm.gray)
+
+def plot_mds(similarity, names):
+    #
+    similarity = make_symmetric(similarity)
+    sim2 = similarity - .5
+    sim2[sim2<0] = 0
+    #import pdb; pdb.set_trace()
+    distance = Orange.core.SymMatrix(sim2)
+    #import pdb; pdb.set_trace()
+    mds = Orange.projection.mds.MDS(distance)
+    mds.run(100)
+    for (x, y), name in zip(mds.points,names):
+        plt.plot((x,),(y,),'ro')
+        plt.text(x,y,name[1])
+
+def mean_diag_off(matrix):
+    trace = matrix.trace()/len(matrix)
+    offdiag = (np.sum(matrix) - matrix.trace()) / len(matrix) / (len(matrix)-1)
+    return [trace,offdiag]
+
+def avg_blocks(matrix, coding):
+    coding = np.array(coding)
+    coding_int = coding[np.not_equal(coding, None)] # remove nones
+#    try:
+#        np.bincount(coding_int)>1
+#    except:
+#        import pdb; pdb.set_trace()
+    coding_int = coding_int.astype(np.int)
+    if not np.all(np.bincount(coding_int)>1):
+        print np.bincount(coding_int)
+        sys.exit('You have a single occurence of some entry')
+    else:
+        uniquec = np.unique(coding_int)
+        avg = np.zeros( (len(uniquec),len(uniquec)) )
+        for i,ui in enumerate(uniquec):
+            indi = coding == ui
+            for j,uj in enumerate(uniquec):
+                indj = coding == uj
+                ind = np.outer(indi,indj)
+                np.fill_diagonal(ind,False)
+                avg[i,j] = np.mean(matrix[ind])
+    return avg
+
+def plot_psc(*args, **kwargs):
+    ax = plot.pivot_plot(marker='o', kind='line', *args, **kwargs)
+    ax.set_xlabel('Time since trial onset, s')
+    ax.set_ylabel('Signal change, %')
+    ax.axhline(linestyle='--', color='0.6')
+    # plt.xlim(( 0,evdsMean.shape[1]+1 ))
+    # plt.ylim((-.5,2.))
+    ax.legend(loc=0).set_visible(False)
+    return ax
+
+
+"""
+Other tools
+"""
+def make_roi_pattern(rois):
+    """
+    Takes ROI names and expands them into a list of:
+        - ROI name as given
+        - Pretty ROI name for output
+        - ROI names with * prepended and appended for finding these ROIs easily
+        using `glob`
+
+    Args:
+        rois (list): A list of ROI names. Can contain str and tuples, where the
+        first element are ROI names and the second one is their "pretty"
+        (unifying) name, e.g., ['V1', (['rh_V2','lh_V2'], 'V2')]
+
+    Returns:
+        ROIs (list): a list of ROI names as described above
+    """
+    def makePatt(ROI):
+        return ['*'+thisROI+'*' for thisROI in ROI]
+
+    ROIs = []
+    for ROI in rois:
+        # renaming is provided
+        if type(ROI) == tuple:
+            ROIs.append(ROI + (makePatt(ROI[0]),))
+        # a list of ROIs is provived
+        elif type(ROI) == list:
+            ROIs.append((ROI,'-'.join(ROI),makePatt(ROI)))
+        # just a single ROI name provided
+        else:
+            ROIs.append((ROI,ROI,makePatt([ROI])))
+    return ROIs
