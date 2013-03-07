@@ -33,7 +33,7 @@ setup(
     version='0.4a2',
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
-    packages=['core', 'core.test'],
+    packages=['psychopy_ext', 'psychopy_ext.test'],
     cmdclass={'sdist': sdist_hg},
     url='http://klab.lt/psychopy_ext/',
     license='LICENSE',
