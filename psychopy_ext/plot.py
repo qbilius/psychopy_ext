@@ -94,7 +94,7 @@ class Plot(object):
         """
         if ncolors <= 12:
             colors_full = [mpl.cm.Paired(i * 1. / 11) for i in range(1, 12, 2)]
-            colors_pale = [mpl.cm.Paired(i * 1. / 11) for i in range(12, 2)]
+            colors_pale = [mpl.cm.Paired(i * 1. / 11) for i in range(10, -1, -2)]
             colors = colors_full + colors_pale
             return colors[:ncolors]
         else:
@@ -287,6 +287,10 @@ class Plot(object):
         edgecolors = []
         for c in colors:
             edgecolors.extend([c]*mean.shape[0])
+
+        if len(agg.items) == 1 and kind=='bean':
+            kind = 'bar'
+            print 'WARNING: Beanplot not available for a single measurement'
 
         if kind == 'bar':
             mean.plot(kind='bar', ax=ax, **{
@@ -993,7 +997,6 @@ class Plot(object):
             #s = 0.0
             cutoff = .001
             if cut is None:
-                #s = 5*max(np.std(d1), np.std(d2)) #FIXME: magic constant 1.5
                 stepsize = (d1.max()-d1.min()) / 100
                 area_low1 = 1  # max cdf value
                 area_low2 = 1  # max cdf value
@@ -1086,13 +1089,14 @@ class Plot(object):
 
         Reference: http://www.jstatsoft.org/v28/c01/paper
         """
-        #FIXME: Implement also the asymmetric beanplot
+
         #if pos is None:
             #pos = range(len(data.major_axis))
         if order is None:
             pos = range(len(data.major_axis))
         else:
             pos = np.lexsort((np.array(data.major_axis).tolist(),order))
+
         dist = np.max(pos)-np.min(pos)
         w = min(0.15*max(dist,1.0),0.5)
         self.stripchart(data=data, ax=ax, pos=pos, mean=mean, median=median, width=0.8*w)
