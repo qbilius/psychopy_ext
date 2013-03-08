@@ -517,8 +517,8 @@ class Experiment(TrialHandler):
         for thisTrial in self:
             trialClock.reset()
             thisTrial['onset'] = globClock.getTime()
-            #sys.stdout.write("\rtrial %s" % (trialNo+1))
-            #sys.stdout.flush()
+            sys.stdout.write("\rtrial %s" % (trialNo+1))
+            sys.stdout.flush()
 
             # go over each event in a trial
             allKeys = []
@@ -549,7 +549,7 @@ class Experiment(TrialHandler):
                 dataCSV.writerow(out)
 
             trialNo += 1
-        #sys.stdout.write("\r")  # clean up outputs
+        sys.stdout.write("\r")  # clean up outputs
         if not noOutput: dataFile.close()
 
 
