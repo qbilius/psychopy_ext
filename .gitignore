@@ -1,4 +1,8 @@
 *.py[cod]
+*.py~
+
+# temporary rst files
+*.rst~
 
 # C extensions
 *.so

@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+
+# Part of the psychopy_ext library
+# Copyright 2010-2013 Jonas Kubilius
+# The program is distributed under the terms of the GNU General Public License,
+# either version 3 of the License, or (at your option) any later version.
+
+"""Basic command-line and graphic user interface"""
+
 import wx, sys
 import argparse
 # some modules are only available in Python 2.6
@@ -5,6 +14,7 @@ try:
     from collections import OrderedDict
 except:
     from exp import OrderedDict
+
 
 class StaticBox(wx.StaticBox):
     def __init__(self, parent, label='', content=None):

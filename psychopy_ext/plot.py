@@ -1,14 +1,21 @@
+#!/usr/bin/env python
+
+# Part of the psychopy_ext library
+# Copyright 2010-2013 Jonas Kubilius
+# The program is distributed under the terms of the GNU General Public License,
+# either version 3 of the License, or (at your option) any later version.
+
+"""A wrapper of matplotlib for producing pretty plots by default"""
+
 import numpy as np
 import scipy.stats
+import pandas
+
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
-import pandas
 
-"""
-A library of simple and beautiful plots.
-"""
 
 class Plot(object):
 

@@ -1,11 +1,11 @@
-# Copyright 2010-2012 Jonas Kubilius
+#!/usr/bin/env python
+
+# Part of the psychopy_ext library
+# Copyright 2010-2013 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
-"""
-A library of helper functions for running experiments
-
-"""
+"""A library of helper functions for creating and running experiments"""
 
 import sys, os, csv, glob, random
 #import cPickle as pickle

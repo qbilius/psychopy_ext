@@ -1,5 +1,11 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+
+# Part of the psychopy_ext library
+# Copyright 2010-2013 Jonas Kubilius
+# The program is distributed under the terms of the GNU General Public License,
+# either version 3 of the License, or (at your option) any later version.
+
+"""A library of simple models of vision"""
 
 import sys
 import itertools

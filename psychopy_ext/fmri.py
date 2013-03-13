@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+
+# Part of the psychopy_ext library
+# Copyright 2010-2013 Jonas Kubilius
+# The program is distributed under the terms of the GNU General Public License,
+# either version 3 of the License, or (at your option) any later version.
+
+"""A wrapper of PyMVPA2 for simple fMRI analyses"""
+
 import os, sys, glob, shutil
 import cPickle as pickle
 
