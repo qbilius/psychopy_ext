@@ -1,22 +1,6 @@
 psychopy_ext Package
 ====================
 
-:mod:`computer` Module
-----------------------
-
-.. automodule:: psychopy_ext.computer
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-:mod:`default` Module
----------------------
-
-.. automodule:: psychopy_ext.default
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 :mod:`exp` Module
 -----------------
 
