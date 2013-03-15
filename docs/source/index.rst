@@ -10,17 +10,8 @@ Unlike PsychoPy which offers a great flexibility in how you approach creating ex
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    
    overview
    library/index
-
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-
+   api/index

@@ -20,12 +20,6 @@ try:
     import pandas
 except:
     pass
-#import wx
-#import matplotlib.pyplot as plt
-
-from computer import Computer
-
-
 
 
 class Experiment(TrialHandler):

@@ -255,23 +255,23 @@ class Analysis(object):
         """
         Produces a detrended dataset with info for classifiers.
 
-        **Parameters**
-            subjID: str
-            runType: str
-            tabData: tabular.tabarray
-                A tabarray with all information about conditions.
-                Must have 'sessNo', 'cond', and 'accuracy' columns
-            ROIs: list
+        :Args:
+            - subjID (str)
+                participant ID
+            - runType (str)
+                run type (useful if, for example, you also have
+                localizer runs which you probably want to analyze separately from
+                the experimental runs)
+            - ROIs (list)
                 A pattern of ROI file patterns to be combined into one ROI
-            # filter: **None** or str (a rule)
-                # Filter out particular datapoints
-            shiftTp: int
-                Specifies how many TRs after the onset of a stimulus to extract the signal
-            roi_path: str
-                A path where preprocessed ROI data is stored. This is typically used after you've extracted data once.
 
-        **Returns**
-            nim: NiftiDataset
+        :Kwargs:
+            values (str, default: 'raw')
+                What kind of values should be used. Usually you
+                have 'raw', 'beta', and 't'.
+
+        :Returns:
+            ds (Dataset)
 
         """
 
@@ -1343,6 +1343,9 @@ def avg_blocks(matrix, coding):
     return avg
 
 def plot_psc(*args, **kwargs):
+    """
+    DEPRECATED. Plots percent signal change of raw data
+    """
     ax = plot.pivot_plot(marker='o', kind='line', *args, **kwargs)
     ax.set_xlabel('Time since trial onset, s')
     ax.set_ylabel('Signal change, %')
@@ -1362,17 +1365,18 @@ def make_roi_pattern(rois):
         - ROI name as given
         - Pretty ROI name for output
         - ROI names with * prepended and appended for finding these ROIs easily
-        using `glob`
+            using `glob`
 
-    Args:
+    :Args:
         rois (list): A list of ROI names. Can contain str and tuples, where the
-        first element are ROI names and the second one is their "pretty"
-        (unifying) name, e.g., ['V1', (['rh_V2','lh_V2'], 'V2')]
+            first element are ROI names and the second one is their "pretty"
+            (unifying) name, e.g., ['V1', (['rh_V2','lh_V2'], 'V2')]
 
-    Returns:
+    :Returns:
         ROIs (list): a list of ROI names as described above
     """
     def makePatt(ROI):
+        """Expands ROI patterns by appennding *"""
         return ['*'+thisROI+'*' for thisROI in ROI]
 
     ROIs = []

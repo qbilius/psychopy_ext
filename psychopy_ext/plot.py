@@ -154,18 +154,20 @@ class Plot(object):
         """
         Aggregates data over specified dimensions
 
-        Args:
+        :Args:
             df (pandas.DataFrame): A DataFrame with your data
-        Kwargs:
-            rows (str or list of str): Name(s) of column(s) that will be
+
+        :Kwargs:
+            - rows (str or list of str): Name(s) of column(s) that will be
                 aggregated and plotted on the x-axis
-            columns (str or list of str): ame(s) of column(s) that will be
+            - columns (str or list of str): ame(s) of column(s) that will be
                 aggregated and plotted in the legend
-            values (str): Name of the column that are aggregated
-            yerr (str): Name of the column to group reponses by. Typically, this
-            is the column with subject IDs, so that you remove outliers for each
-            participant separately (based on their mean and std)
-        Returns:
+            - values (str): Name of the column that are aggregated
+            - yerr (str): Name of the column to group reponses by. Typically,
+                this is the column with subject IDs to remove outliers for each
+                participant separately (based on their mean and std)
+
+        :Returns:
             df (pandas.DataFrame): A DataFrame without outliers
         """
         if type(rows) != list: rows = [rows]

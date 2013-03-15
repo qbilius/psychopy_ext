@@ -13,13 +13,46 @@
 
 import sys, os
 
+# check if we're on ReadTheDocs
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+
+# mock that certain modules are available
+class Mock(object):
+    __all__ = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __call__(self, *args, **kwargs):
+        return Mock()
+
+    @classmethod
+    def __getattr__(cls, name):
+        if name in ('__file__', '__path__'):
+            return '/dev/null'
+        elif name[0] == name[0].upper():
+            mockType = type(name, (), {})
+            mockType.__module__ = __name__
+            return mockType
+        else:
+            return Mock()
+
+MOCK_MODULES = ['wx', 'numpy',
+    'psychopy', 'psychopy.data', 'pandas', 'matplotlib',
+    'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'matplotlib.patches',
+    'scipy', 'scipy.stats', 'scipy.misc', 'scipy.ndimage',
+    'mvpa2', 'mvpa2.suite', 'nibabel']
+
+if on_rtd:
+    for mod_name in MOCK_MODULES:
+        sys.modules[mod_name] = Mock()
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-if not on_rtd:
-    docs_basepath = os.path.abspath(os.path.dirname(__file__))
-    sys.path.insert(0, os.path.abspath(os.path.join(docs_basepath, '../..')))
+#docs_basepath = os.path.abspath(os.path.dirname(__file__))
+#sys.path.insert(0, os.path.abspath(os.path.join(docs_basepath, '../..')))
+sys.path.insert(0, os.path.abspath('../../'))
 
 # -- General configuration -----------------------------------------------------
 
@@ -94,7 +127,10 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'pyramid'
+if on_rtd:
+    html_theme = 'default'
+else:
+    html_theme = 'pyramid'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
