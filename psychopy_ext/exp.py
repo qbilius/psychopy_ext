@@ -11,7 +11,8 @@ import sys, os, csv, glob, random
 #import cPickle as pickle
 
 import numpy as np
-from psychopy import visual, core, event, logging, misc
+import wx
+from psychopy import visual, core, event, logging, misc, monitors
 from psychopy.data import TrialHandler
 #import winsound
 # pandas does not come by default with PsychoPy but that should not prevent
@@ -20,6 +21,30 @@ try:
     import pandas
 except:
     pass
+
+class default_computer:
+    recognized = True
+    # computer defaults
+    root = '.'  # means store output files here
+    stereo = False  # not like in Psychopy; this merely creates two Windows
+    trigger = 'space'  # hit to start the experiment
+    defaultKeys = ['escape', trigger]  # "special" keys
+    validResponses = {'0': 0, '1': 1}  # organized as input value: output value
+    # monitor defaults
+    distance = 80
+    width = 37.5
+    # window defaults
+    screen = 0  # default screen is 0
+
+def set_paths(exp_root, computer=default_computer):
+    paths = {
+        'root': computer.root,
+        'exp_root': exp_root,
+        'data': os.path.join(exp_root, 'data/'),
+        'data_behav': os.path.join(exp_root, 'data_behav/'),
+        'logs': os.path.join(exp_root, 'logs/'),
+        }
+    return paths
 
 
 class Experiment(TrialHandler):
@@ -38,6 +63,7 @@ class Experiment(TrialHandler):
         seed=None,
         nReps=1,
         method='random',
+        computer=default_computer,
         dataTypes=None,
         originPath=None,
         ):
@@ -54,6 +80,7 @@ class Experiment(TrialHandler):
         self.actions=actions
         self.nReps = nReps
         self.method = method
+        self.computer = computer
         self.dataTypes = dataTypes
         self.originPath = originPath
 
@@ -72,7 +99,7 @@ class Experiment(TrialHandler):
             2: 'middle finger',
             3: 'ring finger',
             4: 'little finger'}
-        self.comp = Computer()
+        #self.comp = Computer()
         # if self.parent is None:
         #     Control(exp_choices=[(name,self)], title=name)
 
@@ -157,6 +184,7 @@ class Experiment(TrialHandler):
 
 
     def setup(self):
+        self.run_tests()
         if 'logs' in self.paths and not self.runParams['noOutput']:
             self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
         # self.try_makedirs(self.paths['data'])
@@ -177,6 +205,15 @@ class Experiment(TrialHandler):
             #default_subjID=self.extraInfo['subjID'])
 
         #self.dataFileName = self.paths['data'] + '%s.csv'
+
+    def run_tests(self):
+        if not self.computer.recognized:
+            resp = raw_input("WARNING: This computer is not recognized.\n"
+                "To continue, hit Enter\n"
+                "To memorize this computer and continue, hit 'm'\n"
+                "To cancel, hit Escape")
+            #if resp == 'm':
+
 
 
     def try_makedirs(self, path):
@@ -213,44 +250,67 @@ class Experiment(TrialHandler):
         # this outputs to the screen, not a file
         logging.console.setLevel(logging.ERROR)
 
+    def get_mon_sizes(self, screen=None):
+        """Get a list of resolutions for each monitor.
 
-    #def quit(self):
-        #"""What to do when exit is requested.
-        #"""
-        #self.win.close()
-        #core.quit()
+        Recipe from http://stackoverflow.com/a/10295188
+
+        :Args:
+            screen (int, default: None)
+                Which screen's resolution to return. If None, the a list of all
+                screens resolutions is returned.
+
+        :Returns:
+            a tuple or a list of tuples of each monitor's resolutions
+
+        """
+        app = wx.App(False)  # create an app but don't show it
+        nmons = wx.Display.GetCount()  # how many monitors we have
+        mon_sizes = [wx.Display(i).GetGeometry().GetSize() for i in range(nmons)]
+        if screen is None:
+            return mon_sizes
+        else:
+            return mon_sizes[screen]
+
+    def _rel2abs(self, winrc):
+        # default window is half the screen size
+        res = self.get_mon_sizes(winrc['screen'])
+        winrc['size'] = (int(res[0] * winrc['relsize'][0]),
+                         int(res[1] * winrc['relsize'][1]))
+        # position of the window on the display
+        winrc['pos'] = (res[0] * winrc['relpos'],
+                        res[1] * winrc['relpos'])
 
 
-    def create_win(self, debug = False, color = (100/255.*2-1,100/255.*2-1,100/255.*2-1)):
+    def create_win(self, debug = False,
+                   color = (100/255.*2-1,100/255.*2-1,100/255.*2-1)):
         """Generates a window from presenting stimuli.
         """
-        if not hasattr(self,'comp'):
-            self.comp = Computer()
-        if not debug:
-            self.comp.params['pos'] = (0,0)
-            #self.comp.params['size'] = self.comp.params['size']
-            self.comp.params2['pos'] = (0,0)
-            #self.comp.params2['size'] = self.comp.params['size']/2
+        current_level = logging.getLevel(logging.console.level)
+        logging.console.setLevel(logging.ERROR)
+        monitor = monitors.Monitor(self.computer.name,
+            distance=self.computer.distance,
+            width=self.computer.width)
+        logging.console.setLevel(current_level)
+        res = self.get_mon_sizes(self.computer.screen)
+        monitor.setSizePix(res)
+
+        if debug:
+            size = [res[0] / 2, res[1] / 2]
+            pos = [res[0] / 4, res[1] / 4]
+        else:
+            size = res
+            pos = (0,0)
+
         self.win = visual.Window(
-            monitor = self.comp.monitor,
+            monitor = monitor,
             units = 'deg',
             fullscr = not debug,
             allowGUI = debug, # mouse will not be seen unless debugging
             color = color,
             winType = 'pyglet',
-            **self.comp.params
+            #**self.comp.params
         )
-
-        if self.comp.stereo:
-            self.win2 = visual.Window(
-                monitor  = self.comp.monitor,
-                units    = 'deg',
-                fullscr  = not debug,
-                allowGUI = debug, # mouse will not be seen unless debugging
-                color    = (color,color,color),
-                winType = 'pyglet',
-                **self.comp.params2
-            )
 
     def create_fixation(self, shape='complex'):
         """
@@ -354,7 +414,7 @@ class Experiment(TrialHandler):
 
         If escape is pressed, quits.
         """
-        if keyList is None: keyList = self.comp.defaultKeys
+        if keyList is None: keyList = self.computer.defaultKeys
         thisKeyList = event.getKeys(keyList = keyList)
         if len(thisKeyList) > 0:
             thisKey = thisKeyList.pop()
@@ -387,7 +447,7 @@ class Experiment(TrialHandler):
                     allKeys = [fakeKey]
             else:
                 allKeys = event.getKeys(
-                    keyList = self.comp.validResponses.keys(),
+                    keyList = self.computer.validResponses.keys(),
                     timeStamped = RT_clock)
             self.last_keypress()
         return allKeys
@@ -404,13 +464,10 @@ class Experiment(TrialHandler):
             self.last_keypress()
             for stim in thisEvent['display']: stim.draw()
             self.win.flip()
-            if self.comp.stereo: self.win2.flip()
 
         else:
             for stim in thisEvent['display']: stim.draw()
             self.win.flip()
-            if self.comp.stereo: self.win2.flip()
-
 
             while eventClock.getTime() < thisEvent['dur'] and \
             trialClock.getTime() < thisTrial['dur']:# and \
@@ -421,7 +478,7 @@ class Experiment(TrialHandler):
     def postTrial(self, thisTrial, allKeys):
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
-            thisTrial['subjResp'] = self.comp.validResponses[thisResp[0]]
+            thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
             thisTrial['accuracy'] = self.signalDet[thisTrial['corrResp']==thisTrial['subjResp']]
             thisTrial['RT'] = thisResp[1]
         else:
@@ -443,6 +500,7 @@ class Experiment(TrialHandler):
         #self._currentLoop.save_data()
         # if 'noOutput' in self.extraInfo:
         #     if not self.extraInfo['noOutput']: self.save_data()
+        sys.stdout.write(": exit\n")
         self.win.close()
         core.quit()
 
@@ -467,7 +525,7 @@ class Experiment(TrialHandler):
 
         if not self.runParams['autorun']:
             thisKey = None
-            while thisKey != self.comp.trigger:
+            while thisKey != self.computer.trigger:
                 thisKey = self.last_keypress()
             if self.runParams['autorun']: wait /= self.runParams['autorun']
         core.wait(wait) # wait a little bit before starting the experiment
@@ -525,7 +583,7 @@ class Experiment(TrialHandler):
                     allKeys += eventKeys
                 # this is to get keys if we did not do that during trial
                 allKeys += event.getKeys(
-                    keyList = self.comp.validResponses.keys(),
+                    keyList = self.computer.validResponses.keys(),
                     timeStamped = trialClock)
 
             thisTrial = self.postTrial(thisTrial, allKeys)
@@ -559,7 +617,7 @@ class Experiment(TrialHandler):
             add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
             return self.trial[0]['dur'] + add
 
-        invValidResp = dict([[v,k] for k,v in self.comp.validResponses.items()])
+        invValidResp = dict([[v,k] for k,v in self.computer.validResponses.items()])
         sortKeys = sorted(invValidResp.keys())
         invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
         # speed up the experiment
