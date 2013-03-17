@@ -291,7 +291,6 @@ class GaborJet(Model):
     gabor wavelet and certain values on a grid are chosen for the output.
     Further details are in http://dx.doi.org/10.1016/j.visres.2009.08.021.
 
-    Copyright 2011-2012 Jonas Kubilius
     Original implementation copyright 2004 Xiaomin Yue
     """
     def run(self, ims=None):
@@ -306,12 +305,30 @@ class GaborJet(Model):
         return (np.array(JetsMagnitudes), np.array(JetsPhases), grid_position)
 
     def test(self,
-            im,  # input image; can be (128,128) or (256,256) px size
+            im,
             cell_type = 'complex',  # 'complex': 40 output values
                                     # 'simple': 80 values
             grid_size = 0,  # how many positions within an image to take
             sigma = 2*np.pi,  # control the size of gaussian envelope
             ):
+        """
+        :Args:
+            im (numpy.array)
+                input image; can be (128,128) or (256,256) px size
+
+        :Kwargs:
+            - cell_type (str, default: 'complex')
+                Choose between 'complex'(40 output values) and 'simple'
+                (80 values, NOT FULLY WORKING, FIX)
+            - grid_size (int, default: 0)
+                How many positions within an image to take
+            - sigma (float, default: 2*np.pi)
+                Control the size of gaussian envelope
+
+        :Returns:
+            (JetsMagnitude, JetsPhase, grid_position)
+
+        """
         if im.shape[0]!=im.shape[1]:
             sys.exit('The image has to be square. Please try again')
 
