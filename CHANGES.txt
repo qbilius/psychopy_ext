@@ -1,6 +1,6 @@
-v0.4a2, 2013-03-06
+v0.4dev1, 2013-03-06
 ------------------
-Initial release as a package
+Initial dev release as a package
 
 v0.3, 2012
 ----------
