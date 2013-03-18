@@ -309,6 +309,8 @@ class Experiment(TrialHandler):
             allowGUI = debug, # mouse will not be seen unless debugging
             color = color,
             winType = 'pyglet',
+            screen = self.computer.screen,
+            viewScale = self.computer.viewScale,
             #**self.comp.params
         )
 
