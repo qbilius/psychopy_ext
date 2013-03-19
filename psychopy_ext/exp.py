@@ -36,13 +36,22 @@ class default_computer:
     # window defaults
     screen = 0  # default screen is 0
 
-def set_paths(exp_root, computer=default_computer):
+def set_paths(exp_root, computer=default_computer, fmri_rel=''):
+    fmri_root = os.path.join(computer.root, fmri_rel)
+    exp_root += '/'
     paths = {
         'root': computer.root,
         'exp_root': exp_root,
-        'data': os.path.join(exp_root, 'data/'),
-        'data_behav': os.path.join(exp_root, 'data_behav/'),
+        'fmri_root': fmri_root,
+        'analysis': exp_root,  # where analysis files are stored
         'logs': os.path.join(exp_root, 'logs/'),
+        'data': os.path.join(exp_root, 'data/'),
+        'data_behav': os.path.join(fmri_root, 'data_behav/'),  # for fMRI behav data
+        'data_fmri': os.path.join(fmri_root,'data_fmri/'),
+        'spm_analysis': os.path.join(fmri_root, 'analysis/'),
+        'rec': os.path.join(fmri_root,'reconstruction/'), # CARET reconstructions
+        'data_rois': os.path.join(fmri_root,'data_rois/'), # preprocessed and masked data
+        'sim': exp_root,  # path for storing simulations of models
         }
     return paths
 
