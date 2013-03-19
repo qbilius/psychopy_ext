@@ -7,6 +7,8 @@
 
 """A wrapper of matplotlib for producing pretty plots by default"""
 
+import sys
+
 import numpy as np
 import scipy.stats
 import pandas
@@ -15,6 +17,60 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
+
+
+# from https://gist.github.com/huyng/816622
+# inspiration from mpltools
+s = {'axes.facecolor': '#eeeeee',
+     'axes.edgecolor': '#bcbcbc',
+     'axes.linewidth': 1,
+     'axes.grid': True,
+     'axes.titlesize': 'x-large',
+     'axes.labelsize': 'large',  # 'x-large'
+     'axes.labelcolor': '#555555',
+     'axes.axisbelow': True,
+     'axes.color_cycle': ['#348ABD', # blue
+                          '#7A68A6', # purple
+                          '#A60628', # red
+                          '#467821', # green
+                          '#CF4457', # pink
+                          '#188487', # turquoise
+                          '#E24A33'], # orange
+
+     'figure.facecolor': '0.85',
+     'figure.edgecolor': '0.5',
+     'figure.subplot.hspace': .5,
+
+     'font.family': 'monospace',
+     'font.size': 10,
+
+     'xtick.color': '#555555',
+     'xtick.direction': 'in',
+     'xtick.major.pad': 6,
+     'xtick.major.size': 0,
+     'xtick.minor.pad': 6,
+     'xtick.minor.size': 0,
+
+     'ytick.color': '#555555',
+     'ytick.direction': 'in',
+     'ytick.major.pad': 6,
+     'ytick.major.size': 0,
+     'ytick.minor.pad': 6,
+     'ytick.minor.size': 0,
+
+     'legend.fancybox': True,
+
+     'lines.antialiased': True,
+     'lines.linewidth': 1.0,
+
+     'patch.linewidth'        : .5,     # edge width in points
+     'patch.facecolor'        : '#348ABD', # blue
+     'patch.edgecolor'        : '#eeeeee',
+     'patch.antialiased'      : True,    # render patches in antialised (no jaggies)
+
+     }
+
+plt.rcParams.update(s)
 
 
 class Plot(object):
@@ -44,7 +100,7 @@ class Plot(object):
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
                 ncols=nrows_ncols[1],
-                sharex=False,
+                sharex=True,
                 sharey=False,
                 squeeze=True,
                 figsize=figsize,
@@ -58,25 +114,12 @@ class Plot(object):
         self.nrows_ncols = nrows_ncols
         return (self.fig, self.axes)
 
-    def subplots_adjust(self, *args, **kwargs):
-        plt.subplots_adjust(*args, **kwargs)
-
-    def tight_layout(self, *args, **kwargs):
-        plt.tight_layout(*args, **kwargs)
-
-    def figure(self, *args, **kwargs):
-        return plt.figure(*args, **kwargs)
-    def savefig(self, *args, **kwargs):
-        return plt.savefig(*args, **kwargs)
-
-    def ImageGrid(self, *args, **kwargs):
-        return ImageGrid(*args, **kwargs)
-
-    def show(self, *args, **kwargs):
-        plt.show(*args, **kwargs)
-
-    def imshow(self, *args, **kwargs):
-        plt.imshow(*args, **kwargs)
+    def __getattr__(self, name):
+        """Pass on a matplotlib function that we haven't modified
+        """
+        def method(*args, **kwargs):
+            getattr(plt, name)(*args, **kwargs)
+        return method
 
     def scatter(self, x, y, labels=None, title='', *args, **kwargs):
         try:
@@ -87,8 +130,6 @@ class Plot(object):
             ax = self.axes[self.subplotno]
 
         ax.scatter(x, y, marker='o', color=mpl.cm.Paired(.5))
-        #self.show()
-        #import pdb; pdb.set_trace()
         for c, (pointx, pointy) in enumerate(zip(x,y)):
             ax.text(pointx, pointy, labels[c])
         ax.set_title(title)
@@ -107,13 +148,35 @@ class Plot(object):
         else:
             return [mpl.cm.Paired(c) for c in np.linspace(0,ncolors)]
 
+    def get_colors(self, ncolors=2, cmap='Paired'):
+        """
+        Get a list of nice colors for plots.
 
-    def sample_cmap(self, cmap='Paired', ncolors=2):
-        thisCmap = mpl.cm.get_cmap(cmap)
-        norm = mpl.colors.Normalize(0, 1)
-        z = np.linspace(0, 1, ncolors + 2)
-        z = z[1:-1]
-        colors = thisCmap(norm(z))
+        FIX: This function is happy to ignore the ugly settings you may have in
+        your matplotlibrc settings.
+        TODO: merge with mpltools.color
+
+        :Kwargs:
+            ncolors (int, default: 2)
+                Number of colors required. Typically it should be the number of
+                entries in the legend.
+            cmap (str or matplotlib.cm, default: 'Paired')
+                A colormap to sample from when ncolors > 12
+
+        :Returns:
+            a list of colors
+        """
+        colorc = plt.rcParams['axes.color_cycle']
+        if ncolors < len(colorc):
+            colors = colorc[:ncolors]
+        elif ncolors <= 12:
+            colors = self.sample_paired(ncolors=ncolors)
+        else:
+            thisCmap = mpl.cm.get_cmap(cmap)
+            norm = mpl.colors.Normalize(0, 1)
+            z = np.linspace(0, 1, ncolors + 2)
+            z = z[1:-1]
+            colors = thisCmap(norm(z))
         return colors
 
     def nan_outliers(self, df, values=None, group=None):
@@ -135,19 +198,6 @@ class Plot(object):
         df[values] = np.select([tdf<-3, tdf>3],[np.nan, np.nan],
                                default=df[values])
         return df
-
-    #def plot(self, x, y=None, ax=None, **kwargs):
-        #if ax is None:
-            #ax = plt.subplot(111)
-
-        #if y is None:
-            #x_values = np.arange(len(x))
-            #y = x
-        #else:
-            #x_values = x
-        #ax.errorbar(x_values,y, **kwargs)
-
-    # def subplot():
 
     def aggregate(self, df, rows=None, cols=None, values=None,
         value_filter=None, yerr=None, func='mean'):
@@ -276,6 +326,7 @@ class Plot(object):
                    title='', kind='bar', xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, order=None,
                    **kwargs):
+
         if ax is None:
             try:
                 row = self.subplotno / self.axes[0][0].numCols
@@ -291,58 +342,42 @@ class Plot(object):
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
 
-        p_yerr_zeros = np.ones((p_yerr.shape[0],)) * np.nan
-        colors = self.sample_paired(len(mean.columns))
-        edgecolors = []
-        for c in colors:
-            edgecolors.extend([c]*mean.shape[0])
+        colors = self.get_colors(len(mean.columns))
 
         if len(agg.items) == 1 and kind=='bean':
             kind = 'bar'
             print 'WARNING: Beanplot not available for a single measurement'
 
         if kind == 'bar':
-            mean.plot(kind='bar', ax=ax, **{
-                'yerr':p_yerr_zeros,  # otherwise get_lines doesn't work
-                'color': colors,
-                'linewidth': 0,
-                #'edgecolor': edgecolors,  # get rid of ugly black edges
-                })
-            xdata = ax.get_lines()
-            for i, col in enumerate(mean.columns):
-                #x = xdata[i * len(mean.columns)].get_xdata()
-                x = xdata[2*i].get_xdata()
-                y = mean[col]
-                try:
-                    ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None, elinewidth=2,
-                        ecolor='black')
-                except:
-                    import pdb; pdb.set_trace()
-
-            # create legend outside the axes
-            handles, labels = ax.get_legend_handles_labels()
-            #l = ax.legend(handles[:i+1], labels[:i+1],
-                #loc='center left', bbox_to_anchor=(1.3, 0.5))
-            l = ax.legend(handles[:i+1], labels[:i+1],
-                loc='upper right', frameon=False)
+            n = len(mean.columns)
+            width = .75 / n
+            rects = []
+            for i, (label, column) in enumerate(mean.iteritems()):
+                rect = ax.bar(i*width, column, width, label=label,
+                    yerr = p_yerr[:,i], color = colors[i])
+                rects.append(rect)
+            ax.set_xticks(np.arange(len(mean)) + width*n/2)
+            ax.set_xticklabels(mean.index.tolist())
+            l = ax.legend(rects, mean.index.tolist())
 
         elif kind == 'line':
-            if len(colors) == 1: colors = colors[0]
-            mean.plot(kind='line', ax=ax, **{
-                'color': colors,
-                'linewidth': 2,
-                })
-            for i, col in enumerate(mean.columns):
-                x = ax.get_lines()[i].get_xdata()
-                y = mean[col]
-                ax.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
+            x = range(len(mean))
+            lines = []
+            for i, (label, column) in enumerate(mean.iteritems()):
+                line = ax.plot(x, column, label=label)
+                lines.append(line)
+                ax.errorbar(x, column, yerr=p_yerr[:, i], fmt=None,
                     ecolor='black')
-            # create legend outside the axes
-            handles, labels = ax.get_legend_handles_labels()
-            #l = ax.legend(handles[:i+1], labels[:i+1],
-                #loc='center left', bbox_to_anchor=(1.3, 0.5))
-            l = ax.legend(handles[:i+1], labels[:i+1],
-                loc='upper right', frameon=False)
+            ticks = ax.get_xticks().astype(int)
+            if ticks[-1] >= len(mean.index):
+                labels = mean.index[ticks[:-1]]
+            else:
+                labels = mean.index[ticks]
+            ax.set_xticklabels(labels)
+            l = ax.legend()
+            #loc='center left', bbox_to_anchor=(1.3, 0.5)
+            #loc='upper right', frameon=False
+
         elif kind == 'bean':
             if len(mean.columns) == 2:
                 #kk = pandas.Series([float(agg[s]['morph']) for s in agg.items])
@@ -352,8 +387,11 @@ class Plot(object):
                 raise Exception('Beanplot is not available for more than two '
                                 'classes.')
 
+        else:
+            sys.exit('%s plot not recognized' %kind)
 
 
+        # TODO: xticklabel rotation business is too messy
         if 'xticklabels' in kwargs:
             ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
         if not xtickson:
@@ -361,7 +399,6 @@ class Plot(object):
 
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
-        #import pdb; pdb.set_trace()
         for label in labels:
             if max_len > 10:
                 label.set_rotation(90)
