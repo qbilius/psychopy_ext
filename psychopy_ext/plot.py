@@ -350,13 +350,16 @@ class Plot(object):
 
         if kind == 'bar':
             n = len(mean.columns)
+            idx = np.arange(len(mean))
             width = .75 / n
             rects = []
             for i, (label, column) in enumerate(mean.iteritems()):
-                rect = ax.bar(i*width, column, width, label=label,
-                    yerr = p_yerr[:,i], color = colors[i])
+                rect = ax.bar(idx+i*width, column, width, label=label,
+                    yerr = p_yerr[:,i], color = colors[i],
+                    ecolor='black')
                 rects.append(rect)
-            ax.set_xticks(np.arange(len(mean)) + width*n/2)
+            ax.set_xticks(idx + width*n/2)
+            #FIX: mean.index returns float even if it is int because dtype=object
             ax.set_xticklabels(mean.index.tolist())
             l = ax.legend(rects, mean.index.tolist())
 
@@ -379,10 +382,10 @@ class Plot(object):
             #loc='upper right', frameon=False
 
         elif kind == 'bean':
-            if len(mean.columns) == 2:
+            if len(mean.columns) <= 2:
                 #kk = pandas.Series([float(agg[s]['morph']) for s in agg.items])
                 #import pdb; pdb.set_trace()
-                ax, l = self.beanplot(agg, ax=ax, order=order)#, pos=range(len(mean.index)))
+                ax, l = self.beanplot(agg, ax=ax, order=order, **kwargs)#, pos=range(len(mean.index)))
             else:
                 raise Exception('Beanplot is not available for more than two '
                                 'classes.')
@@ -418,9 +421,22 @@ class Plot(object):
             mean_array = np.asarray(mean)
             r = np.max(mean_array) - np.min(mean_array)
             ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
-            #import pdb; pdb.set_trace()
-            ymin = np.min(np.asarray(mean) - 3*ebars)
-            ymax = np.max(np.asarray(mean) + 3*ebars)
+            if kind == 'bar':
+                ymin = np.min(np.asarray(mean) - ebars)
+                if ymin > 0:
+                    ymin = 0
+                else:
+                    ymin = np.min(np.asarray(mean) - 3*ebars)
+            else:
+                ymin = np.min(np.asarray(mean) - 3*ebars)
+            if kind == 'bar':
+                ymax = np.max(np.asarray(mean) + ebars)
+                if ymax < 0:
+                    ymax = 0
+                else:
+                    ymax = np.max(np.asarray(mean) + 3*ebars)
+            else:
+                ymax = np.max(np.asarray(mean) + 3*ebars)
             ax.set_ylim([ymin, ymax])
         #if 'xlabel' in kwargs:
             #ax.set_xlabel(kwargs['xlabel'], size='x-large')
@@ -1028,22 +1044,42 @@ class Plot(object):
     def violinplot(self, data, ax=None, pos=None, bp=False, cut=None):
         """Make a violin plot of each dataset in the `data` sequence.
         """
+        def draw_density(p, low, high, k1, k2, ncols=2):
+            m = low #lower bound of violin
+            M = high #upper bound of violin
+            x = np.linspace(m, M, 100) # support for violin
+            v1 = k1.evaluate(x) # violin profile (density curve)
+            v1 = w*v1/v1.max() # scaling the violin to the available space
+            v2 = k2.evaluate(x) # violin profile (density curve)
+            v2 = w*v2/v2.max() # scaling the violin to the available space
+
+            if ncols == 2:
+                ax.fill_betweenx(x, -v1 + p, p, facecolor='black', edgecolor='black')
+                ax.fill_betweenx(x, p, p + v2, facecolor='grey', edgecolor='gray')
+            else:
+                ax.fill_betweenx(x, -v1 + p, p + v2, facecolor='black', edgecolor='black')
+
+
         if pos is None:
             pos = [0,1]
         dist = np.max(pos)-np.min(pos)
-        w = min(0.15*max(dist,1.0),0.5)
+        w = min(0.15*max(dist,1.0),0.5) * .5
 
         for major_xs in range(data.shape[1]):
             p = pos[major_xs]
             d1 = data.ix[:,major_xs,0]
-            d2 = data.ix[:,major_xs,1]
-
             k1 = scipy.stats.gaussian_kde(d1) #calculates the kernel density
-            k2 = scipy.stats.gaussian_kde(d2) #calculates the kernel density
-            #s = 0.0
+            if data.shape[2] == 1:
+                d2 = d1
+                k2 = k1
+            else:
+                d2 = data.ix[:,major_xs,1]
+                k2 = scipy.stats.gaussian_kde(d2) #calculates the kernel density
             cutoff = .001
             if cut is None:
-                stepsize = (d1.max()-d1.min()) / 100
+                upper = max(d1.max(),d2.max())
+                lower = min(d1.min(),d2.min())
+                stepsize = (upper - lower) / 100
                 area_low1 = 1  # max cdf value
                 area_low2 = 1  # max cdf value
                 low = min(d1.min(), d2.min())
@@ -1062,15 +1098,8 @@ class Plot(object):
             else:
                 low, high = cut
 
-            m = low #lower bound of violin
-            M = high #upper bound of violin
-            x = np.linspace(m, M, 100) # support for violin
-            v1 = k1.evaluate(x) # violin profile (density curve)
-            v1 = w*v1/v1.max() # scaling the violin to the available space
-            v2 = k2.evaluate(x) # violin profile (density curve)
-            v2 = w*v2/v2.max() # scaling the violin to the available space
-            ax.fill_betweenx(x, -v1 + p, p, facecolor='black', edgecolor='black')
-            ax.fill_betweenx(x, p, p + v2, facecolor='gray', edgecolor='gray')
+            draw_density(p, low, high, k1, k2, ncols=data.shape[2])
+
 
         # a work-around for generating a legend for the PolyCollection
         # from http://matplotlib.org/users/legend_guide.html#using-proxy-artist
@@ -1088,38 +1117,55 @@ class Plot(object):
         width=None, discrete=True, bins=50):
         """Plot samples given in `data` as horizontal lines.
 
-        Keyword arguments:
+        :Kwargs:
             mean: plot mean of each dataset as a thicker line if True
             median: plot median of each dataset as a dot if True.
             width: Horizontal width of a single dataset plot.
         """
+        def get_hist(d, bins):
+            hists = []
+            bin_edges_all = []
+            for rowno, row in d.iterrows():
+                hist, bin_edges = np.histogram(row, bins=bins)
+                hists.append(hist)
+                bin_edges_all.append(bin_edges)
+            maxcount = np.max(hists)
+            return maxcount, hists, bin_edges_all
+
+        def draw_lines(d, maxcount, hist, bin_edges, sides=None):
+            if discrete:
+                bin_edges = bin_edges[:-1]  # upper edges not needed
+                hw = hist * w / (2.*maxcount)
+            else:
+                bin_edges = d
+                hw = w / 2.
+
+            ax.hlines(bin_edges, sides[0]*hw + p, sides[1]*hw + p, color='white')
+            if mean:  # draws a longer black line
+                ax.hlines(np.mean(d), sides[0]*2*w + p, sides[1]*2*w + p,
+                    lw=2, color='black')
+            if median:  # puts a white dot
+                ax.plot(p, np.median(d), 'o', color='white', markeredgewidth=0)
+
         if width:
             w = width
         else:
             if pos is None:
                 pos = [0,1]
             dist = np.max(pos)-np.min(pos)
-            w = min(0.15*max(dist,1.0),0.5)
-        sides = [(-1,0), (0,1)]  # left side or right side to work on
-        for major_xs in range(data.shape[1]):
+            w = min(0.15*max(dist,1.0),0.5) * .5
+        for major_xs in range(data.shape[1]):  # go over 'rows'
             p = pos[major_xs]
-            for side, minor_xs in zip(sides, range(data.shape[2])):
-                d = data.ix[:,major_xs,minor_xs]
-                if discrete:
-                    hist, bin_edges = np.histogram(d, bins=bins)
-                    maxcount = np.max(hist)
-                    bin_edges = bin_edges[:-1]  # upper edges not needed
-                    hw = hist * w / (2.*maxcount)
-                else:
-                    bin_edges = d
-                    hw = w / 2.
+            maxcount, hists, bin_edges_all = get_hist(data.ix[:,major_xs], bins)
+            if data.shape[2] == 1:
+                draw_lines(data.ix[:, major_xs, 0], maxcount, hists[0],
+                    bin_edges_all[0], sides=[-1,1])
+            else:
+                draw_lines(data.ix[:, major_xs, 0], maxcount, hists[0],
+                    bin_edges_all[0], sides=[-1,0])
+                draw_lines(data.ix[:, major_xs, 1], maxcount, hists[1],
+                    bin_edges_all[1], sides=[0, 1])
 
-                ax.hlines(bin_edges, side[0]*hw + p, side[1]*hw + p, color='white')
-                if mean:  # draws a longer black line
-                    ax.hlines(np.mean(d), side[0]*2*w + p, side[1]*2*w + p,
-                        lw=2, color='black')
-                if median:  # puts a white dot
-                    ax.plot(p, np.median(d), 'o', color='white', markeredgewidth=0)
         ax.set_xlim(min(pos)-3*w, max(pos)+3*w)
         #ax.set_xticks([-1]+pos+[1])
         ax.set_xticks(pos)
@@ -1130,7 +1176,8 @@ class Plot(object):
         #return ax
 
 
-    def beanplot(self, data, ax, pos=None, mean=True, median=True, cut=None, order=None):
+    def beanplot(self, data, ax, pos=None, mean=True, median=True, cut=None,
+        order=None, discrete=True, **kwargs):
         """Make a bean plot of each dataset in the `data` sequence.
 
         Reference: http://www.jstatsoft.org/v28/c01/paper
@@ -1144,8 +1191,9 @@ class Plot(object):
             pos = np.lexsort((np.array(data.major_axis).tolist(),order))
 
         dist = np.max(pos)-np.min(pos)
-        w = min(0.15*max(dist,1.0),0.5)
-        self.stripchart(data=data, ax=ax, pos=pos, mean=mean, median=median, width=0.8*w)
+        w = min(0.15*max(dist,1.0),0.5) * .5
+        self.stripchart(data=data, ax=ax, pos=pos, mean=mean, median=median,
+            width=0.8*w, discrete=discrete)
         ax,l = self.violinplot(data=data, ax=ax, pos=pos, bp=False, cut=cut)
 
         return ax,l
