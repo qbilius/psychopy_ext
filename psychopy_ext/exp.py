@@ -612,7 +612,7 @@ class Experiment(TrialHandler):
                 dataCSV.writerow(out)
 
             trialNo += 1
-        sys.stdout.write("\r")  # clean up outputs
+        sys.stdout.write("\n")  # finally jump to the next line in the terminal
         if not noOutput: dataFile.close()
 
 
@@ -749,7 +749,8 @@ class Experiment(TrialHandler):
                 dfs.append(data)
         if dfs == []:
             print df_fnames
-            raise IOError('Behavioral data files not found')
+            raise IOError('Behavioral data files not found.\n'
+                'Tried to look for %s' % (pattern % subjID))
         df = pandas.concat(dfs, ignore_index=True)
 
         return df
