@@ -7,7 +7,7 @@
 
 """Basic command-line and graphic user interface"""
 
-import wx, sys
+import wx, sys, inspect
 import argparse
 # some modules are only available in Python 2.6
 try:
@@ -133,46 +133,26 @@ class Listbook(wx.Listbook):
 
 
 class Control(object):
-    def __init__(self, exp_choices=None,
-                 title='Experiment', exp_parent=None,
-                 modcall=False  # Set true when calling a module directly like
+    def __init__(self, exp_choices,
+                 title='Experiment',
+                 #modcall=False  # Set true when calling a module directly like
                                 # python -m path.to.module
                  ):
-        if modcall:
-            if len(sys.argv) > 1:
-                self.cmd(exp_choices[1])
-            else:
-                self.app(exp_choices)
+        #if modcall:
+            #if len(sys.argv) > 1:
+                #self.cmd(exp_choices[1])
+            #else:
+                #self.app(exp_choices)
+        #else:
+        if len(exp_choices) == 0:
+            raise SyntaxError('exp_choices is not supposed to be empty')
         else:
             if len(sys.argv) > 1:  # command line interface desired
-                if type(exp_choices[0][1]) == list:
-                    modules = exp_choices[0][1]
-                else:
-                    if len(exp_choices) > 1:  # if just a single choice then why bother typing it
-                        found = False
-                        for exp_choice in exp_choices:
-                            if exp_choice[2] == sys.argv[1]:
-                                found = True
-                                break
-                        if not found:
-                            raise IOError('module %s not recognized' % sys.argv[1])
-                        del sys.argv[1]
-                        runwhat = exp_choice[1]
-                    else:
-                        runwhat = exp_choices[0][1]
-
-                    __import__(runwhat)
-
-                    try:
-                        modules = sys.modules[runwhat].MODULES
-                    except:
-                        raise Exception('%s does not contain global variable MODULES' %
-                                        runwhat)
-                self.cmd(modules)
+                self.cmd(exp_choices)
             else:
-                self.app(exp_choices, title=title, exp_parent=exp_parent)
+                self.app(exp_choices, title=title)
 
-    def app(self, exp_choices=[], title='Experiment', exp_parent=None):
+    def app(self, exp_choices=[], title='Experiment'):
         app = wx.App()
         frame = wx.Frame(None, title=title, size = (650,300))
         # Here we create a panel and a listbook on the panel
@@ -194,7 +174,144 @@ class Control(object):
         frame.Show()
         app.MainLoop()
 
-    def cmd(self, modules, raw_args=None):
+    def cmd(self, exp_choices):
+        """
+        Heavily stripped-down version of argparse.
+        """
+        if len(exp_choices) == 1:  # if just a single choice then just take it
+            input_mod = None
+            input_class = sys.argv[1]
+            input_func = sys.argv[2]
+            mod_str = exp_choices[0][1]
+            arg_start = 3
+        else:
+            input_mod = sys.argv[1]
+            input_class = sys.argv[2]
+            input_func = sys.argv[3]
+            arg_start = 4
+            avail_mods = [e[2] for e in exp_choices]
+            try:
+                idx = avail_mods.index(input_mod)
+            except IndexError:
+                print ('module %s not recognized' % input_mod)
+            mod_str = exp_choices[idx][1]
+
+        try:
+            __import__(mod_str)
+        except ImportError:
+            raise Exception('Module %s not found' % mod_str)
+        except:
+            raise
+
+        module = sys.modules[mod_str]
+        class_names = []
+        runclass = None
+        for name, obj in inspect.getmembers(module):
+            if inspect.isclass(obj):
+                # make sure this obj is defined in module
+                # and not imported
+                if obj.__module__ == module.__name__:
+                    try:
+                        ar = inspect.getargspec(obj.__init__)
+                    except:
+                        pass
+                    else:
+                        try:
+                            nameidx = ar.args.index('name')
+                        except:
+                            pass
+                        else:
+                            objname = ar.defaults[nameidx - len(ar.args)]
+                            class_names.append(objname)
+                            if objname == input_class:
+                                runclass = obj
+
+        if runclass is None:
+            raise Exception('Class %s not found. Choose from:\n%s' %
+                (input_class, ', '.join(class_names)))
+
+        try:
+            init_mod = runclass()
+        except:
+            raise SyntaxError('This module appears to require some arguments but that',
+                'should not be the case.' )
+
+        extraInfo = {}
+        runParams = {}
+        i = arg_start
+        if len(sys.argv) > i:
+            if sys.argv[i][0] != '-':
+                raise IOError('%s should be followed by function arguments '
+                'that start with a - or --' % ' '.join(sys.argv[:i]))
+            while i < len(sys.argv):
+                input_key = sys.argv[i].lstrip('-')
+                item = None
+                for key, value in init_mod.extraInfo.items():
+                    if key.startswith(input_key):
+                        item = (key, value)
+                        params = extraInfo
+                        break
+                if item is None:
+                    for key, value in init_mod.runParams.items():
+                        if key.startswith(input_key):
+                            item = (key, value)
+                            params = runParams
+                            break
+                if item is None:
+                    raise IOError('Argument %s is not recognized' % input_key)
+
+                key = item[0]
+                if isinstance(value, bool):
+                    try:
+                        if sys.argv[i+1][0] != '-':
+                            raise IOError('Expected no value after %s because it '
+                                            'is bool' % input_key)
+                        else:
+                            params[key] = True
+                    except IndexError:  # this was the last argument
+                        params[key] = True
+
+                else:
+                    try:
+                        input_value = sys.argv[i+1]
+                    except IndexError:
+                        raise Exception('Expected a value after %s but got nothing'
+                             % input_key)
+
+                    try:
+                        # not safe but fine in this context
+                        params[key] = eval(input_value)
+                    except:
+                        if input_value[0] == '-':
+                            raise IOError('Expected a value after %s but got '
+                                        'another argument' % input_key)
+                        else:
+                            params[key] = input_value
+                    i += 1
+                i += 1
+
+        init_mod.extraInfo.update(extraInfo)
+        init_mod.runParams.update(runParams)
+        init_mod = runclass(extraInfo=init_mod.extraInfo,
+                            runParams=init_mod.runParams)
+        try:
+            func = getattr(init_mod, input_func)
+        except AttributeError:
+            print 'Function %s not defined in class %s' % (input_func, input_class)
+        else:
+            func()
+
+    def _type(self, input_key, input_value, value, exp_type):
+        if isinstance(value, exp_type):
+            try:
+                input_value = int(input_value)
+            except:
+                Exception('Expected %s for %s'
+                           % (exp_type, input_key))
+            return input_value
+
+
+    def cmd_old(self, modules, raw_args=None):
         def add_arg(mod_parse, arg, default):
             if type(default) == bool:
                 if default:
