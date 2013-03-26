@@ -192,14 +192,14 @@ class Control(object):
             avail_mods = [e[2] for e in exp_choices]
             try:
                 idx = avail_mods.index(input_mod)
-            except IndexError:
-                print ('module %s not recognized' % input_mod)
+            except:
+                raise Exception("module '%s' not recognized" % input_mod)
             mod_str = exp_choices[idx][1]
 
         try:
             __import__(mod_str)
-        except ImportError:
-            raise Exception('Module %s not found' % mod_str)
+        #except ImportError:
+            #raise Exception('Module %s not found or has errors' % mod_str)
         except:
             raise
 
@@ -233,8 +233,9 @@ class Control(object):
         try:
             init_mod = runclass()
         except:
-            raise SyntaxError('This module appears to require some arguments but that',
-                'should not be the case.' )
+            #import pdb; pdb.set_trace()
+            raise #SyntaxError('This module appears to require some arguments but that'
+                #'should not be the case.' )
 
         extraInfo = {}
         runParams = {}
@@ -245,6 +246,9 @@ class Control(object):
                 'that start with a - or --' % ' '.join(sys.argv[:i]))
             while i < len(sys.argv):
                 input_key = sys.argv[i].lstrip('-')
+                if input_key == '':
+                    raise IOError('There cannot be any - just by themselves in '
+                                  'the input')
                 item = None
                 for key, value in init_mod.extraInfo.items():
                     if key.startswith(input_key):
@@ -299,7 +303,11 @@ class Control(object):
         except AttributeError:
             print 'Function %s not defined in class %s' % (input_func, input_class)
         else:
-            func()
+            if hasattr(func, '__call__'):
+                func()
+            else:
+                raise Exception('Object %s not callable; is it really a function?' %
+                                input_func)
 
     def _type(self, input_key, input_value, value, exp_type):
         if isinstance(value, exp_type):
