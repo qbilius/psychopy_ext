@@ -31,10 +31,12 @@ class default_computer:
     defaultKeys = ['escape', trigger]  # "special" keys
     validResponses = {'0': 0, '1': 1}  # organized as input value: output value
     # monitor defaults
+    name = 'default'
     distance = 80
     width = 37.5
     # window defaults
     screen = 0  # default screen is 0
+    viewScale = [1,1]
 
 def set_paths(exp_root, computer=default_computer, fmri_rel=''):
     fmri_root = os.path.join(computer.root, fmri_rel)
@@ -323,7 +325,7 @@ class Experiment(TrialHandler):
             #**self.comp.params
         )
 
-    def create_fixation(self, shape='complex'):
+    def create_fixation(self, shape='complex', color='black'):
         """
         Creates a fixation.
         """
@@ -335,7 +337,7 @@ class Experiment(TrialHandler):
             oval = visual.PatchStim(
                 self.win,
                 name   = 'oval',
-                color  = 'black',
+                color  = color,
                 tex    = None,
                 mask   = 'circle',
                 size   = d1,
@@ -343,7 +345,7 @@ class Experiment(TrialHandler):
             center = visual.PatchStim(
                 self.win,
                 name   = 'center',
-                color  = 'black',
+                color  = color,
                 tex    = None,
                 mask   = 'circle',
                 size   = d2,
@@ -515,18 +517,18 @@ class Experiment(TrialHandler):
         self.win.close()
         core.quit()
 
-    def show_instructions(self, text = '', wait = 0):
+    def show_instructions(self, text='', wait=0):
         """
         Displays instructions on the screen.
 
-        :parameters:
+        :Kwargs:
 
-            text: str
+            text: str (default: '')
                 Text to be displayed
 
-            wait: int
-                Seconds to wait before flipping
-
+            wait: int (default: 0)
+                Seconds to wait before removing the text from the screen after
+                hitting a spacebar (or a `computer.trigger`)
         """
         instructions = visual.TextStim(self.win, text=text,
             color='white', height=20, units='pix', pos=(0,0),
@@ -589,7 +591,7 @@ class Experiment(TrialHandler):
                 eventClock.reset()
                 eventKeys = thisEvent['defaultFun'](globClock=globClock,
                     trialClock=trialClock, eventClock=eventClock,
-                    thisTrial=thisTrial, thisEvent=thisEvent, j=j)
+                    thisTrial=thisTrial, thisEvent=thisEvent, j=j, allKeys=allKeys)
                 if eventKeys is not None:
                     allKeys += eventKeys
                 # this is to get keys if we did not do that during trial
@@ -598,7 +600,7 @@ class Experiment(TrialHandler):
                     timeStamped = trialClock)
 
             thisTrial = self.postTrial(thisTrial, allKeys)
-            if self.runParams['autorun'] > 0:  # correct timing
+            if self.runParams['autorun'] > 0:  # correct the timing
                 #thisTrial['autoRT'] *= self.runParams['autorun']
                 thisTrial['RT'] *= self.runParams['autorun']
 
