@@ -72,6 +72,111 @@ s = {'axes.facecolor': '#eeeeee',
 
 plt.rcParams.update(s)
 
+def aggregate(df, rows=None, cols=None, values=None,
+    value_filter=None, yerr=None, func='mean'):
+    """
+    Aggregates data over specified dimensions
+
+    :Args:
+        df (pandas.DataFrame): A DataFrame with your data
+
+    :Kwargs:
+        - rows (str or list of str): Name(s) of column(s) that will be
+            aggregated and plotted on the x-axis
+        - columns (str or list of str): ame(s) of column(s) that will be
+            aggregated and plotted in the legend
+        - values (str): Name of the column that are aggregated
+        - yerr (str): Name of the column to group reponses by. Typically,
+            this is the column with subject IDs to remove outliers for each
+            participant separately (based on their mean and std)
+
+    :Returns:
+        df (pandas.DataFrame): A DataFrame without outliers
+    """
+    if type(rows) != list: rows = [rows]
+    #if yerr is None:
+        #yerr = []
+    if yerr is not None:
+        if type(yerr) in [list, tuple]:
+            if len(yerr) > 1:
+                raise ValueError('Only one field can be used for calculating'
+                    'error bars.')
+            else:
+                yerr = yerr[0]
+
+    if cols is None:
+        if yerr is None:
+            allconds = rows
+        else:
+            allconds = rows + [yerr]
+    else:
+        if type(cols) != list: cols = [cols]
+        if yerr is None:
+            allconds = rows + cols
+        else:
+            allconds = rows + cols + [yerr]
+
+    if yerr is None:
+        panel = _agg_df(df, rows=rows, cols=cols, values=values,
+            value_filter=value_filter, func=func)
+    else:
+
+        if df[values].dtype in [str, object]:  # calculate accuracy
+            size = df.groupby(allconds)[values].size()
+            if value_filter is not None:
+                dff = df[df[values] == value_filter]
+            else:
+                raise Exception('value_filter must be defined when aggregating '
+                    'over str or object types')
+            size_filter = dff.groupby(allconds)[values].size()
+            agg = size_filter / size.astype(float)
+        else:
+            if func == 'mean':
+                agg = df.groupby(allconds)[values].mean()
+            elif func == 'median':
+                agg = df.groupby(allconds)[values].median()
+
+        agg = agg.unstack(yerr)
+        columns = agg.columns
+        panel = {}
+
+        for col in columns:
+            if cols is None:
+                #if yerr is None:
+                    #df_col = pandas.DataFrame({'data': agg})
+                #else:
+                df_col = pandas.DataFrame({'data': agg[col]})
+                panel[col] = df_col
+            else:
+                df_col = agg[col].reset_index()
+                #import pdb; pdb.set_trace()
+                panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
+                                            values=col)
+
+    return pandas.Panel(panel)
+
+def _agg_df(df, rows=None, cols=None, values=None,
+            value_filter=None, func='mean'):
+    if df[values].dtype in [str, object]:  # calculate accuracy
+        size = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
+            aggfunc=np.size)
+            #df.groupby(allconds)[values].size()
+        if value_filter is not None:
+            dff = df[df[values] == value_filter]
+        else:
+            raise Exception('value_filter must be defined when aggregating '
+                'over str or object types')
+        size_filter = pandas.pivot_table(dff, rows=rows, cols=cols, values=values,
+            aggfunc=np.size)
+        agg = size_filter / size.astype(float)
+    else:
+        if func == 'mean':
+            aggfunc = np.mean
+        elif func == 'median':
+            aggfunc = np.median
+        agg = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
+            aggfunc=aggfunc)
+    return {'column': agg}
 
 class Plot(object):
 
@@ -110,7 +215,7 @@ class Plot(object):
                 self.axes[0]
             except:
                 self.axes = [self.axes]
-        self.subplotno = 0
+        self.subplotno = -1
         self.nrows_ncols = nrows_ncols
         return (self.fig, self.axes)
 
@@ -121,19 +226,15 @@ class Plot(object):
             getattr(plt, name)(*args, **kwargs)
         return method
 
-    def scatter(self, x, y, labels=None, title='', *args, **kwargs):
-        try:
-            row = self.subplotno / self.axes[0][0].numCols
-            col = self.subplotno % self.axes[0][0].numCols
-            ax = self.axes[row][col]
-        except:
-            ax = self.axes[self.subplotno]
-
-        ax.scatter(x, y, marker='o', color=mpl.cm.Paired(.5))
+    def scatter(self, x, y, ax=None, labels=None, title='', *args, **kwargs):
+        if ax is None:
+            self.subplotno += 1
+            ax = self.get_ax()
+        plt.rcParams['axes.color_cycle']
+        ax.scatter(x, y, marker='o', color=self.get_colors()[0])
         for c, (pointx, pointy) in enumerate(zip(x,y)):
             ax.text(pointx, pointy, labels[c])
         ax.set_title(title)
-        self.subplotno += 1
         return ax
 
     def sample_paired(self, ncolors=2):
@@ -199,112 +300,6 @@ class Plot(object):
                                default=df[values])
         return df
 
-    def aggregate(self, df, rows=None, cols=None, values=None,
-        value_filter=None, yerr=None, func='mean'):
-        """
-        Aggregates data over specified dimensions
-
-        :Args:
-            df (pandas.DataFrame): A DataFrame with your data
-
-        :Kwargs:
-            - rows (str or list of str): Name(s) of column(s) that will be
-                aggregated and plotted on the x-axis
-            - columns (str or list of str): ame(s) of column(s) that will be
-                aggregated and plotted in the legend
-            - values (str): Name of the column that are aggregated
-            - yerr (str): Name of the column to group reponses by. Typically,
-                this is the column with subject IDs to remove outliers for each
-                participant separately (based on their mean and std)
-
-        :Returns:
-            df (pandas.DataFrame): A DataFrame without outliers
-        """
-        if type(rows) != list: rows = [rows]
-        #if yerr is None:
-            #yerr = []
-        if yerr is not None:
-            if type(yerr) in [list, tuple]:
-                if len(yerr) > 1:
-                    raise ValueError('Only one field can be used for calculating'
-                        'error bars.')
-                else:
-                    yerr = yerr[0]
-
-        if cols is None:
-            if yerr is None:
-                allconds = rows
-            else:
-                allconds = rows + [yerr]
-        else:
-            if type(cols) != list: cols = [cols]
-            if yerr is None:
-                allconds = rows + cols
-            else:
-                allconds = rows + cols + [yerr]
-
-        if yerr is None:
-            panel = self._agg_df(df, rows=rows, cols=cols, values=values,
-                value_filter=value_filter, func=func)
-        else:
-
-            if df[values].dtype in [str, object]:  # calculate accuracy
-                size = df.groupby(allconds)[values].size()
-                if value_filter is not None:
-                    dff = df[df[values] == value_filter]
-                else:
-                    raise Exception('value_filter must be defined when aggregating '
-                        'over str or object types')
-                size_filter = dff.groupby(allconds)[values].size()
-                agg = size_filter / size.astype(float)
-            else:
-                if func == 'mean':
-                    agg = df.groupby(allconds)[values].mean()
-                elif func == 'median':
-                    agg = df.groupby(allconds)[values].median()
-
-            agg = agg.unstack(yerr)
-            columns = agg.columns
-            panel = {}
-
-            for col in columns:
-                if cols is None:
-                    #if yerr is None:
-                        #df_col = pandas.DataFrame({'data': agg})
-                    #else:
-                    df_col = pandas.DataFrame({'data': agg[col]})
-                    panel[col] = df_col
-                else:
-                    df_col = agg[col].reset_index()
-                    #import pdb; pdb.set_trace()
-                    panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
-                                                values=col)
-
-        return pandas.Panel(panel)
-
-    def _agg_df(self, df, rows=None, cols=None, values=None,
-                value_filter=None, func='mean'):
-        if df[values].dtype in [str, object]:  # calculate accuracy
-            size = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-                aggfunc=np.size)
-                #df.groupby(allconds)[values].size()
-            if value_filter is not None:
-                dff = df[df[values] == value_filter]
-            else:
-                raise Exception('value_filter must be defined when aggregating '
-                    'over str or object types')
-            size_filter = pandas.pivot_table(dff, rows=rows, cols=cols, values=values,
-                aggfunc=np.size)
-            agg = size_filter / size.astype(float)
-        else:
-            if func == 'mean':
-                aggfunc = np.mean
-            elif func == 'median':
-                aggfunc = np.median
-            agg = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-                aggfunc=aggfunc)
-        return {'column': agg}
-
     def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,
                    **kwargs):
         agg = self.aggregate(df, rows=rows, cols=cols,
@@ -314,6 +309,31 @@ class Plot(object):
         else:
             no_yerr = False
         return self._plot(agg, no_yerr=no_yerr,**kwargs)
+
+    def get_ax(self, subplotno=None):
+        """
+        Returns the current or the requested axis from the current figure.
+
+        :Kwargs:
+            subplotno (int, default: None)
+                Give subplot number explicitly if you want to get not the
+                current axis
+        :Returns:
+            ax
+        """
+        if subplotno is None:
+            no =  self.subplotno
+        else:
+            no = subplotno
+
+        try:
+            row = no / self.axes[0][0].numCols
+            col = no % self.axes[0][0].numCols
+            ax = self.axes[row][col]
+        except:
+            ax = self.axes[no]
+
+        return ax
 
     def _plot(self, agg, ax=None,
                    title='', kind='bar', xtickson=True, ytickson=True,
@@ -328,12 +348,8 @@ class Plot(object):
                    **kwargs):
 
         if ax is None:
-            try:
-                row = self.subplotno / self.axes[0][0].numCols
-                col = self.subplotno % self.axes[0][0].numCols
-                ax = self.axes[row][col]
-            except:
-                ax = self.axes[self.subplotno]
+            self.subplotno += 1
+            ax = self.get_ax()
 
         if type(agg) == pandas.Panel:
             mean, p_yerr = self.errorbars(agg)
@@ -382,6 +398,7 @@ class Plot(object):
             #loc='upper right', frameon=False
 
         elif kind == 'bean':
+            autoscale = False  # FIX: autoscaling is incorrect on beanplots
             if len(mean.columns) <= 2:
                 #kk = pandas.Series([float(agg[s]['morph']) for s in agg.items])
                 #import pdb; pdb.set_trace()
@@ -460,7 +477,7 @@ class Plot(object):
                 l.set_visible(False)
         if numb == True:
             self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
-        self.subplotno += 1
+
         return ax
 
     def hide_plots(self, nums):
