@@ -47,16 +47,17 @@ class Model(object):
 
     def dissimilarity(self, outputs, kind='simple'):
         if kind == 'simple':
-            self._dis_simple(outputs)
+            dis = self._dis_simple(outputs)
         elif kind == 'gaborjet':
-            self._dis_gj_simple(outputs)
+            dis = self._dis_gj_simple(outputs)
         elif kind == 'gaborjet-fast':
-            self._dis_gj_fast(outputs)
+            dis = self._dis_gj_fast(outputs)
         elif kind == 'corr':
             #self._dis_corr(outputs)
             raise NotImplemented
         else:
             raise ValueError('Dissimilarity of %s not recognized' % kind)
+        return dis
 
     def _dis_simple(self, outputs):
         # used in Grill-Spector et al. (1999), Op de Beeck et al. (2001),
@@ -602,7 +603,7 @@ class HMAX(Model):
         # calculate VTU if trained
         if self.istrained:
             output['VTU'] = self.get_VTU(output['C2'])
-        sys.stdout.write("\r%s: done" %op)
+        sys.stdout.write("\r%s: done\n" %op)
 
 
         return output
