@@ -72,111 +72,6 @@ s = {'axes.facecolor': '#eeeeee',
 
 plt.rcParams.update(s)
 
-def aggregate(df, rows=None, cols=None, values=None,
-    value_filter=None, yerr=None, func='mean'):
-    """
-    Aggregates data over specified dimensions
-
-    :Args:
-        df (pandas.DataFrame): A DataFrame with your data
-
-    :Kwargs:
-        - rows (str or list of str): Name(s) of column(s) that will be
-            aggregated and plotted on the x-axis
-        - columns (str or list of str): ame(s) of column(s) that will be
-            aggregated and plotted in the legend
-        - values (str): Name of the column that are aggregated
-        - yerr (str): Name of the column to group reponses by. Typically,
-            this is the column with subject IDs to remove outliers for each
-            participant separately (based on their mean and std)
-
-    :Returns:
-        df (pandas.DataFrame): A DataFrame without outliers
-    """
-    if type(rows) != list: rows = [rows]
-    #if yerr is None:
-        #yerr = []
-    if yerr is not None:
-        if type(yerr) in [list, tuple]:
-            if len(yerr) > 1:
-                raise ValueError('Only one field can be used for calculating'
-                    'error bars.')
-            else:
-                yerr = yerr[0]
-
-    if cols is None:
-        if yerr is None:
-            allconds = rows
-        else:
-            allconds = rows + [yerr]
-    else:
-        if type(cols) != list: cols = [cols]
-        if yerr is None:
-            allconds = rows + cols
-        else:
-            allconds = rows + cols + [yerr]
-
-    if yerr is None:
-        panel = _agg_df(df, rows=rows, cols=cols, values=values,
-            value_filter=value_filter, func=func)
-    else:
-
-        if df[values].dtype in [str, object]:  # calculate accuracy
-            size = df.groupby(allconds)[values].size()
-            if value_filter is not None:
-                dff = df[df[values] == value_filter]
-            else:
-                raise Exception('value_filter must be defined when aggregating '
-                    'over str or object types')
-            size_filter = dff.groupby(allconds)[values].size()
-            agg = size_filter / size.astype(float)
-        else:
-            if func == 'mean':
-                agg = df.groupby(allconds)[values].mean()
-            elif func == 'median':
-                agg = df.groupby(allconds)[values].median()
-
-        agg = agg.unstack(yerr)
-        columns = agg.columns
-        panel = {}
-
-        for col in columns:
-            if cols is None:
-                #if yerr is None:
-                    #df_col = pandas.DataFrame({'data': agg})
-                #else:
-                df_col = pandas.DataFrame({'data': agg[col]})
-                panel[col] = df_col
-            else:
-                df_col = agg[col].reset_index()
-                #import pdb; pdb.set_trace()
-                panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
-                                            values=col)
-
-    return pandas.Panel(panel)
-
-def _agg_df(df, rows=None, cols=None, values=None,
-            value_filter=None, func='mean'):
-    if df[values].dtype in [str, object]:  # calculate accuracy
-        size = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-            aggfunc=np.size)
-            #df.groupby(allconds)[values].size()
-        if value_filter is not None:
-            dff = df[df[values] == value_filter]
-        else:
-            raise Exception('value_filter must be defined when aggregating '
-                'over str or object types')
-        size_filter = pandas.pivot_table(dff, rows=rows, cols=cols, values=values,
-            aggfunc=np.size)
-        agg = size_filter / size.astype(float)
-    else:
-        if func == 'mean':
-            aggfunc = np.mean
-        elif func == 'median':
-            aggfunc = np.median
-        agg = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-            aggfunc=aggfunc)
-    return {'column': agg}
 
 class Plot(object):
 
@@ -205,7 +100,7 @@ class Plot(object):
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
                 ncols=nrows_ncols[1],
-                sharex=True,
+                sharex=False,
                 sharey=False,
                 squeeze=True,
                 figsize=figsize,
@@ -377,7 +272,7 @@ class Plot(object):
             ax.set_xticks(idx + width*n/2)
             #FIX: mean.index returns float even if it is int because dtype=object
             ax.set_xticklabels(mean.index.tolist())
-            l = ax.legend(rects, mean.index.tolist())
+            l = ax.legend(rects, mean.columns.tolist())
 
         elif kind == 'line':
             x = range(len(mean))
@@ -420,7 +315,7 @@ class Plot(object):
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
         for label in labels:
-            if max_len > 10:
+            if max_len > 20:
                 label.set_rotation(90)
             else:
                 label.set_rotation(0)
