@@ -244,6 +244,7 @@ class Control(object):
             if sys.argv[i][0] != '-':
                 raise IOError('%s should be followed by function arguments '
                 'that start with a - or --' % ' '.join(sys.argv[:i]))
+
             while i < len(sys.argv):
                 input_key = sys.argv[i].lstrip('-')
                 if input_key == '':
@@ -251,13 +252,13 @@ class Control(object):
                                   'the input')
                 item = None
                 for key, value in init_mod.extraInfo.items():
-                    if key.startswith(input_key):
+                    if key == input_key or key[0] == input_key:
                         item = (key, value)
                         params = extraInfo
                         break
                 if item is None:
                     for key, value in init_mod.runParams.items():
-                        if key.startswith(input_key):
+                        if key == input_key or key[0] == input_key:
                             item = (key, value)
                             params = runParams
                             break
