@@ -275,7 +275,7 @@ class Experiment(TrialHandler):
         """
         if not self.runParams['noOutput']:
             # add .log if no extension given
-            if len(logname.split('.')) == 0: logname += '.log'
+            if len(logname.split('.')) < 2: logname += '.log'
 
             # Setup logging file
             self.try_makedirs(os.path.dirname(logname))
@@ -395,13 +395,6 @@ class Experiment(TrialHandler):
         res = self.get_mon_sizes(self.computer.screen)
         monitor.setSizePix(res)
 
-        if debug:
-            size = [res[0] / 2, res[1] / 2]
-            pos = [res[0] / 4, res[1] / 4]
-        else:
-            size = res
-            pos = (0,0)
-
         self.win = visual.Window(
             monitor = monitor,
             units = 'deg',
@@ -410,8 +403,7 @@ class Experiment(TrialHandler):
             color = color,
             winType = 'pyglet',
             screen = self.computer.screen,
-            viewScale = self.computer.viewScale,
-            #**self.comp.params
+            viewScale = self.computer.viewScale
         )
 
     def create_fixation(self, shape='complex', color='black'):
@@ -722,26 +714,29 @@ class Experiment(TrialHandler):
         """
         Iterate over the sequence of trials and events.
 
+        :note: In the output file, floats are formatted to 1 ms precision so
+        that output files are nice.
+
         :Kwargs:
             - datafile (str, default: 'data.csv')
                 Data file name to store experiment information and responses.
             - noOutput (bool, default: False)
                 If True, the data file will not be written. Useful for checking
                 how the experiment looks like and for debugging.
+
+        :Raises:
+            :py:exc:`IOError` if `datafile` is not found.
         """
         if not noOutput:
             self.try_makedirs(os.path.dirname(datafile))
-            # no header needed if the file already exists
-            if os.path.isfile(datafile):
-                write_head = False
+            try:
+                dfile = open(datafile, 'ab')
+                datawriter = csv.writer(dfile, lineterminator = '\n')
+            except IOError:
+                print('Cannot write to the data file %s!' % datafile)
             else:
                 write_head = True
-            try:
-                dataFile = open(datafile, 'ab')
-                dataCSV = csv.writer(dataFile, lineterminator = '\n')
-            except:
-                raise IOError('Cannot write anything to the data file %s!' %
-                              datafile)
+
         # set up clocks
         globClock = core.Clock()
         trialClock = core.Clock()
@@ -770,22 +765,64 @@ class Experiment(TrialHandler):
 
             thisTrial = self.postTrial(thisTrial, allKeys)
             if self.runParams['autorun'] > 0:  # correct the timing
-                #thisTrial['autoRT'] *= self.runParams['autorun']
-                thisTrial['RT'] *= self.runParams['autorun']
+                try:
+                    thisTrial['autoRT'] *= self.runParams['autorun']
+                    thisTrial['RT'] *= self.runParams['autorun']
+                    thisTrial['onset'] *= self.runParams['autorun']
+                except:  # maybe not all keys are present
+                    pass
 
             if not noOutput:
-                if write_head:
-                    dataCSV = csv.writer(dataFile, lineterminator = '\n')
-                    header = self.extraInfo.keys() + thisTrial.keys()
-                    dataCSV.writerow(header)
-                    write_head = False
+                header = self.extraInfo.keys() + thisTrial.keys()
+                if write_head:  # will write the header the first time
+                    write_head = self._write_header(datafile, header, datawriter)
                 out = self.extraInfo.values() + thisTrial.values()
-                dataCSV.writerow(out)
+                # cut down floats to 1 ms precision
+                outf = ['%.3f'%i if isinstance(i,float) else i for i in out]
+                datawriter.writerow(outf)
 
             trialNo += 1
         sys.stdout.write("\n")  # finally jump to the next line in the terminal
-        if not noOutput: dataFile.close()
+        if not noOutput: dfile.close()
 
+    def _write_header(self, datafile, header, datawriter):
+        """Determines if a header should be writen in a csv data file.
+
+        Works by reading the first line and comparing it to the given header.
+        If the header already is present, then a new one is not written.
+
+        :Args:
+            - datafile (str)
+                Name of the data file
+            - header (list of str)
+                A list of column names
+            - datawriter (:class:`csv.writer`)
+                A CSV writer for writing data to the data file
+
+        :Returns:
+            False, so that it is never called again during :func:`loop_trials`
+        """
+        write_head = True
+        # no header needed if the file already exists and has one
+        try:
+            dataf_r = open(datafile, 'rb')
+            dataread = csv.reader(dataf_r)
+        except:
+            pass
+        else:
+            try:
+                header_file = dataread.next()
+            except:  # empty file
+                write_head = True
+            else:
+                if header == header_file:
+                    write_head = False
+                else:
+                    write_head = True
+            dataf_r.close()
+        if write_head:
+            datawriter.writerow(header)
+        return False
 
     def autorun(self, trialList):
         """
