@@ -29,7 +29,7 @@ class sdist_hg(sdist):
 description = ('Extension of PsychoPy for an easier experimental setup via ' +
                 'design patterns.')
 setup(
-    name='PsychoPy_ext',
+    name='psychopy_ext',
     version='0.4a2',
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
