@@ -5,16 +5,19 @@
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
-"""A library of helper functions for creating and running experiments"""
+"""
+A library of helper functions for creating and running experiments.
+
+All experiment-related methods are kept here.
+"""
 
 import sys, os, csv, glob, random
-#import cPickle as pickle
 
 import numpy as np
 import wx
 from psychopy import visual, core, event, logging, misc, monitors
 from psychopy.data import TrialHandler
-#import winsound
+
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
 try:
@@ -23,7 +26,10 @@ except:
     pass
 
 class default_computer:
-    recognized = True
+    """The default computer parameters. Hopefully will form a full class at
+    some point.
+    """
+    recognized = False
     # computer defaults
     root = '.'  # means store output files here
     stereo = False  # not like in Psychopy; this merely creates two Windows
@@ -39,6 +45,28 @@ class default_computer:
     viewScale = [1,1]
 
 def set_paths(exp_root, computer=default_computer, fmri_rel=''):
+    """Set paths to data storage.
+
+    :Args:
+        exp_root (str)
+            Path to where the main file that starts the program is.
+
+    :Kwargs:
+        - computer (Namespace, default: :class:`default_computer`)
+            A class with a computer parameters defined, such as the default
+            path for storing data, size of screen etc. See
+            :class:`default_computer` for an example.
+        - fmri_rel (str, default: '')
+            A path to where fMRI data and related analyzes should be stored.
+            This is useful because fMRI data takes a lot of space so you may
+            want to keep it on an external hard drive rather than on Dropbox
+            where your scripts might live, for example.
+
+    :Returns:
+        paths (dict):
+            A dictionary of paths.
+    """
+    run_tests(computer)
     fmri_root = os.path.join(computer.root, fmri_rel)
     exp_root += '/'
     paths = {
@@ -57,36 +85,70 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         }
     return paths
 
+def run_tests(computer):
+    """Runs basic tests before starting the experiment.
+
+    At the moment, it only checks if the computer is recognized and if not,
+    it waits for a user confirmation to continue thus preventing from running
+    an experiment with incorrect settings, such as stimuli size.
+
+    :Kwargs:
+        computer (Namespace)
+            A class with a computer parameters defined, such as the default
+            path for storing data, size of screen etc. See
+            :class:`default_computer` for an example.
+
+    """
+    if not computer.recognized:
+        resp = raw_input("WARNING: This computer is not recognized.\n"
+                "To continue, simply hit Enter (default)\n"
+                #"To memorize this computer and continue, enter 'm'\n"
+                "To quit, enter 'q'\n"
+                "Your choice [C,q]: ")
+        while resp not in ['', 'c', 'q']:
+            resp = raw_input("Choose between continue (c) and quit (q): ")
+        if resp == 'q':
+            sys.exit()
+        #elif resp == 'm':
+            #mac = uuid.getnode()
+            #if os.path.isfile('computer.py'):
+                #write_head = False
+            #else:
+                #write_head = True
+            #try:
+                #dataFile = open(datafile, 'ab')
+            #print ("Computer %d is memorized. Remember to edit computer.py"
+                   #"file to " % mac
+
 
 class Experiment(TrialHandler):
     """An extension of an TrialHandler with many useful functions.
     """
-    def __init__(
-        self,
-        parent = None,
-        name='',
-        version=0.1,
-        #win = None,
-        extraInfo=None,
-        runParams = None,
-        instructions = {'text': '', 'wait': 0},
-        actions = None,
-        seed=None,
-        nReps=1,
-        method='random',
-        computer=default_computer,
-        dataTypes=None,
-        originPath=None,
-        ):
-        """Add a loop such as a `~psychopy.data.TrialHandler` or `~psychopy.data.StairHandler`
-        Data from this loop will be included in the resulting data files.
-        """
+    def __init__(self,
+                parent=None,
+                name='',
+                version=0.1,
+                extraInfo=None,
+                runParams=None,
+                instructions={'text': '', 'wait': 0},
+                actions=None,
+                seed=None,
+                nReps=1,
+                method='random',
+                computer=default_computer,
+                dataTypes=None,
+                originPath=None,
+                ):
 
         self.parent = parent
         self.name = name
         self.version = version
         self.extraInfo = extraInfo
         self.runParams = runParams
+        #if extraInfo is not None:
+            #self.extraInfo.update(extraInfo)
+        #if runParams is not None:
+            #self.runParams.update(runParams)
         self.instructions = instructions
         self.actions=actions
         self.nReps = nReps
@@ -95,21 +157,11 @@ class Experiment(TrialHandler):
         self.dataTypes = dataTypes
         self.originPath = originPath
 
-        if seed is None:
-            self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
-        else:
-            self.seed = seed
-
-        self.defaultFilter = "(plotData['cond'] != 0) & (plotData['accuracy'] != 'No response')"
         self.signalDet = {
             False: 'Incorrect',
             True: 'Correct',
             '': 'No response'}
-        self.keyNames = {
-            1: 'index finger',
-            2: 'middle finger',
-            3: 'ring finger',
-            4: 'little finger'}
+
         #self.comp = Computer()
         # if self.parent is None:
         #     Control(exp_choices=[(name,self)], title=name)
@@ -137,6 +189,127 @@ class Experiment(TrialHandler):
                 # dataFileName=dataFileName)
 
 
+    #def get_input(self, info):
+        #"""Creates a dialog to get user input and loads stored values.
+        #"""
+
+        #dlg = gui.DlgFromDict(dictionary=info,title=self.name)
+        #if dlg.OK == False:
+            #core.quit() # user pressed cancel
+        #else:
+            #return info
+
+
+    def setup(self, create_win=True):
+        """
+        Does all the dirty setup before running the experiment.
+
+        Steps include:
+            - Logging file setup (:func:`set_logging`)
+            - Creating a seed for randomization (:func:``)
+            - Creating a :class:`~psychopy.visual.Window` (:func:``)
+            - Creating stimuli (:func:``)
+            - Creating trial structure (:func:``)
+            - Combining trials into a trial list  (:func:``)
+            - Appending automatic run information if ``autorun`` is requested
+              (:func:``)
+            - Creating a :class:`~psychopy.data.TrialHandler` using the
+              defined trialList  (:func:``)
+
+        :Kwargs:
+            create_win (bool, default: True)
+                If False, a window is not created. This is useful when you have
+                an experiment consisting of a couple of separate sessions. For
+                the first one you create a window and want everything to be
+                presented on that window without closing and reopening it
+                between the sessions.
+        """
+        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
+        self.create_seed(seed=self.seed)
+
+        if create_win:  # maybe you have a screen already
+            self.create_win(debug=self.runParams['debug'])
+        self.create_stimuli()
+        self.create_trial()
+        trialList = self.create_trialList()
+        if self.runParams['autorun']:
+            trialList = self.autorun(trialList)
+        self.create_TrialHandler(trialList)
+        #dataFileName=self.paths['data']%self.extraInfo['subjID'])
+
+        ## guess participant ID based on the already completed sessions
+        #self.extraInfo['subjID'] = self.guess_participant(
+            #self.paths['data'],
+            #default_subjID=self.extraInfo['subjID'])
+
+        #self.dataFileName = self.paths['data'] + '%s.csv'
+
+    def try_makedirs(self, path):
+        """Attempts to create a new directory.
+
+        This function improves :func:`os.makedirs` behavior by printing an
+        error to the log file if it fails and entering the debug mode
+        (:mod:`pdb`) so that data would not be lost.
+
+        :Args:
+            path (str)
+                A path to create.
+        """
+        if not os.path.isdir(path) and path not in ['','.','./']:
+            try: # if this fails (e.g. permissions) we will get an error
+                os.makedirs(path)
+            except:
+                logging.error('ERROR: Cannot create a folder for storing data %s' %path)
+                # We'll enter the debugger so that we don't lose any data
+                import pdb; pdb.set_trace()
+                self.quit()
+
+    def set_logging(self, logname='log.log'):
+        """Setup files for saving logging information.
+
+        New folders might be created.
+
+        :Kwargs:
+            logname (str, default: 'log.log')
+                The log file name.
+        """
+        if not self.runParams['noOutput']:
+            # add .log if no extension given
+            if len(logname.split('.')) == 0: logname += '.log'
+
+            # Setup logging file
+            self.try_makedirs(os.path.dirname(logname))
+            self.logFile = logging.LogFile(
+                logname,
+                filemode = 'a',
+                level = logging.WARNING)
+
+        # this outputs to the screen, not a file
+        logging.console.setLevel(logging.WARNING)
+
+    def create_seed(self, seed=None):
+        """
+        Creates or assigns a seed for a reproducible randomization.
+
+        When a seed is set, you can, for example, rerun the experiment with
+        trials in exactly the same order as before.
+
+        :Kwargs:
+            seed (int, default: None)
+                Pass a seed if you already have one.
+
+        :Returns:
+            self.seed (int)
+        """
+        if seed is None:
+            try:
+                self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
+            except:
+                self.seed = 1
+                logging.warning('No seed provided. Setting seed to 1.')
+        else:
+            self.seed = seed
+        return self.seed
 
     def guess_participant(self, data_path, default_subjID='01'):
         """Attempts to guess participant ID (it must be int).
@@ -160,7 +333,6 @@ class Experiment(TrialHandler):
         if len(partids) > 0: return '%02d' %(max(partids) + 1)
         else: return default_subjID
 
-
     def guess_runNo(self, data_path, default_runNo = 1):
         """Attempts to guess run number.
 
@@ -182,89 +354,10 @@ class Experiment(TrialHandler):
 
         return runNo
 
-
-    #def get_input(self, info):
-        #"""Creates a dialog to get user input and loads stored values.
-        #"""
-
-        #dlg = gui.DlgFromDict(dictionary=info,title=self.name)
-        #if dlg.OK == False:
-            #core.quit() # user pressed cancel
-        #else:
-            #return info
-
-
-    def setup(self):
-        self.run_tests()
-        if 'logs' in self.paths and not self.runParams['noOutput']:
-            self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        # self.try_makedirs(self.paths['data'])
-        #self.dataFileName = self.dataFileName %self.extraInfo['subjID']
-        self.create_win(debug=self.runParams['debug'])
-        self.create_stimuli()
-        self.create_trial()
-        # self.trialDur = sum(event['dur'] for event in self.trial)
-        trialList = self.create_trialList()
-        if self.runParams['autorun']:
-            trialList = self.autorun(trialList)
-        self.create_TrialHandler(trialList)
-        #dataFileName=self.paths['data']%self.extraInfo['subjID'])
-
-        ## guess participant ID based on the already completed sessions
-        #self.extraInfo['subjID'] = self.guess_participant(
-            #self.paths['data'],
-            #default_subjID=self.extraInfo['subjID'])
-
-        #self.dataFileName = self.paths['data'] + '%s.csv'
-
-    def run_tests(self):
-        if not self.computer.recognized:
-            resp = raw_input("WARNING: This computer is not recognized.\n"
-                "To continue, hit Enter\n"
-                "To memorize this computer and continue, hit 'm'\n"
-                "To cancel, hit Escape")
-            #if resp == 'm':
-
-
-
-    def try_makedirs(self, path):
-        """Attempts to create a new dir. If fails, exists gracefully.
-        """
-        if not os.path.isdir(path) and path not in ['','.','./']:
-            try: # if this fails (e.g. permissions) we will get error
-                os.makedirs(path)
-            except:
-                logging.error('ERROR: Cannot create a folder for storing data %s' %path)
-                # We'll enter the debugger so that we don't lose any data
-                import pdb; pdb.set_trace()
-                core.quit()
-
-
-    def set_logging(self, logname='log.log'):
-        """Setup files for saving. New folders might be created.
-        """
-        # Setup data file
-        #datadir = self.paths['data_behav']%self.extraInfo['subjID']
-        #self.try_makedirs(datadir)
-        #filename = '_'.join(['data','%02d' %int(self.extraInfo['runNo']), self.extraInfo['runType']])
-        #self.dataFilename = datadir + filename
-
-        # add .log if no extension given
-        if len(logname.split('.')) == 0: logname += '.log'
-
-        # Setup logging file
-        self.try_makedirs(os.path.dirname(logname))
-        self.logFile = logging.LogFile(
-            logname,
-            filemode = 'a',
-            level = logging.WARNING)
-        # this outputs to the screen, not a file
-        logging.console.setLevel(logging.ERROR)
-
     def get_mon_sizes(self, screen=None):
         """Get a list of resolutions for each monitor.
 
-        Recipe from http://stackoverflow.com/a/10295188
+        Recipe from <http://stackoverflow.com/a/10295188>_
 
         :Args:
             screen (int, default: None)
@@ -273,7 +366,6 @@ class Experiment(TrialHandler):
 
         :Returns:
             a tuple or a list of tuples of each monitor's resolutions
-
         """
         app = wx.App(False)  # create an app but don't show it
         nmons = wx.Display.GetCount()  # how many monitors we have
@@ -283,19 +375,16 @@ class Experiment(TrialHandler):
         else:
             return mon_sizes[screen]
 
-    def _rel2abs(self, winrc):
-        # default window is half the screen size
-        res = self.get_mon_sizes(winrc['screen'])
-        winrc['size'] = (int(res[0] * winrc['relsize'][0]),
-                         int(res[1] * winrc['relsize'][1]))
-        # position of the window on the display
-        winrc['pos'] = (res[0] * winrc['relpos'],
-                        res[1] * winrc['relpos'])
-
-
     def create_win(self, debug = False,
                    color = (100/255.*2-1,100/255.*2-1,100/255.*2-1)):
-        """Generates a window from presenting stimuli.
+        """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
+
+        :Kwargs:
+            - debug (bool, default: False)
+                - If True, then the window is half the screen size.
+                - If False, then the windon is full screen.
+            - color (tuple of 3 values, default: )
+                Window background color. Default is dark gray.
         """
         current_level = logging.getLevel(logging.console.level)
         logging.console.setLevel(logging.ERROR)
@@ -326,12 +415,23 @@ class Experiment(TrialHandler):
         )
 
     def create_fixation(self, shape='complex', color='black'):
-        """
-        Creates a fixation.
+        """Creates a fixation spot.
+
+        :Kwargs:
+            - shape: {'dot', 'complex'} (default: 'complex')
+                Choose the type of fixation:
+                    - dot: a simple fixation dot (.2 deg visual angle)
+                    - complex: the 'best' fixation shape by `Thaler et al., 2012
+                      <http://dx.doi.org/10.1016/j.visres.2012.10.012>`_ which
+                      looks like a combination of s bulls eye and cross hair
+                      (outer diameter: .6 deg, inner diameter: .2 deg). Note
+                      that it is constructed by superimposing two rectangles on
+                      a disk, so if non-uniform background will not be visible.
+            - color (str, default: 'black')
+                Fixation color.
+
         """
         if shape == 'complex':
-            # based on the 'best' fixation shape by Thaler et al., 2012
-            # (http://dx.doi.org/10.1016/j.visres.2012.10.012)
             d1 = .6  # diameter of outer circle (degrees)
             d2 = .2  # diameter of inner circle (degrees)
             oval = visual.PatchStim(
@@ -377,12 +477,23 @@ class Experiment(TrialHandler):
                 size   = .2,
             )]
 
-    def latin_square(self, n = 6):
+    def latin_square(self, n=6):
         """
         Generates a Latin square of size n. n must be even.
 
         Based on
-        http://rintintin.colorado.edu/~chathach/balancedlatinsquares.html
+        <http://rintintin.colorado.edu/~chathach/balancedlatinsquares.html>_
+
+        :Kwargs:
+            n (int, default: 6)
+                Size of Latin square. Should be equal to the number of
+                conditions you have.
+                :note: n must be even. For an odd n, I am not aware of a
+                general method to produce a Latin square.
+
+        :Returns:
+            A `numpy.array` with each row representing one possible ordering
+            of stimuli.
         """
         if n%2 != 0: sys.exit('n is not even!')
 
@@ -398,37 +509,52 @@ class Experiment(TrialHandler):
 
         return latin.T
 
-    def make_para(self, n = 6):
+    def make_para(self, n=6):
         """
-        Generates a symmetric para file with fixation periods in between. n must be even.
-        """
-        latin = self.latin_square(n = n).tolist()
+        Generates a symmetric para file with fixation periods approximately 25%
+        of the time.
 
+        :Kwargs:
+            n (int, default: 6)
+                Size of Latin square. Should be equal to the number of
+                conditions you have.
+                :note: n must be even. For an odd n, I am not aware of a
+                general method to produce a Latin square.
+
+        :Returns:
+            A `numpy.array` with each row representing one possible ordering
+            of stimuli (fixations are coded as 0).
+        """
+        latin = self.latin_square(n=n).tolist()
         out = []
         for j, thisLatin in enumerate(latin):
-
             thisLatin = thisLatin + thisLatin[::-1]
-            # para = open('para%02d.txt' %(j+1),'w')
-
             temp = []
             for i, item in enumerate(thisLatin):
-                if i%4 == 0: temp.append(0) #para.write('0\n')
+                if i%4 == 0: temp.append(0)
                 temp.append(item)
-                # para.write(str(item)+'\n')
-            # para.write('0')
             temp.append(0)
             out.append(temp)
-            # para.close()
+
         return np.array(out)
 
-    def last_keypress(self, keyList = None):
+    def last_keypress(self, keyList=None):
         """
         Extract the last key pressed from the event list.
 
         If escape is pressed, quits.
+
+        :Kwargs:
+            keyList (list of str, default: `self.computer.defaultKeys`)
+                A list of keys that are recognized. Any other keys pressed will
+                not matter.
+
+        :Returns:
+            An str of a last pressed key or None if nothing has been pressed.
         """
-        if keyList is None: keyList = self.computer.defaultKeys
-        thisKeyList = event.getKeys(keyList = keyList)
+        if keyList is None:
+            keyList = self.computer.defaultKeys
+        thisKeyList = event.getKeys(keyList=keyList)
         if len(thisKeyList) > 0:
             thisKey = thisKeyList.pop()
             if thisKey == 'escape':
@@ -442,14 +568,16 @@ class Experiment(TrialHandler):
         """
         Waits for response. Returns last key pressed, timestamped.
 
-        :parameters:
-
-            RT_clock: False or psychopy.core.Clock
+        :Kwargs:
+            - RT_clock (False or `psychopy.core.Clock`, default: False)
                 A clock used as a reference for measuring response time
 
-            fakeKey: None or (key pressed, response time)
+            - fakeKey (None or a tuple (key pressed, response time), default: None)
                 This is used for simulating key presses in order to test that
                 the experiment is working.
+
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
 
         """
         allKeys = []
@@ -466,11 +594,22 @@ class Experiment(TrialHandler):
         return allKeys
 
 
-    def waitEvent(self, globClock, trialClock, eventClock,
-        thisTrial, thisEvent, j):
+    def waitEvent(self, trialClock=None, eventClock=None,
+                  thisTrial=None, thisEvent=None, **kwargs):
         """
-        Default waiting function for the event
-        Does nothing but catching key input of default keys (escape and trigger)
+        Default waiting function for the event.
+
+        Sits idle catching key input of default keys (escape and trigger).
+
+        :Kwargs:
+            - trialClock (:class:`psychopy.core.Clock`, default: None)
+                A clock that started with the trial
+            - eventClock (:class:`psychopy.core.Clock`, default: None)
+                A clock that started with the event within the trial
+            - thisTrial (dict)
+                A dictionary of trial properties
+            - thisEvent (dict)
+                A dictionary with event properties
         """
 
         if thisEvent['dur'] == 0:
@@ -489,6 +628,26 @@ class Experiment(TrialHandler):
                 self.last_keypress()
 
     def postTrial(self, thisTrial, allKeys):
+        """A default function what to do after a trial is over.
+
+        It records the participant's response as the last key pressed,
+        calculates accuracy based on the expected (correct) response value,
+        and records the time of the last key press with respect to the onset
+        of a trial. If no key was pressed, participant's response and response
+        time are recorded as an empty string, while accuracy is assigned a
+        'No response'.
+
+        :Args:
+            - thisTrial (dict)
+                A dictionary of trial properties
+            - allKeys (list of tuples)
+                A list of tuples with the name of the pressed key and the time
+                of the key press.
+
+        :Returns:
+            thisTrial with ``subjResp``, ``accuracy``, and ``RT`` filled in.
+
+        """
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
             thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
@@ -504,16 +663,9 @@ class Experiment(TrialHandler):
     def quit(self):
         """What to do when exit is requested.
         """
-        #if not self.extraInfo['noOutput']:
-            #filename = '_'.join(['data','%02d' %int(self.extraInfo['runNo'])])
-            #datadir = self.paths['data_behav'] %self.extraInfo['subjID']
-            #self.try_makedirs(datadir)
-            #import pdb; pdb.set_trace()
-            #self.saveAsWideText(datadir+filename+'.csv')
-        #self._currentLoop.save_data()
-        # if 'noOutput' in self.extraInfo:
-        #     if not self.extraInfo['noOutput']: self.save_data()
-        sys.stdout.write(": exit\n")
+        print
+        logging.warning('Premature exit requested by user.')
+        sys.stdout.write("Exit requested by the user\n")
         self.win.close()
         core.quit()
 
@@ -522,11 +674,10 @@ class Experiment(TrialHandler):
         Displays instructions on the screen.
 
         :Kwargs:
-
-            text: str (default: '')
+            - text: str (default: '')
                 Text to be displayed
 
-            wait: int (default: 0)
+            - wait: int (default: 0)
                 Seconds to wait before removing the text from the screen after
                 hitting a spacebar (or a `computer.trigger`)
         """
@@ -536,7 +687,7 @@ class Experiment(TrialHandler):
         instructions.draw()
         self.win.flip()
 
-        if not self.runParams['autorun']:
+        if not self.runParams['autorun'] or True:
             thisKey = None
             while thisKey != self.computer.trigger:
                 thisKey = self.last_keypress()
@@ -545,6 +696,17 @@ class Experiment(TrialHandler):
         self.win.flip()
 
     def create_TrialHandler(self, trialList):
+        """
+        Converts a list of trials into a `~psychopy.data.TrialHandler`,
+        finalizing the experimental setup procedure.
+
+        :Args:
+            trialList (a list of dict)
+                A list of trials. Each trial is a dict with stimulus properties.
+                It is recommended to use `~colllections.OrderedDict` instead of
+                a dict for defining properties because then these properties are
+                written to a file in the same (logical) order.
+        """
         TrialHandler.__init__(self,
             trialList,
             nReps=self.nReps,
@@ -558,7 +720,14 @@ class Experiment(TrialHandler):
 
     def loop_trials(self, datafile='data.csv', noOutput=False):
         """
-        Iterate over the sequence of events
+        Iterate over the sequence of trials and events.
+
+        :Kwargs:
+            - datafile (str, default: 'data.csv')
+                Data file name to store experiment information and responses.
+            - noOutput (bool, default: False)
+                If True, the data file will not be written. Useful for checking
+                how the experiment looks like and for debugging.
         """
         if not noOutput:
             self.try_makedirs(os.path.dirname(datafile))
@@ -625,6 +794,13 @@ class Experiment(TrialHandler):
         This is just the absolute minimum for autorunning. Best practice would
         be extend this function to simulate responses according to your
         hypothesis.
+
+        :Args:
+            trialList (list of dict)
+                A list of trial definitions.
+
+        :Returns:
+            trialList with ``autoResp`` and ``autoRT`` columns included.
         """
         def rt(mean):
             add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
@@ -647,7 +823,12 @@ class Experiment(TrialHandler):
 
     def _astype(self,type='pandas'):
         """
-        Mostly reused psychopy.data.TrialHandler.saveAsWideText
+        Converts data into a requested type.
+
+        Mostly reused :func:`psychopy.data.TrialHandler.saveAsWideText`
+
+        :Kwargs:
+            type
         """
         # collect parameter names related to the stimuli:
         header = self.trialList[0].keys()
@@ -735,6 +916,15 @@ class Experiment(TrialHandler):
     def get_behav_df(self, pattern='%s'):
         """
         Extracts data from files for data analysis.
+
+        :Kwargs:
+            pattern (str, default: '%s')
+                A string with formatter information. Usually it contains a path
+                to where data is and a formatter such as '%s' to indicate where
+                participant ID should be incorporated.
+
+        :Returns:
+            A `pandas.DataFrame` of data for the requested participants.
         """
         if type(self.extraInfo['subjID']) not in [list, tuple]:
             subjID_list = [self.extraInfo['subjID']]
@@ -995,7 +1185,7 @@ class OrderedDict(dict, DictMixin):
     """
     OrderedDict code (because some are stuck with Python 2.5)
     Created by Raymond Hettinger on Wed, 18 Mar 2009, under the MIT License
-    http://code.activestate.com/recipes/576693/
+    <http://code.activestate.com/recipes/576693/>_
     """
     def __init__(self, *args, **kwds):
         if len(args) > 1:
