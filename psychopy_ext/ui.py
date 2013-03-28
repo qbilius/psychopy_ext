@@ -8,7 +8,6 @@
 """Basic command-line and graphic user interface"""
 
 import wx, sys, inspect
-import argparse
 # some modules are only available in Python 2.6
 try:
     from collections import OrderedDict
@@ -49,7 +48,10 @@ class StaticBox(wx.StaticBox):
                 # Somewhat dirty hack that allows us to treat the choice just like
                 # an input box when retrieving the data
                 inputBox.GetValue = inputBox.GetStringSelection
-                initial = choices.index(initial) if initial in choices else 0
+                if initial in choices:
+                    initial = choices.index(initial)
+                else:
+                    initial = 0
                 inputBox.SetSelection(initial)
             #if len(color): inputBox.SetForegroundColour(color)
             #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
@@ -74,7 +76,8 @@ class Page(wx.Panel):
             run.module = module  # when clicked, what to do
             run.action = action
             run.Bind(wx.EVT_BUTTON,self.OnButtonClick)
-            if i==0: run.SetFocus()
+            if i==0:
+                run.SetFocus()
 
         pagesizer = wx.BoxSizer(wx.VERTICAL)
         pagesizer.Add(self.sb1.sizer)
