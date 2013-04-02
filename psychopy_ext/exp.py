@@ -11,11 +11,11 @@ A library of helper functions for creating and running experiments.
 All experiment-related methods are kept here.
 """
 
-import sys, os, csv, glob, random
+import sys, os, csv, glob, random, threading
 
 import numpy as np
 import wx
-from psychopy import visual, core, event, logging, misc, monitors
+from psychopy import visual, core, event, info, logging, misc, monitors
 from psychopy.data import TrialHandler
 
 # pandas does not come by default with PsychoPy but that should not prevent
@@ -225,15 +225,13 @@ class Experiment(TrialHandler):
                 between the sessions.
         """
         self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        self.create_seed(seed=self.seed)
+        #self.create_seed(seed=self.seed)
 
         if create_win:  # maybe you have a screen already
             self.create_win(debug=self.runParams['debug'])
         self.create_stimuli()
         self.create_trial()
         trialList = self.create_trialList()
-        if self.runParams['autorun']:
-            trialList = self.autorun(trialList)
         self.create_TrialHandler(trialList)
         #dataFileName=self.paths['data']%self.extraInfo['subjID'])
 
@@ -260,11 +258,11 @@ class Experiment(TrialHandler):
                 os.makedirs(path)
             except:
                 logging.error('ERROR: Cannot create a folder for storing data %s' %path)
-                # We'll enter the debugger so that we don't lose any data
+                # FIX: We'll enter the debugger so that we don't lose any data
                 import pdb; pdb.set_trace()
                 self.quit()
 
-    def set_logging(self, logname='log.log'):
+    def set_logging(self, logname='log.log', level=logging.WARNING):
         """Setup files for saving logging information.
 
         New folders might be created.
@@ -273,22 +271,32 @@ class Experiment(TrialHandler):
             logname (str, default: 'log.log')
                 The log file name.
         """
+        sysinfo = info.RunTimeInfo(verbose=True, win=False,
+                randomSeed='set:time')
+        seed = sysinfo['experimentRandomSeed.string']
+        self.seed = int(seed)
+
         if not self.runParams['noOutput']:
             # add .log if no extension given
             if len(logname.split('.')) < 2: logname += '.log'
 
             # Setup logging file
             self.try_makedirs(os.path.dirname(logname))
-            self.logFile = logging.LogFile(
-                logname,
-                filemode = 'a',
-                level = logging.WARNING)
+            if os.path.isfile(logname):
+                writesys = False  # we already have sysinfo there
+            else:
+                writesys = True
+            self.logFile = logging.LogFile(logname, filemode='a', level=level)
 
-        # this outputs to the screen, not a file
-        logging.console.setLevel(logging.WARNING)
+            # Write system information first
+            if writesys: self.logFile.write('%s\n' % sysinfo)
+
+        # output to the screen
+        logging.console.setLevel(level)
 
     def create_seed(self, seed=None):
         """
+        SUPERSEDED by `psychopy.info.RunTimeInfo`
         Creates or assigns a seed for a reproducible randomization.
 
         When a seed is set, you can, for example, rerun the experiment with
@@ -530,61 +538,34 @@ class Experiment(TrialHandler):
 
         return np.array(out)
 
-    def last_keypress(self, keyList=None):
+    def create_stimuli(self):
         """
-        Extract the last key pressed from the event list.
+        Define stimuli as a dictionary
 
-        If escape is pressed, quits.
-
-        :Kwargs:
-            keyList (list of str, default: `self.computer.defaultKeys`)
-                A list of keys that are recognized. Any other keys pressed will
-                not matter.
-
-        :Returns:
-            An str of a last pressed key or None if nothing has been pressed.
+        Example:
+        self.create_fixation(color='white')
+        self.s = {
+            'fix': self.fixation,
+            'stim1': [visual.ImageStim(self.win, name='stim1')],
+            }
         """
-        if keyList is None:
-            keyList = self.computer.defaultKeys
-        thisKeyList = event.getKeys(keyList=keyList)
-        if len(thisKeyList) > 0:
-            thisKey = thisKeyList.pop()
-            if thisKey == 'escape':
-                self.quit()
-            else:
-                return thisKey
-        else:
-            return None
+        raise NotImplementedError
 
-    def wait_for_response(self, RT_clock=False, fakeKey=None):
+    def create_trial(self):
         """
-        Waits for response. Returns last key pressed, timestamped.
+        Create a list of events that constitute a trial.
 
-        :Kwargs:
-            - RT_clock (False or `psychopy.core.Clock`, default: False)
-                A clock used as a reference for measuring response time
+        Example:
+        self.trial = [{'dur': .100,
+                       'display': self.s['fix'],
+                       'defaultFun': self.waitEvent},
 
-            - fakeKey (None or a tuple (key pressed, response time), default: None)
-                This is used for simulating key presses in order to test that
-                the experiment is working.
-
-        :Returns:
-            A list of tuples with a key name (str) and a response time (float).
-
+                       {'dur': .300,
+                       'display': self.s['stim1'],
+                       'defaultFun': self.during_trial},
+                       ]
         """
-        allKeys = []
-        event.clearEvents() # key presses might be stored from before
-        while len(allKeys) == 0: # if the participant did not respond earlier
-            if fakeKey is not None:
-                if RT_clock.getTime() > fakeKey[1]:
-                    allKeys = [fakeKey]
-            else:
-                allKeys = event.getKeys(
-                    keyList = self.computer.validResponses.keys(),
-                    timeStamped = RT_clock)
-            self.last_keypress()
-        return allKeys
-
+        raise NotImplementedError
 
     def waitEvent(self, trialClock=None, eventClock=None,
                   thisTrial=None, thisEvent=None, **kwargs):
@@ -619,60 +600,99 @@ class Experiment(TrialHandler):
                 #self.win.getMovieFrame()
                 self.last_keypress()
 
-    def postTrial(self, thisTrial, allKeys):
-        """A default function what to do after a trial is over.
+    def autorun(self, trialList):
+        """
+        Automatically runs experiment by simulating key responses.
 
-        It records the participant's response as the last key pressed,
-        calculates accuracy based on the expected (correct) response value,
-        and records the time of the last key press with respect to the onset
-        of a trial. If no key was pressed, participant's response and response
-        time are recorded as an empty string, while accuracy is assigned a
-        'No response'.
+        This is just the absolute minimum for autorunning. Best practice would
+        be extend this function to simulate responses according to your
+        hypothesis.
 
         :Args:
-            - thisTrial (dict)
-                A dictionary of trial properties
-            - allKeys (list of tuples)
-                A list of tuples with the name of the pressed key and the time
-                of the key press.
+            trialList (list of dict)
+                A list of trial definitions.
 
         :Returns:
-            thisTrial with ``subjResp``, ``accuracy``, and ``RT`` filled in.
-
+            trialList with ``autoResp`` and ``autoRT`` columns included.
         """
-        if len(allKeys) > 0:
-            thisResp = allKeys.pop()
-            thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
-            thisTrial['accuracy'] = self.signalDet[thisTrial['corrResp']==thisTrial['subjResp']]
-            thisTrial['RT'] = thisResp[1]
-        else:
-            thisTrial['subjResp'] = ''
-            thisTrial['accuracy'] = 'No response'
-            thisTrial['RT'] = ''
+        def rt(mean):
+            add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
+            return self.trial[0]['dur'] + add
 
-        return thisTrial
+        invValidResp = dict([[v,k] for k,v in self.computer.validResponses.items()])
+        sortKeys = sorted(invValidResp.keys())
+        invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
+        # speed up the experiment
+        for ev in self.trial:
+            ev['dur'] /= self.runParams['autorun']
+        self.trialDur /= self.runParams['autorun']
 
-    def quit(self):
-        """What to do when exit is requested.
+        for trial in trialList:
+            # here you could do if/else to assign different values to
+            # different conditions according to your hypothesis
+            trial['autoResp'] = random.choice(invValidResp.values())
+            trial['autoRT'] = rt(.5)
+        return trialList
+
+    def create_TrialHandler(self, trialList):
         """
-        print
-        logging.warning('Premature exit requested by user.')
-        sys.stdout.write("Exit requested by the user\n")
-        self.win.close()
-        core.quit()
+        Converts a list of trials into a `~psychopy.data.TrialHandler`,
+        finalizing the experimental setup procedure.
 
-    def show_instructions(self, text='', wait=0):
+        If `autorun`, then the `trialList` is first appended with autorun
+        information.
+
+        :Args:
+            trialList (a list of dict)
+                A list of trials. Each trial is a dict with stimulus properties.
+                It is recommended to use `~colllections.OrderedDict` instead of
+                a dict for defining properties because then these properties are
+                written to a file in the same (logical) order.
+        """
+        if self.runParams['autorun']:
+            trialList = self.autorun(trialList)
+        TrialHandler.__init__(self,
+            trialList,
+            nReps=self.nReps,
+            method=self.method,
+            dataTypes=self.dataTypes,
+            extraInfo=self.extraInfo,
+            seed=self.seed,
+            originPath=self.originPath,
+            name=self.name)
+        self.trialList = trialList
+
+    def run(self):
+        """
+        Setup and go!
+        """
+        self.setup()
+        self.show_instructions(**self.instructions)
+        self.loop_trials(
+            datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
+            noOutput=self.runParams['noOutput'])
+
+    def show_instructions(self, text='', wait=0, wait_stim=None):
         """
         Displays instructions on the screen.
 
         :Kwargs:
-            - text: str (default: '')
+            - text (str, default: '')
                 Text to be displayed
-
-            - wait: int (default: 0)
-                Seconds to wait before removing the text from the screen after
+            - wait (int, default: 0)
+                Seconds to wait after removing the text from the screen after
                 hitting a spacebar (or a `computer.trigger`)
+            - wait_stim (a list of psychopy stimuli objects, default: None)
+                Stimuli to show while waiting after the trigger. This is used
+                for showing a fixation spot for people to get used to it.
         """
+        # for some graphics drivers (e.g., mine:)
+        # draw() command needs to be invoked once
+        # before it can draw properly
+        self.win.flip()
+        visual.TextStim(self.win, text='').draw()
+        self.win.flip()
+
         instructions = visual.TextStim(self.win, text=text,
             color='white', height=20, units='pix', pos=(0,0),
             wrapWidth=30*20)
@@ -684,31 +704,13 @@ class Experiment(TrialHandler):
             while thisKey != self.computer.trigger:
                 thisKey = self.last_keypress()
             if self.runParams['autorun']: wait /= self.runParams['autorun']
-        core.wait(wait) # wait a little bit before starting the experiment
         self.win.flip()
 
-    def create_TrialHandler(self, trialList):
-        """
-        Converts a list of trials into a `~psychopy.data.TrialHandler`,
-        finalizing the experimental setup procedure.
-
-        :Args:
-            trialList (a list of dict)
-                A list of trials. Each trial is a dict with stimulus properties.
-                It is recommended to use `~colllections.OrderedDict` instead of
-                a dict for defining properties because then these properties are
-                written to a file in the same (logical) order.
-        """
-        TrialHandler.__init__(self,
-            trialList,
-            nReps=self.nReps,
-            method=self.method,
-            dataTypes=self.dataTypes,
-            extraInfo=self.extraInfo,
-            seed=self.seed,
-            originPath=self.originPath,
-            name=self.name)
-        self.trialList = trialList
+        if wait_stim is not None:
+            for stim in wait_stim:
+                stim.draw()
+            self.win.flip()
+        core.wait(wait)  # wait a little bit before starting the experiment
 
     def loop_trials(self, datafile='data.csv', noOutput=False):
         """
@@ -824,39 +826,110 @@ class Experiment(TrialHandler):
             datawriter.writerow(header)
         return False
 
-    def autorun(self, trialList):
+    def last_keypress(self, keyList=None):
         """
-        Automatically runs experiment by simulating key responses.
+        Extract the last key pressed from the event list.
 
-        This is just the absolute minimum for autorunning. Best practice would
-        be extend this function to simulate responses according to your
-        hypothesis.
+        If escape is pressed, quits.
 
-        :Args:
-            trialList (list of dict)
-                A list of trial definitions.
+        :Kwargs:
+            keyList (list of str, default: `self.computer.defaultKeys`)
+                A list of keys that are recognized. Any other keys pressed will
+                not matter.
 
         :Returns:
-            trialList with ``autoResp`` and ``autoRT`` columns included.
+            An str of a last pressed key or None if nothing has been pressed.
         """
-        def rt(mean):
-            add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
-            return self.trial[0]['dur'] + add
+        if keyList is None:
+            keyList = self.computer.defaultKeys
+        thisKeyList = event.getKeys(keyList=keyList)
+        if len(thisKeyList) > 0:
+            thisKey = thisKeyList.pop()
+            if thisKey == 'escape':
+                print  # because we've been using sys.stdout.write without \n
+                self.quit()
+            else:
+                return thisKey
+        else:
+            return None
 
-        invValidResp = dict([[v,k] for k,v in self.computer.validResponses.items()])
-        sortKeys = sorted(invValidResp.keys())
-        invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
-        # speed up the experiment
-        for event in self.trial:
-            event['dur'] /= self.runParams['autorun']
-        self.trialDur /= self.runParams['autorun']
+    def wait_for_response(self, RT_clock=False, fakeKey=None):
+        """
+        Waits for response. Returns last key pressed, timestamped.
 
-        for trial in trialList:
-            # here you could do if/else to assign different values to
-            # different conditions according to your hypothesis
-            trial['autoResp'] = random.choice(invValidResp.values())
-            trial['autoRT'] = rt(.5)
-        return trialList
+        :Kwargs:
+            - RT_clock (False or `psychopy.core.Clock`, default: False)
+                A clock used as a reference for measuring response time
+
+            - fakeKey (None or a tuple (key pressed, response time), default: None)
+                This is used for simulating key presses in order to test that
+                the experiment is working.
+
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
+
+        """
+        allKeys = []
+        event.clearEvents() # key presses might be stored from before
+        while len(allKeys) == 0: # if the participant did not respond earlier
+            if fakeKey is not None:
+                if RT_clock.getTime() > fakeKey[1]:
+                    allKeys = [fakeKey]
+            else:
+                allKeys = event.getKeys(
+                    keyList = self.computer.validResponses.keys(),
+                    timeStamped = RT_clock)
+            self.last_keypress()
+        return allKeys
+
+    def postTrial(self, thisTrial, allKeys):
+        """A default function what to do after a trial is over.
+
+        It records the participant's response as the last key pressed,
+        calculates accuracy based on the expected (correct) response value,
+        and records the time of the last key press with respect to the onset
+        of a trial. If no key was pressed, participant's response and response
+        time are recorded as an empty string, while accuracy is assigned a
+        'No response'.
+
+        :Args:
+            - thisTrial (dict)
+                A dictionary of trial properties
+            - allKeys (list of tuples)
+                A list of tuples with the name of the pressed key and the time
+                of the key press.
+
+        :Returns:
+            thisTrial with ``subjResp``, ``accuracy``, and ``RT`` filled in.
+
+        """
+        if len(allKeys) > 0:
+            thisResp = allKeys.pop()
+            thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
+            thisTrial['accuracy'] = self.signalDet[thisTrial['corrResp']==thisTrial['subjResp']]
+            thisTrial['RT'] = thisResp[1]
+        else:
+            thisTrial['subjResp'] = ''
+            thisTrial['accuracy'] = 'No response'
+            thisTrial['RT'] = ''
+
+        return thisTrial
+
+    def quit(self):
+        """What to do when exit is requested.
+        """
+        logging.warning('Premature exit requested by user.')
+        self.win.close()
+        core.quit()
+        # redefine core.quit() so that an App window would not be killed
+        #logging.flush()
+        #for thisThread in threading.enumerate():
+            #if hasattr(thisThread,'stop') and hasattr(thisThread,'running'):
+                ##this is one of our event threads - kill it and wait for success
+                #thisThread.stop()
+                #while thisThread.running==0:
+                    #pass#wait until it has properly finished polling
+        #sys.exit(0)
 
     def _astype(self,type='pandas'):
         """
