@@ -5,7 +5,18 @@
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
-"""A wrapper of matplotlib for producing pretty plots by default"""
+"""
+A wrapper of matplotlib for producing pretty plots by default. As `pandas`
+evolves, some of these improvements will hopefully be merged into it.
+
+Usage:
+    import plot
+    plt = plot.Plot(nrows_ncols=(1,2))
+    plt.plot(data)  # plots data on the first subplot
+    plt.plot(data2)  # plots data on the second subplot
+    plt.show()
+
+"""
 
 import sys
 
@@ -19,8 +30,10 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
 
 
+# parameters for pretty plots in the ggplot style
 # from https://gist.github.com/huyng/816622
 # inspiration from mpltools
+# will soon be removed as pandas has this implemented in the dev versions
 s = {'axes.facecolor': '#eeeeee',
      'axes.edgecolor': '#bcbcbc',
      'axes.linewidth': 1,
@@ -69,67 +82,111 @@ s = {'axes.facecolor': '#eeeeee',
      'patch.antialiased'      : True,    # render patches in antialised (no jaggies)
 
      }
-
 plt.rcParams.update(s)
 
 
 class Plot(object):
 
-    def __init__(self, kind='', figsize=None, nrows_ncols=(1, 1)):
-        self.subplots(kind=kind, figsize=figsize, nrows_ncols=nrows_ncols)
+    def __init__(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
+        cbar_mode='single', squeeze=False, **kwargs):
+        self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
+            ncols=ncols, **kwargs)
 
-    def subplots(self, kind='', figsize=None, nrows_ncols=(1, 1),direction="row",
-                 axes_pad = 0.05, add_all=True, label_mode="L", share_all=True,
-                 cbar_location="right", cbar_mode="single", cbar_size="10%",
-                 cbar_pad=0.05, **kwargs):
+    def _create_subplots(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
+        cbar_mode='single', squeeze=False, **kwargs):
+        """
+        :Kwargs:
+            - kind (str, default: '')
+                The kind of plot. For plotting matrices or images
+                (`matplotlib.pyplot.imshow`), choose `matrix`, otherwise leave
+                blank.
+            - figsize (tuple, defaut: None)
+                Size of the figure.
+            - nrows_ncols (tuple, default: (1, 1))
+                Shape of subplot arrangement.
+            - **kwargs
+                A dictionary of keyword arguments that `matplotlib.ImageGrid`
+                or `matplotlib.pyplot.suplots` accept. Differences:
+                    - `rect` (`matplotlib.ImageGrid`) is a keyword argument here
+                    - `cbar_mode = 'single'`
+                    - `squeeze = False`
+        :Returns:
+            `matplotlib.pyplot.figure` and a grid of axes.
+        """
+        if 'nrows_ncols' not in kwargs:
+            nrows_ncols = (nrows, ncols)
+        else:
+            nrows_ncols = kwargs['nrows_ncols']
+            del kwargs['nrows_ncols']
+
         if kind == 'matrix':
             self.fig = self.figure(figsize=figsize)
-            self.axes = self.ImageGrid(self.fig, 111,
+            self.axes = ImageGrid(self.fig, rect,
                                   nrows_ncols=nrows_ncols,
-                                  direction=direction,
-                                  axes_pad=axes_pad,
-                                  add_all=add_all,
-                                  label_mode=label_mode,
-                                  share_all=share_all,
-                                  cbar_location=cbar_location,
                                   cbar_mode=cbar_mode,
-                                  cbar_size=cbar_size,
-                                  cbar_pad=cbar_pad,
+                                  **kwargs
                                   )
         else:
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
                 ncols=nrows_ncols[1],
-                sharex=False,
-                sharey=False,
-                squeeze=True,
                 figsize=figsize,
+                squeeze=squeeze,
                 **kwargs
                 )
-            try:
-                self.axes[0]
-            except:
-                self.axes = [self.axes]
-        self.subplotno = -1
+            self.axes = self.axes.ravel()  # turn axes into a list
+        self.kind = kind
+        self.subplotno = -1  # will get +1 after the plot command
         self.nrows_ncols = nrows_ncols
         return (self.fig, self.axes)
 
     def __getattr__(self, name):
-        """Pass on a matplotlib function that we haven't modified
+        """Pass on a `matplotlib` function that we haven't modified
         """
         def method(*args, **kwargs):
-            getattr(plt, name)(*args, **kwargs)
+            return getattr(plt, name)(*args, **kwargs)
         return method
 
-    def scatter(self, x, y, ax=None, labels=None, title='', *args, **kwargs):
-        if ax is None:
-            self.subplotno += 1
-            ax = self.get_ax()
-        plt.rcParams['axes.color_cycle']
-        ax.scatter(x, y, marker='o', color=self.get_colors()[0])
-        for c, (pointx, pointy) in enumerate(zip(x,y)):
-            ax.text(pointx, pointy, labels[c])
-        ax.set_title(title)
+    def __getitem__(self, key):
+        """Allow to get axes as Plot()[key]
+        """
+        if key > len(self.axes):
+            raise IndexError
+        if key < 0:
+            key += len(self.axes)
+        return self.axes[key]
+
+    def get_ax(self, subplotno=None):
+        """
+        Returns the current or the requested axis from the current figure.
+
+        :note: The :class:`Plot()` is indexable so you should access axes as
+        `Plot()[key]` unless you want to pass a list
+
+        :Kwargs:
+            subplotno (int, default: None)
+                Give subplot number explicitly if you want to get not the
+                current axis
+        :Returns:
+            ax
+        """
+        if subplotno is None:
+            no = self.subplotno
+        else:
+            no = subplotno
+
+        if isinstance(no, int):
+            ax = self.axes[no]
+        else:
+            if isinstance(self.axes, ImageGrid):  # axes are a list
+                if self.axes._direction == 'row':
+                    no = self.axes._ncols * no[0] + no[1]
+                else:
+                    no = self.axes._nrows * no[0] + no[1]
+            else:  # axes are a grid
+                no = self.axes._ncols * no[0] + no[1]
+            ax = self.axes[no]
+
         return ax
 
     def sample_paired(self, ncolors=2):
@@ -175,26 +232,6 @@ class Plot(object):
             colors = thisCmap(norm(z))
         return colors
 
-    def nan_outliers(self, df, values=None, group=None):
-        """
-        Remove outliers 3 standard deviations away from the mean
-
-        Args:
-            df (pandas.DataFrame): A DataFrame with your data
-        Kwargs:
-            values (str): Name of the column that needs to have outliers removed
-            group (str): Name of the column to group reponses by. Typically, this
-            is the column with subject IDs, so that you remove outliers for each
-            participant separately (based on their mean and std)
-        Returns:
-            df (pandas.DataFrame): A DataFrame without outliers
-        """
-        zscore = lambda x: (x - x.mean()) / x.std()
-        tdf = df.groupby(group)[values].transform(zscore)
-        df[values] = np.select([tdf<-3, tdf>3],[np.nan, np.nan],
-                               default=df[values])
-        return df
-
     def pivot_plot(self,df,rows=None,cols=None,values=None,yerr=None,
                    **kwargs):
         agg = self.aggregate(df, rows=rows, cols=cols,
@@ -205,106 +242,64 @@ class Plot(object):
             no_yerr = False
         return self._plot(agg, no_yerr=no_yerr,**kwargs)
 
-    def get_ax(self, subplotno=None):
-        """
-        Returns the current or the requested axis from the current figure.
-
-        :Kwargs:
-            subplotno (int, default: None)
-                Give subplot number explicitly if you want to get not the
-                current axis
-        :Returns:
-            ax
-        """
-        if subplotno is None:
-            no =  self.subplotno
-        else:
-            no = subplotno
-
-        try:
-            row = no / self.axes[0][0].numCols
-            col = no % self.axes[0][0].numCols
-            ax = self.axes[row][col]
-        except:
-            ax = self.axes[no]
-
-        return ax
 
     def _plot(self, agg, ax=None,
                    title='', kind='bar', xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, **kwargs):
+        """DEPRECATED plotting function"""
+        print "plot._plot() has been DEPRECATED; please don't use it anymore"
         self.plot(agg, ax=ax,
                    title=title, kind=kind, xtickson=xtickson, ytickson=ytickson,
                    no_yerr=no_yerr, numb=numb, autoscale=autoscale, **kwargs)
 
-    def plot(self, agg, ax=None,
-                   title='', kind='bar', xtickson=True, ytickson=True,
+    def plot(self, agg, subplots=None, subplots_order=None, **kwargs):
+        agg = pandas.DataFrame(agg)
+
+        if subplots is None:
+            ax = self._plot_ax(agg, **kwargs)
+            return ax
+        else:
+            for subname in agg.columns.levels[0]:
+                self._plot_ax(agg[subname], title=subname, **kwargs)
+
+    def _plot_ax(self, agg, ax=None, subplots=False, legend=True,
+                   title='', kind='bar',
+                   xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, order=None,
                    **kwargs):
-
         if ax is None:
             self.subplotno += 1
             ax = self.get_ax()
 
-        if type(agg) == pandas.Panel:
+        if isinstance(agg, pandas.DataFrame):
             mean, p_yerr = self.errorbars(agg)
-            p_yerr = np.array(p_yerr)
         else:
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
 
-        colors = self.get_colors(len(mean.columns))
+        if legend:
+            #import pdb; pdb.set_trace()
+            mean = mean.unstack()  # make columns which will turn into legend entries
+            p_yerr = p_yerr.unstack()
 
-        if len(agg.items) == 1 and kind=='bean':
+        if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
             print 'WARNING: Beanplot not available for a single measurement'
 
         if kind == 'bar':
-            n = len(mean.columns)
-            idx = np.arange(len(mean))
-            width = .75 / n
-            rects = []
-            for i, (label, column) in enumerate(mean.iteritems()):
-                rect = ax.bar(idx+i*width, column, width, label=label,
-                    yerr = p_yerr[:,i], color = colors[i],
-                    ecolor='black')
-                rects.append(rect)
-            ax.set_xticks(idx + width*n/2)
-            #FIX: mean.index returns float even if it is int because dtype=object
-            ax.set_xticklabels(mean.index.tolist())
-            l = ax.legend(rects, mean.columns.tolist())
-
+            self.barplot(mean, yerr=p_yerr, ax=ax)
         elif kind == 'line':
-            x = range(len(mean))
-            lines = []
-            for i, (label, column) in enumerate(mean.iteritems()):
-                line = ax.plot(x, column, label=label)
-                lines.append(line)
-                ax.errorbar(x, column, yerr=p_yerr[:, i], fmt=None,
-                    ecolor='black')
-            ticks = ax.get_xticks().astype(int)
-            if ticks[-1] >= len(mean.index):
-                labels = mean.index[ticks[:-1]]
-            else:
-                labels = mean.index[ticks]
-            ax.set_xticklabels(labels)
-            l = ax.legend()
-            #loc='center left', bbox_to_anchor=(1.3, 0.5)
-            #loc='upper right', frameon=False
-
+            self.lineplot(mean, yerr=p_yerr, ax=ax)
         elif kind == 'bean':
             autoscale = False  # FIX: autoscaling is incorrect on beanplots
             if len(mean.columns) <= 2:
-                #kk = pandas.Series([float(agg[s]['morph']) for s in agg.items])
-                #import pdb; pdb.set_trace()
                 ax, l = self.beanplot(agg, ax=ax, order=order, **kwargs)#, pos=range(len(mean.index)))
             else:
                 raise Exception('Beanplot is not available for more than two '
                                 'classes.')
-
         else:
-            sys.exit('%s plot not recognized' %kind)
-
+            raise Exception('%s plot not recognized. Choose from '
+                            '{bar, line, bean}.' %kind)
 
         # TODO: xticklabel rotation business is too messy
         if 'xticklabels' in kwargs:
@@ -359,7 +354,14 @@ class Plot(object):
         #     ax.set_ylabel(grouped.name)
 
         ax.set_title(title, size='x-large')
+        self.draw_legend(ax, **kwargs)
+        if numb == True:
+            self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
 
+        return ax
+
+    def draw_legend(self, ax, **kwargs):
+        l = ax.legend()
         l.legendPatch.set_alpha(0.5)
         if 'legend_visible' in kwargs:
             l.set_visible(kwargs['legend_visible'])
@@ -370,30 +372,151 @@ class Plot(object):
                 l.set_visible(True)
             else:
                 l.set_visible(False)
-        if numb == True:
-            self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
+
+
+    def hide_plots(self, nums):
+        """
+        Hides an axis.
+
+        :Args:
+            nums (int or list)
+                Which axis to hide.
+        """
+        ax = self.get_ax(nums)
+        ax.axis('off')
+
+    def barplot(self, data, yerr=None, ax=None):
+        """
+        Plots a bar plot.
+
+        :Args:
+            data (`pandas.DataFrame` or any other array accepted by it)
+                A data frame where rows go to the x-axis and columns go to the
+                legend.
+
+        """
+        data = pandas.DataFrame(data)
+        if yerr is None:
+            yerr = np.empty(data.shape)
+            yerr = yerr.reshape(data.shape)  # force this shape
+            yerr = np.nan
+        if ax is None:
+            self.subplotno += 1
+            ax = self.get_ax()
+
+        colors = self.get_colors(len(data.columns))
+
+        n = len(data.columns)
+        idx = np.arange(len(data))
+        width = .75 / n
+        rects = []
+        for i, (label, column) in enumerate(data.iteritems()):
+            rect = ax.bar(idx+i*width, column, width, label=label,
+                yerr = yerr[label], color = colors[i], ecolor='black')
+            # TODO: yerr indexing might need fixing
+            rects.append(rect)
+        ax.set_xticks(idx + width*n/2)
+        #FIX: data.index returns float even if it is int because dtype=object
+        ax.set_xticklabels(data.index.tolist())
+        ax.legend(rects, data.columns.tolist())
 
         return ax
 
-    def hide_plots(self, nums):
-        # check if nums is iterable
-        try:
-            num_iter = iter(nums)
-        except TypeError:
-            num_iter = [nums]
+    def lineplot(self, data, yerr=None, ax=None):
+        """
+        Plots a bar plot.
 
-        for num in num_iter:
-            try:
-                row = num / self.axes[0][0].numCols
-                col = num % self.axes[0][0].numCols
-                ax = self.axes[row][col]
-            except:
-                ax = self.axes[num]
-            ax.axis('off')
+        :Args:
+            data (`pandas.DataFrame` or any other array accepted by it)
+                A data frame where rows go to the x-axis and columns go to the
+                legend.
+
+        """
+        data = pandas.DataFrame(data)
+        if yerr is None:
+            yerr = np.empty(data.shape)
+            yerr = yerr.reshape(data.shape)  # force this shape
+            yerr = np.nan
+        if ax is None:
+            self.subplotno += 1
+            ax = self.get_ax()
+
+        #colors = self.get_colors(len(data.columns))
+
+        x = range(len(data))
+        lines = []
+        for i, (label, column) in enumerate(data.iteritems()):
+            line = ax.plot(x, column, label=str(label))
+            lines.append(line)
+            ax.errorbar(x, column, yerr=yerr[label], fmt=None,
+                ecolor='black')
+        #ticks = ax.get_xticks().astype(int)
+        #if ticks[-1] >= len(data.index):
+            #labels = data.index[ticks[:-1]]
+        #else:
+            #labels = data.index[ticks]
+        #ax.set_xticklabels(labels)
+        #ax.legend()
+        #loc='center left', bbox_to_anchor=(1.3, 0.5)
+        #loc='upper right', frameon=False
+        return ax
+
+    def scatter(self, x, y, ax=None, labels=None, title='', **kwargs):
+        """
+        Draws a scatter plot.
+
+        This is very similar to `matplotlib.pyplot.scatter` but additionally
+        accepts labels (for labeling points on the plot), plot title, and an
+        axis where the plot should be drawn.
+
+        :Args:
+            - x (an iterable object)
+                An x-coordinate of data
+            - y (an iterable object)
+                A y-coordinate of data
+
+        :Kwargs:
+            - ax (default: None)
+                An axis to plot in.
+            - labels (list of str, default: None)
+                A list of labels for each plotted point
+            - title (str, default: '')
+                Plot title
+            - ** kwargs
+                Additional keyword arguments for `matplotlib.pyplot.scatter`
+
+        :Return:
+            Current axis for further manipulation.
+
+        """
+        if ax is None:
+            self.subplotno += 1
+            ax = self.get_ax()
+        plt.rcParams['axes.color_cycle']
+        ax.scatter(x, y, marker='o', color=self.get_colors()[0], **kwargs)
+        if labels is not None:
+            for c, (pointx, pointy) in enumerate(zip(x,y)):
+                ax.text(pointx, pointy, labels[c])
+        ax.set_title(title)
+        return ax
 
     def matrix_plot(self, matrix, ax=None, title='', **kwargs):
         """
         Plots a matrix.
+
+        :warning: Not tested yet
+
+        :Args:
+            matrix ()
+
+        :Kwargs:
+            - ax (default: None)
+                An axis to plot on.
+            - title (str, default: '')
+                Plot title
+            - **kwargs
+                Keyword arguments to pass to `matplotlib.pyplot.imshow`
+
         """
         if ax is None:
             ax = plt.subplot(111)
@@ -433,50 +556,13 @@ class Plot(object):
         at.txt._text.set_path_effects([withStroke(foreground="w", linewidth=3)])
         return at
 
-    def pivot_plot_old(self, pivot, persubj=None, kind='bar', ncols=2, ax=None, title='',
-                xlabels=True, yerr_type='sem', legend=True, **kwargs):
-        """
-        Generates a bar plot from pandas pivot table.
-
-        Not very stable due to a hack of ncols.
-        """
-        if ax is None:
-            ax = plt.subplot(111)
-
-        if persubj is not None:
-            # calculate errorbars
-            p_yerr = self.errorbars(persubj, ncols, yerr_type=yerr_type)
-            # generate zero errorbars for the pandas plot
-            p_yerr_zeros = np.zeros((ncols, p_yerr.shape[0]))
-
-            # plot data with zero errorbars
-            pplot = pivot.plot(kind=kind, ax=ax, legend=legend,
-                            **{'yerr': p_yerr_zeros,
-                            'color': self.sample_paired(ncols)})
-            # put appropriate errorbars for each bar
-            for i, col in enumerate(pivot.columns):
-                x = pplot.get_lines()[i * ncols].get_xdata()
-                y = pivot[col]
-                pplot.errorbar(x, y, yerr=p_yerr[:, i], fmt=None,
-                    ecolor='b')
-        else:
-            # plot data without errorbars
-            pplot = pivot.plot(kind=kind, ax=ax, legend=legend)#,
-                            #**{'color': sample_paired(ncols)})
-        ax.legend(loc=8)
-        ax.set_title(title)
-        if not xlabels:
-            ax.set_xticklabels([''] * pivot.shape[0])
-        plt.tight_layout()
-
-        return pplot
-
-    def errorbars(self, panel, yerr_type='sem'):
+    def errorbars(self, df, yerr_type='sem'):
         # Set up error bar information
         if yerr_type == 'sem':
-            mean = panel.mean(0)  # mean across items
+            mean = df.mean()  # mean across items
             # std already has ddof=1
-            sem = panel.std(0) / np.sqrt(len(panel.items))
+            sem = df.std() / np.sqrt(len(df))
+            #yerr = np.array(sem)#.reshape(mean.shape)  # force this shape
         elif yerr_type == 'binomial':
             pass
             # alpha = .05
@@ -517,79 +603,6 @@ class Plot(object):
             print binom
             return binom
 
-    @classmethod
-    def oneway_anova(cls, data):
-        """
-        Calculates one-way ANOVA on a pandas.DataFrame.
-
-        Args:
-            data (pandas.DataFrame): rows contain groups (e.g., different
-            conditions), while columns have samples (e.g., participants)
-
-        Returns:
-            F (float): F-value
-            p (float): p-value
-            k-1 (int): Between Group degrees of freedom
-            N-k (int): Within Group degrees of freedom
-
-        """
-        F, p = scipy.stats.f_oneway(*[d[1] for d in data.iterrows()])
-        k = len(data)  # number of conditions
-        N = k*len(data.columns)  # conditions times participants
-        return F, p, k-1, N-k
-
-    @classmethod
-    def p_corr(cls, df1, df2):
-        """
-        Computes Pearson correlation and its significance (using a t
-        distribution) on a pandas.DataFrame.
-
-        Ignores null values when computing significance. Based on
-        http://en.wikipedia.org/wiki/Pearson_product-moment_correlation_coefficient#Testing_using_Student.27s_t-distribution
-
-        Args:
-            df1 (pandas.DataFrame): one dataset
-            df2 (pandas.DataFrame): another dataset
-
-        Returns:
-            corr (float): correlation between the two datasets
-            t (float): an associated t-value
-            p (float): one-tailed p-value that the two datasets differ
-        """
-        corr = df1.corr(df2)
-        N = np.sum(df1.notnull())
-        t = corr*np.sqrt((N-2)/(1-corr**2))
-        p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
-        return corr, t, p
-
-    @classmethod
-    def reliability(cls, panel, level=1, niter=100):
-        subjIDs = panel.items.tolist()
-        corrs = []
-        for n in range(niter):
-            np.random.shuffle(subjIDs)
-            split1inds = subjIDs[:len(subjIDs)/2]
-            split2inds = subjIDs[len(subjIDs)/2:]
-            split1 = pandas.concat([panel[item] for item in panel.items
-                                    if item in split1inds])
-            split2 = pandas.concat([panel[item] for item in panel.items
-                                    if item in split2inds])
-            split1 = split1.mean(0)
-            split2 = split2.mean(0)
-            for lev in range(level):
-                split1 = split1.stack()
-                split2 = split2.stack()
-            corrs.append(split1.corr(split2))
-
-        N = np.sum(split1.notnull())
-        corr = np.mean(corrs)
-        t = corr*np.sqrt((N-2)/(1-corr**2))
-        p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
-        p = 2*p/(1.+p) # Spearman-Brown prediction for twice
-                       # the amount of data
-                       # we need this because we use only half
-                       # of the data here
-        return corr, t, p
 
     def ttestPrint(self, title = '****', values = None, xticklabels = None, legend = None, bon = None):
 
@@ -629,296 +642,7 @@ class Plot(object):
                     %{'s': legendname, 'd':(d-1), 't': t,
                     'p': p, 'star': star}
 
-
-    def plotrc(self, theme = 'default'):
-        """
-        Reads in the rc file
-        Returns: plotOpt
-        """
-
-        if theme == None or theme == 'default': themeFile = 'default'
-        else: themeFile = theme
-
-        rcFile = open(os.path.dirname(__file__) + '/' + themeFile + '.py')
-
-        plotOpt = {}
-        for line in rcFile.readlines():
-            line = line.strip(' \n\t')
-            line = line.split('#')[0] # getting rid of comments
-            if line != '': # skipping blank and commented lines
-
-                linesplit = line.split(':',1)
-                (key, value) = linesplit
-                key = key.strip()
-                value = value.strip()
-
-                # try recognizing numbers, lists etc.
-                try: value = eval(value)
-                except: pass
-
-                linesplit = key.rsplit('.',1)
-                if len(linesplit) == 2:
-                    (plotOptKey, optKey) = linesplit
-                    if not plotOptKey in plotOpt: plotOpt[plotOptKey] = {}
-                    plotOpt[plotOptKey][optKey] = value
-                elif key in ['cmap', 'simpleCmap']: plotOpt[key] = value
-                else: print 'Option %s not recognized and will be ignored' %line
-
-        rcFile.close
-        return plotOpt
-
-
-    def prettyPlot(self,
-        x,
-        y = None,
-        yerr = None,
-        plotType = 'errorbar',
-        fig = None,
-        subplotno = 111,
-        max_y = None,
-        theme = 'default',
-        userOpt = None
-        ):
-
-        """
-        Automatically makes beautiful plots and with error bars.
-
-        **Parameters**
-
-            x: numpy.ndarray
-                Either x or y values
-            y: **None** or numpy.ndarray
-                + if **None**, then x value is assumed to be y, while x is generated automatically
-                + else it is simpy a y value
-            yerr: **None** a 2D numpy.ndarray or list
-                Specifies y error bars. If **None**, then no error bars are plotted
-            plotType: 'errorbar' or 'bar'
-                + 'errorbar' plots lines with error bars
-                + 'bar' plots bars with error bars
-            subplotno: int
-                Use 111 for a single plot; otherwise specify subplot position
-            max_y: **None** or int
-                Use to indicate the maximum allowed ytick value.
-                Useful when plotting accuracy since yticks should not go above 1
-            theme: str
-                Specifies the file name where all the custom plotting parameters are stores
-            userOpt: dict
-                Any plotting options that should override default options
-
-        """
-
-        if y == None: # meaning: x not specified
-            y = x
-            if y.ndim == 1:
-                x = np.arange(y.shape[0])+1
-                numCat = 1
-            else:
-                x = np.arange(y.shape[1])+1
-                numCat = y.shape[0]
-            # this is because if y.ndim == 1, y.shape = (numb,) instead of (1,num)
-
-        numXTicks = x.shape[0]
-
-        plotOpt = plotrc(theme)
-
-        if not 'cmap' in plotOpt: plotOpt['cmap'] = 'Paired'
-        if not 'hatch' in plotOpt: plotOpt['hatch'] = ['']*numCat
-
-        if not 'subplot' in plotOpt: plotOpt['subplot'] = {}
-        if not 'xticks' in plotOpt['subplot']:
-            if numXTicks > 1:
-                plotOpt['subplot']['xticks'] = x
-            else:
-                plotOpt['subplot']['xticklabels'] = ['']
-        if not 'legend' in plotOpt: plotOpt['legend'] = ['']
-
-        # x limits
-        xMin = x.min()
-        xMax = x.max()
-        if xMax == xMin: plotOpt['subplot']['xlim'] = (-.5,2.5)
-        elif plotType == 'errorbar':
-            plotOpt['subplot']['xlim'] = (xMin - (xMax - xMin)/(2.*(len(x)-1)),
-                xMax + (xMax - xMin)/(2.*(len(x)-1)))
-        elif plotType == 'bar':
-            plotOpt['subplot']['xlim'] = (xMin - (xMax - xMin)/(1.5*(len(x)-1)),
-                xMax + (xMax - xMin)/(1.5*(len(x)-1)))
-
-        # y limits
-        if yerr == None or not np.isfinite(yerr.max()):
-            yMin = y.min()
-            yMax = y.max()
-        else:
-            yMin = (y - yerr).min()
-            yMax = (y + yerr).max()
-        if yMax == yMin: plotOpt['subplot']['ylim'] = (0, yMax + yMax/4.)
-        else: plotOpt['subplot']['ylim'] = (yMin - (yMax - yMin)/4., yMax + (yMax - yMin)/2.)
-
-
-        # overwrite plotOpt by userOpt
-        if userOpt != None:
-            for (key, value) in userOpt.items():
-                if type(value)==dict:
-                    if not key in plotOpt: plotOpt[key] = {}
-                    for (key2, value2) in value.items():
-                        plotOpt[key][key2] = value2
-                else: plotOpt[key] = value
-
-
-        # set all values recognized by mpl
-        # this is stupid but not all values are recognized by mpl
-        # thus, we later set the unrecognized ones manually
-        for key, value in plotOpt.items():
-            if not key in ['cmap', 'colors', 'hatch', 'legend.names', 'other']:
-                for k, v in value.items():
-                    fullKey = key + '.' + k
-                    if fullKey in mpl.rcParams.keys():
-                        try: mpl.rcParams[fullKey] = v
-                        except: mpl.rcParams[fullKey] = str(v) # one more stupidity in mpl
-                            # for ytick, a string has to be passed, even if it is a number
-        plotOpt['colors'] = getColors(numCat, plotOpt, userOpt)
-
-
-        # make a new figure
-        if fig == None:
-            fig = plt.figure()
-            fig.canvas.set_window_title('Results')
-        ax = fig.add_subplot(subplotno)
-
-        output = []
-
-        # generate plots
-        if plotType == 'errorbar':
-
-            if yerr != None:
-                for i in range(numCat):
-                    output.append(ax.errorbar(
-                        x,
-                        y[i,:],
-                        yerr = yerr[i,:],
-                        color = plotOpt['colors'][i],
-                        markerfacecolor = plotOpt['colors'][i],
-                        **plotOpt[plotType]
-                        )
-                    )
-            else:
-                if numCat == 1:
-                    output.append(ax.plot(
-                        x,
-                        y[:],
-                        color = plotOpt['colors'][0],
-                        markerfacecolor = plotOpt['colors'][0])
-                        )
-                else:
-                    for i in range(numCat):
-                        output.append(ax.plot(
-                            x,
-                            y[i,:],
-                            color = plotOpt['colors'][i],
-                            markerfacecolor = plotOpt['colors'][i]
-                            )
-                        )
-
-        elif plotType == 'bar':
-
-            barWidth = (1-.2)/numCat       # the width of the bars
-            middle = x - numCat*barWidth/2.
-            if numCat == 1:
-                output.append(ax.bar(
-                    middle,
-                    y[:],
-                    barWidth,
-                    facecolor = plotOpt['colors'][0],
-                    yerr = None,#yerr[:],
-                    hatch = plotOpt['hatch'][0],
-                    **plotOpt[plotType]
-                    )
-                )
-            else:
-                for i in range(numCat):
-                    output.append(ax.bar(
-                        middle+i*barWidth,
-                        y[i,:],
-                        barWidth,
-                        facecolor = plotOpt['colors'][i],
-                        yerr = yerr[i,:],
-                        hatch = plotOpt['hatch'][i],
-                        **plotOpt[plotType]
-                        )
-                    )
-
-
-        # set up legend
-        if plotOpt['subplot'].get('legend.names'):
-            if len(plotOpt['subplot']['legend.names']) > 1:
-                outLeg = [i[0] for i in output]
-                leg = ax.legend(outLeg, plotOpt['subplot']['legend.names'])
-                leg.draw_frame(False)
-            del plotOpt['subplot']['legend.names']
-
-        # draw other things
-        if 'other' in plotOpt['subplot']:
-            for item in q.listify(plotOpt['subplot']['other']): eval(item)
-            del plotOpt['subplot']['other']
-
-        # set the remaining subplot options
-        ax.set(**plotOpt['subplot'])
-
-        if not 'yticks' in plotOpt['subplot'] and not 'yticklabels' in plotOpt['subplot']:
-            import decimal
-            yticks = ax.get_yticks()
-            if max_y != None: yticks = yticks[yticks <= max_y]
-            else: yticks = yticks[yticks <= yticks[-2]]
-            # now some fancy way to make pretty labels
-            kk = min([decimal.Decimal(str(t)).adjusted() for t in yticks])
-            lens2 = np.array([t for t in yticks if len(('%g' %(t/10**kk)).split('.')) == 1])
-            spacing = len(lens2)/6 + 1
-            if max_y != None: use = lens2[np.arange(len(lens2)-1,-1,-spacing)]
-            else: use = lens2[np.arange(0,len(lens2),spacing)]
-
-            ax.set_yticks(use)
-
-        return fig
-
-    def mds(self, d, ndim=2):
-        """
-        Metric Unweighted Classical Multidimensional Scaling
-
-        Based on Forrest W. Young's notes on Torgerson's (1952) algorithm as
-        presented in http://forrest.psych.unc.edu/teaching/p230/Torgerson.pdf:
-        Step 0: Make data matrix symmetric with zeros on the diagonal
-        Step 1: Double center the data matrix (d) to obtain B by removing row
-        and column means and adding the grand mean of the squared data
-        Step 2: Solve B = U * L * U.T for U and L
-        Step 3: Calculate X = U * L**(-.5)
-
-        **Parameters**
-            d: numpy.ndarray
-                A symmetric dissimilarity matrix
-            ndim: int
-                The number of dimensions to project to
-        **Returns**
-            X[:,:ndim]: numpy.ndarray
-                The projection of d into ndim dimensions
-        """
-        # Step 0
-        # make distances symmetric
-        d = (d + d.T) / 2
-        # diagonal must be 0
-        np.fill_diagonal(d, 0)
-        # Step 1: Double centering
-        # remove row and column mean and add grand mean of d**2
-        oo = d**2
-        rowmean = np.tile(np.mean(oo, 1), (oo.shape[1],1)).T
-        colmean = np.mean(oo, 0)
-        B = -.5 * (oo - rowmean - colmean + np.mean(oo))
-        # Step2: do singular value decomposition
-        # find U (eigenvectors) and L (eigenvalues)
-        [U, L, V] = np.linalg.svd(B)  # L is already sorted (desceding)
-        # Step 3: X = U*L**(-.5)
-        X = U * np.sqrt(L)
-        return X[:,:ndim]
-
-    def plot_mds(self, results, labels, fonts='freesansbold.ttf', title='',
+    def mds(self, results, labels, fonts='freesansbold.ttf', title='',
         ax = None):
         """Plots Multidimensional scaling results"""
         if ax is None:
@@ -1109,3 +833,28 @@ class Plot(object):
         ax,l = self.violinplot(data=data, ax=ax, pos=pos, bp=False, cut=cut)
 
         return ax,l
+
+
+if __name__ == '__main__':
+    n = 8
+    nsampl = 10
+    k = n * nsampl
+    data = {
+        'subplots': ['session1']*k*18 + ['session2']*k*18,
+        'cond': [1]*k*9 + [2]*k*9 + [1]*k*9 + [2]*k*9,
+        'name': (['one', 'one', 'one']*k + ['two', 'two', 'two']*k +
+                ['three', 'three', 'three']*k) * 4,
+        'levels': (['small']*k + ['medium']*k + ['large']*k)*12,
+        'subjID': ['subj%d' % (i+1) for i in np.repeat(range(n),nsampl)] * 36,
+        'RT': range(k)*36,
+        'accuracy': np.random.randn(36*k)
+        }
+    df = pandas.DataFrame(data, columns = ['subplots','cond','name','levels','subjID','RT',
+        'accuracy'])
+    #df = df.reindex_axis(['subplots','cond','name','levels','subjID','RT',
+        #'accuracy'], axis=1)
+    agg = stats.aggregate(df, subplots='subplots', rows=['cond', 'name'],
+        col='levels', yerr='subjID', values='RT')
+    fig = Plot(ncols=2)
+    fig.plot(agg, subplots=True, yerr=True)
+    fig.show()
