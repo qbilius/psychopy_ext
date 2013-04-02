@@ -8,6 +8,7 @@
 """Basic command-line and graphic user interface"""
 
 import wx, sys, inspect
+from types import ModuleType
 # some modules are only available in Python 2.6
 try:
     from collections import OrderedDict
@@ -15,129 +16,10 @@ except:
     from exp import OrderedDict
 
 
-class StaticBox(wx.StaticBox):
-    def __init__(self, parent, label='', content=None):
-        '''
-        Partially taken from psychopy.gui.Dlg
-        '''
-        wx.StaticBox.__init__(self, parent, label=label)
-        self.sizer = wx.StaticBoxSizer(self)
-        grid = wx.GridSizer(rows=len(content), cols=2)
-        choices=False
-        self.inputFields = []
-        for label, initial in content.items():
-            #import pdb; pdb.set_trace()
-            #create label
-            labelLength = wx.Size(9*len(label)+16,25)#was 8*until v0.91.4
-            inputLabel = wx.StaticText(parent,-1,label,
-                                            size=labelLength,
-                                           )
-            #if len(color): inputLabel.SetForegroundColour(color)
-            grid.Add(inputLabel, 1, wx.ALIGN_LEFT)
-            #create input control
-            if type(initial)==bool:
-                inputBox = wx.CheckBox(parent, -1)
-                inputBox.SetValue(initial)
-            elif type(initial)==int:
-                inputBox = wx.SpinCtrl(parent, size=(60, -1), initial=initial)
-            elif not choices:
-                inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
-                inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
-            else:
-                inputBox = wx.Choice(parent, -1, choices=[str(option) for option in list(choices)])
-                # Somewhat dirty hack that allows us to treat the choice just like
-                # an input box when retrieving the data
-                inputBox.GetValue = inputBox.GetStringSelection
-                if initial in choices:
-                    initial = choices.index(initial)
-                else:
-                    initial = 0
-                inputBox.SetSelection(initial)
-            #if len(color): inputBox.SetForegroundColour(color)
-            #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
-            self.inputFields.append(inputBox)#store this to get data back on button click
-            grid.Add(inputBox, 1, wx.ALIGN_LEFT)
-
-        self.sizer.Add(grid)
-        #self.SetSizer(self.sizer)
-
-class Page(wx.Panel):
-    def __init__(self, parent, module):
-        wx.Panel.__init__(self, parent,-1)
-        self.sb1 = StaticBox(self, label="Information",
-            content=module.extraInfo)
-        self.sb2 = StaticBox(self, label="Parameters",
-            content=module.runParams)
-
-        buttons = wx.GridSizer(rows=1,cols=len(module.actions))
-        for i, (label,action) in enumerate(module.actions):
-            run = wx.Button(self, label=label, size=(150, 30))
-            buttons.Add(run, 1)
-            run.module = module  # when clicked, what to do
-            run.action = action
-            run.Bind(wx.EVT_BUTTON,self.OnButtonClick)
-            if i==0:
-                run.SetFocus()
-
-        pagesizer = wx.BoxSizer(wx.VERTICAL)
-        pagesizer.Add(self.sb1.sizer)
-        pagesizer.Add(self.sb2.sizer)
-        pagesizer.Add(buttons, 1, wx.EXPAND|wx.ALL)
-
-        self.SetSizer(pagesizer)
-
-    def OnButtonClick(self, event):
-        module = event.GetEventObject().module
-        # first update extraInfo and runParams
-        for key, field in zip(module.extraInfo.keys(),self.sb1.inputFields):
-            module.extraInfo[key] = field.GetValue()
-        for key, field in zip(module.runParams.keys(),self.sb2.inputFields):
-            module.runParams[key] = field.GetValue()
-
-        rp = event.GetEventObject()
-        getattr(module, rp.action)()
-
-
-class Notebook(wx.Notebook):
-    """
-    Notebook class
-    """
-    def __init__(self, parent):
-        wx.Notebook.__init__(self, parent, id=wx.ID_ANY, style=
-                             wx.BK_DEFAULT)
-        self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGING, self.OnPageChanging)
-
-    def OnPageChanging(self, event):
-        old = event.GetOldSelection()
-        new = event.GetSelection()
-        self.GetPage(new).module
-
-        if old != -1:
-            setup_page(self.exp_choices[new], self.GetPage(new))
-
-
-class Listbook(wx.Listbook):
-    """
-    Listbook class
-    """
-    def __init__(self, parent, exp_choices):
-        wx.Listbook.__init__(self, parent, id=wx.ID_ANY, style=
-                             wx.BK_DEFAULT)
-        self.exp_choices = exp_choices
-        self.Bind(wx.EVT_LISTBOOK_PAGE_CHANGING, self.OnPageChanging)
-
-    def OnPageChanging(self, event):
-        old = event.GetOldSelection()
-        new = event.GetSelection()
-        # sel = self.GetSelection()
-        # print 'OnPageChanging, old:%d, new:%d, sel:%d\n' % (old, new, sel)
-        if old != -1:
-            setup_page(self.exp_choices[new], self.GetPage(new))
-
-
 class Control(object):
     def __init__(self, exp_choices,
                  title='Experiment',
+                 size=(500,300),
                  #modcall=False  # Set true when calling a module directly like
                                 # python -m path.to.module
                  ):
@@ -147,94 +29,74 @@ class Control(object):
             #else:
                 #self.app(exp_choices)
         #else:
-        if len(exp_choices) == 0:
+        """
+        :Args:
+            exp_choices: could be one of the following
+                - `module` or a path to a module (str)
+                - a list of tuples (name, path, alias for cmd)
+        :Kwargs:
+            title
+            size
+        """
+        if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):  # direct path to the experiment
+            exp_choices = [('Experiment', exp_choices, 'main')]
+        elif len(exp_choices) == 0:
             raise SyntaxError('exp_choices is not supposed to be empty')
+
+        for choice in exp_choices:
+            if len(choice) == 3:
+                choice.extend(None)
+
+        if len(sys.argv) > 1:  # command line interface desired
+            self.cmd(exp_choices)
         else:
-            if len(sys.argv) > 1:  # command line interface desired
-                self.cmd(exp_choices)
-            else:
-                self.app(exp_choices, title=title)
-
-    def app(self, exp_choices=[], title='Experiment'):
-        app = wx.App()
-        frame = wx.Frame(None, title=title, size = (650,300))
-        # Here we create a panel and a listbook on the panel
-        panel = wx.Panel(frame)
-        lb = Listbook(panel, exp_choices)
-        # add pages to the listbook
-        for num, choice in enumerate(exp_choices):
-            pagepanel = wx.Panel(lb)
-            lb.AddPage(pagepanel, choice[0], select=num==0)
-        # lb.ChangeSelection(0)
-
-        # nicely size the entire window
-        panelsizer = wx.BoxSizer()
-        panelsizer.Add(lb, 1,  wx.EXPAND|wx.ALL)
-        panel.SetSizer(panelsizer)
-
-        frame.Layout()
-        frame.Centre()
-        frame.Show()
-        app.MainLoop()
+            self.app(exp_choices, title=title, size=size)
 
     def cmd(self, exp_choices):
         """
         Heavily stripped-down version of argparse.
         """
         if len(exp_choices) == 1:  # if just a single choice then just take it
-            input_mod = None
-            input_class = sys.argv[1]
+            input_mod_alias = None
+            input_class_alias = sys.argv[1]
             input_func = sys.argv[2]
-            mod_str = exp_choices[0][1]
+            module = exp_choices[0][1]
+            class_order = exp_choices[0][3]
             arg_start = 3
         else:
-            input_mod = sys.argv[1]
-            input_class = sys.argv[2]
+            input_mod_alias = sys.argv[1]
+            input_class_alias = sys.argv[2]
             input_func = sys.argv[3]
+            class_order = exp_choices[0][3]
             arg_start = 4
             avail_mods = [e[2] for e in exp_choices]
             try:
-                idx = avail_mods.index(input_mod)
+                idx = avail_mods.index(input_mod_alias)
             except:
-                raise Exception("module '%s' not recognized" % input_mod)
-            mod_str = exp_choices[idx][1]
+                raise Exception("module '%s' not recognized" % input_mod_alias)
+            module = exp_choices[idx][1]
 
-        try:
-            __import__(mod_str)
-        #except ImportError:
-            #raise Exception('Module %s not found or has errors' % mod_str)
-        except:
-            raise
+        if class_order is not None:
+            if input_class_alias not in class_order:
+                raise Exception('Class %s not available. Choose from:\n%s' %
+                    (input_class_alias, ', '.join(class_order)))
 
-        module = sys.modules[mod_str]
-        class_names = []
-        runclass = None
-        for name, obj in inspect.getmembers(module):
-            if inspect.isclass(obj):
-                # make sure this obj is defined in module
-                # and not imported
-                if obj.__module__ == module.__name__:
-                    try:
-                        ar = inspect.getargspec(obj.__init__)
-                    except:
-                        pass
-                    else:
-                        try:
-                            nameidx = ar.args.index('name')
-                        except:
-                            pass
-                        else:
-                            objname = ar.defaults[nameidx - len(ar.args)]
-                            class_names.append(objname)
-                            if objname == input_class:
-                                runclass = obj
+        if isinstance(module, str):
+            try:
+                __import__(module)
+            except:
+                raise
+            module = sys.modules[module]
 
-        if runclass is None:
+        class_aliases, class_obj = _get_classes(module,
+            input_class_alias=input_class_alias, class_order=class_order)
+
+        if class_obj is None:
             raise Exception('Class %s not found. Choose from:\n%s' %
-                (input_class, ', '.join(class_names)))
+                (input_class_alias, ', '.join([c[0] for c in class_aliases])))
 
         try:
-            init_mod = runclass()
+            class_init = class_obj()
         except:
             #import pdb; pdb.set_trace()
             raise #SyntaxError('This module appears to require some arguments but that'
@@ -251,16 +113,16 @@ class Control(object):
             while i < len(sys.argv):
                 input_key = sys.argv[i].lstrip('-')
                 if input_key == '':
-                    raise IOError('There cannot be any - just by themselves in '
-                                  'the input')
+                    raise IOError("There cannot be any '-' just by themselves "
+                                  "in the input")
                 item = None
-                for key, value in init_mod.extraInfo.items():
+                for key, value in class_init.extraInfo.items():
                     if key == input_key or key[0] == input_key:
                         item = (key, value)
                         params = extraInfo
                         break
                 if item is None:
-                    for key, value in init_mod.runParams.items():
+                    for key, value in class_init.runParams.items():
                         if key == input_key or key[0] == input_key:
                             item = (key, value)
                             params = runParams
@@ -297,21 +159,45 @@ class Control(object):
                             params[key] = input_value
                     i += 1
                 i += 1
-
-        init_mod.extraInfo.update(extraInfo)
-        init_mod.runParams.update(runParams)
-        init_mod = runclass(extraInfo=init_mod.extraInfo,
-                            runParams=init_mod.runParams)
+        class_init.extraInfo.update(extraInfo)
+        class_init.runParams.update(runParams)
+        class_init = class_obj(extraInfo=class_init.extraInfo,
+            runParams=class_init.runParams)
         try:
-            func = getattr(init_mod, input_func)
+            func = getattr(class_init, input_func)
         except AttributeError:
-            print 'Function %s not defined in class %s' % (input_func, input_class)
+            print 'Function %s not defined in class %s' % (input_func,
+                                                           class_obj.__name__)
         else:
             if hasattr(func, '__call__'):
                 func()
             else:
                 raise Exception('Object %s not callable; is it really a function?' %
                                 input_func)
+
+    def app(self, exp_choices=[], title='Experiment', size=(400,300)):
+        app = wx.App()
+        frame = wx.Frame(None, title=title, size=size)
+        # Here we create a panel and a listbook on the panel
+        panel = wx.Panel(frame)
+        if len(exp_choices) > 1:
+            lb = Listbook(panel, exp_choices)
+            # add pages to the listbook
+            for num, choice in enumerate(exp_choices):
+                pagepanel = wx.Panel(lb)
+                lb.AddPage(pagepanel, choice[0], select=num==0)
+            lb.ChangeSelection(0)
+            booktype = lb
+            panelsizer = wx.BoxSizer()
+            panelsizer.Add(booktype, 1,  wx.EXPAND|wx.ALL)
+            panel.SetSizer(panelsizer)
+        else:  # if there's only one Notebook, don't create a listbook
+            setup_page(exp_choices[0], panel)
+        # nicely size the entire window
+        frame.Layout()
+        frame.Centre()
+        frame.Show()
+        app.MainLoop()
 
     def _type(self, input_key, input_value, value, exp_type):
         if isinstance(value, exp_type):
@@ -323,7 +209,8 @@ class Control(object):
             return input_value
 
 
-    def cmd_old(self, modules, raw_args=None):
+    def _cmd_old(self, modules, raw_args=None):
+        import argparse
         def add_arg(mod_parse, arg, default):
             if type(default) == bool:
                 if default:
@@ -386,24 +273,208 @@ class Control(object):
         getattr(module, rp.action)()
         # args.func(args)
 
-def setup_page(choice, pagepanel):
-    label, exp_path = choice
-    if type(exp_path) == str:
-        __import__(exp_path)
-        mods = sys.modules[exp_path].MODULES
+def _get_classes(module, input_class_alias=None, class_order=None):
+    """
+    Finds all useable classes in a given module.
+    """
+    if class_order is None:
+        class_aliases = []
     else:
-        mods = exp_path
-    #if type(exp) in [tuple,list]:
-        #pagepanel = wx.Panel(lb)
-        #lb.AddPage(pagepanel, label)
+        class_aliases = [None] * len(class_order)
+    class_obj = None
+    found_classes = inspect.getmembers(module, inspect.isclass)
+    for name, obj in found_classes:
+        if name[0] != '_':  # avoid private classes
+            class_alias = _get_class_alias(module, obj)
+            if class_alias == input_class_alias:
+                class_obj = obj
+            if class_order is not None:
+                try:
+                    idx = class_order.index(class_alias)
+                    class_aliases[idx] = (class_alias, obj)
+                except:
+                    pass
+            else:
+                class_aliases.append((class_alias, obj))
+
+    return class_aliases, class_obj
+
+def _get_class_alias(module, obj):
+    # make sure this obj is defined in module rather than imported
+    if obj.__module__ == module.__name__:
+        try:
+            init_vars = inspect.getargspec(obj.__init__)
+        except:
+            pass
+        else:
+            try:  # must have a name otherwise what are you calling?
+                nameidx = init_vars.args.index('name')
+            except:
+                pass
+            else:
+                class_alias = init_vars.defaults[nameidx - len(init_vars.args)]
+                return class_alias
+
+def _get_methods(myclass):
+    """
+    Finds all functions inside a class that are callable without any parameters.
+    """
+    methods = []
+    for name, method in inspect.getmembers(myclass, inspect.ismethod):
+        if name[0] != '_':  # avoid private methods
+            mvars = inspect.getargspec(method)
+            if len(mvars.args) == 1:  # avoid methods with input variables
+                if mvars.args[0] == 'self':
+                    methods.append((name, method))
+    return methods
+
+class StaticBox(wx.StaticBox):
+    def __init__(self, parent, label='', content=None):
+        """
+        Partially taken from :class:`psychopy.gui.Dlg`
+        """
+        wx.StaticBox.__init__(self, parent, label=label)
+        self.sizer = wx.StaticBoxSizer(self)
+        grid = wx.GridSizer(rows=len(content), cols=2)
+        choices=False
+        self.inputFields = []
+        for label, initial in content.items():
+            #import pdb; pdb.set_trace()
+            #create label
+            labelLength = wx.Size(9*len(label)+16,25)#was 8*until v0.91.4
+            inputLabel = wx.StaticText(parent,-1,label,
+                                            size=labelLength,
+                                           )
+            #if len(color): inputLabel.SetForegroundColour(color)
+            grid.Add(inputLabel, 1, wx.ALIGN_LEFT)
+            #create input control
+            if type(initial)==bool:
+                inputBox = wx.CheckBox(parent, -1)
+                inputBox.SetValue(initial)
+            elif type(initial)==int:
+                inputBox = wx.SpinCtrl(parent, size=(60, -1), initial=initial)
+            elif not choices:
+                inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
+                inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
+            else:
+                inputBox = wx.Choice(parent, -1, choices=[str(option) for option in list(choices)])
+                # Somewhat dirty hack that allows us to treat the choice just like
+                # an input box when retrieving the data
+                inputBox.GetValue = inputBox.GetStringSelection
+                if initial in choices:
+                    initial = choices.index(initial)
+                else:
+                    initial = 0
+                inputBox.SetSelection(initial)
+            #if len(color): inputBox.SetForegroundColour(color)
+            #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
+            self.inputFields.append(inputBox)#store this to get data back on button click
+            grid.Add(inputBox, 1, wx.ALIGN_LEFT)
+
+        self.sizer.Add(grid)
+        #self.SetSizer(self.sizer)
+
+class Page(wx.Panel):
+    """
+    Creates a page inside a Notebook with two boxes, Information and Parameters,
+    corresponding to extraInfo and runParams in :class:`exp.Experiment`, and
+    buttons which, when clicked, runs a corresponding method.
+    """
+    def __init__(self, parent, class_obj):
+        wx.Panel.__init__(self, parent, -1)
+        self.class_obj = class_obj
+        class_init = class_obj()
+        self.sb1 = StaticBox(self, label="Information",
+            content=class_init.extraInfo)
+        self.sb2 = StaticBox(self, label="Parameters",
+            content=class_init.runParams)
+
+        # generate buttons
+        # each button launches a function in a given class
+        actions = _get_methods(class_init)
+        # buttons will sit on a grid of 3 columns and as many rows as necessary
+        buttons = wx.GridSizer(rows=0, cols=3)
+        for i, (label, action) in enumerate(actions):
+            run = wx.Button(self, label=label, size=(150, 30))
+            buttons.Add(run, 1)
+            run.extraInfo = class_init.extraInfo  # when clicked, what to do
+            run.runParams = class_init.runParams
+            run.action = label
+            run.Bind(wx.EVT_BUTTON, self.OnButtonClick)
+            if i==0: run.SetFocus()
+
+        pagesizer = wx.BoxSizer(wx.VERTICAL)
+        # place the two boxes for entering information
+        pagesizer.Add(self.sb1.sizer)
+        pagesizer.Add(self.sb2.sizer)
+        # put the buttons in the bottom
+        pagesizer.Add(buttons, 1, wx.ALL|wx.ALIGN_LEFT)
+
+        self.SetSizer(pagesizer)
+
+    def OnButtonClick(self, event):
+        #module = event.GetEventObject().module
+        ## first update extraInfo and runParams
+        button = event.GetEventObject()
+        for key, field in zip(button.extraInfo.keys(), self.sb1.inputFields):
+            button.extraInfo[key] = field.GetValue()
+        for key, field in zip(button.runParams.keys(), self.sb2.inputFields):
+            button.runParams[key] = field.GetValue()
+
+        class_init = self.class_obj(extraInfo=button.extraInfo,
+            runParams=button.runParams)
+        func = getattr(class_init, button.action)
+        func()  # FIX: would be nice to keep it open at the end of the exp
+
+class Notebook(wx.Notebook):
+    """
+    Notebook class
+    """
+    def __init__(self, parent):
+        wx.Notebook.__init__(self, parent, id=wx.ID_ANY, style=
+                             wx.BK_DEFAULT)
+        self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGING, self.OnPageChanging)
+
+    def OnPageChanging(self, event):
+        old = event.GetOldSelection()
+        new = event.GetSelection()
+        if old != -1:
+            setup_page(self.exp_choices[new], self.GetPage(new))
+
+class Listbook(wx.Listbook):
+    """
+    Listbook class
+    """
+    def __init__(self, parent, exp_choices):
+        wx.Listbook.__init__(self, parent, id=wx.ID_ANY, style=wx.BK_DEFAULT)
+        self.exp_choices = exp_choices
+        self.Bind(wx.EVT_LISTBOOK_PAGE_CHANGING, self.OnPageChanging)
+
+    def OnPageChanging(self, event):
+        old = event.GetOldSelection()
+        new = event.GetSelection()
+        if old != -1:
+            setup_page(self.exp_choices[new], self.GetPage(new))
+
+def setup_page(choice, pagepanel):
+    """
+    Creates a :class:`Page` inside a :class:`Notebook`.
+
+    :Args:
+        - choice (tuple)
+            A tuple of (name, module path, module alias)
+        - pagepanel
+    """
+    label, mod_path, alias, order = choice
+    if isinstance(mod_path, str):
+        __import__(mod_path)
+        class_aliases, class_obj = _get_classes(sys.modules[mod_path],
+            class_order=order)
+    else:
+        class_aliases, class_obj = _get_classes(mod_path, class_order=order)
     nb = wx.Notebook(pagepanel)
-    for mod in mods:
-        #m = mod(parent=exp)
-        m = mod()
-        nb.AddPage(Page(nb,m), m.name)
+    for class_alias, class_obj in class_aliases:
+        nb.AddPage(Page(nb, class_obj), class_alias)
     panelsizer = wx.BoxSizer()
     panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)
     pagepanel.SetSizer(panelsizer)
-    # else:
-        #m = exp(parent=exp_parent)
-        # lb.AddPage(Page(lb, exp), label)
