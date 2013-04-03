@@ -725,6 +725,9 @@ class Experiment(TrialHandler):
         self.win.flip()
 
         if wait_stim is not None:
+            for stim in wait_stim:  # for some reason I have to draw it twice
+                stim.draw()
+            self.win.flip()
             for stim in wait_stim:
                 stim.draw()
             self.win.flip()
