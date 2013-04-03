@@ -915,6 +915,43 @@ class Experiment(TrialHandler):
 
         return thisTrial
 
+    def commitpush(self, message=None):
+        """
+        Add, commit, and push changes to a remote repository.
+
+        If `noOutput`, nothing is done.
+        """
+        if not self.runParams['noOutput']:
+            if message is None:
+                message = 'data for participant %s' % self.extraInfo['subjID']
+            rev = self._detect_rev()
+            if rev == 'hg':
+                cmd = 'hg commit -A -m "%s"' % message
+                hg, err = core.shellCall(cmd, stderr=True)
+                self.logFile.write('\n'.join((cmd, hg, err)))
+                sys.stdout.write('\n'.join((cmd, hg, err)))
+                if err == '':
+                    cmd = 'hg push'
+                    hg, err = core.shellCall(cmd, stderr=True)
+                    self.logFile.write('\n'.join((cmd, hg, err)))
+                    sys.stdout.write('\n'.join((cmd, hg, err)))
+            else:
+                logging.error('%s revision control is not supported for commiting' %
+                               rev)
+
+    def _detect_rev(self):
+        """
+        Detects revision control system.
+
+        Recognizes: git, hg, svn
+        """
+        caller = sys.argv[0]
+        revs = ['git', 'hg', 'svn']
+        for rev in revs:
+            revdir = os.path.join(os.path.dirname(caller), '.' + rev)
+            if os.path.exists(caller) and os.path.isdir(revdir):
+                return rev
+
     def quit(self):
         """What to do when exit is requested.
         """
