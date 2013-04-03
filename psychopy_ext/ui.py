@@ -15,7 +15,6 @@ try:
 except:
     from exp import OrderedDict
 
-
 class Control(object):
     def __init__(self, exp_choices,
                  title='Experiment',
@@ -90,7 +89,6 @@ class Control(object):
 
         class_aliases, class_obj = _get_classes(module,
             input_class_alias=input_class_alias, class_order=class_order)
-
         if class_obj is None:
             raise Exception('Class %s not found. Choose from:\n%s' %
                 (input_class_alias, ', '.join([c[0] for c in class_aliases])))
@@ -296,7 +294,8 @@ def _get_classes(module, input_class_alias=None, class_order=None):
                     pass
             else:
                 class_aliases.append((class_alias, obj))
-
+    # if some class not found; get rid of it
+    class_aliases = [c for c in class_aliases if c is not None]        
     return class_aliases, class_obj
 
 def _get_class_alias(module, obj):
