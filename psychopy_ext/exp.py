@@ -206,15 +206,12 @@ class Experiment(TrialHandler):
 
         Steps include:
             - Logging file setup (:func:`set_logging`)
-            - Creating a seed for randomization (:func:``)
-            - Creating a :class:`~psychopy.visual.Window` (:func:``)
-            - Creating stimuli (:func:``)
-            - Creating trial structure (:func:``)
-            - Combining trials into a trial list  (:func:``)
-            - Appending automatic run information if ``autorun`` is requested
-              (:func:``)
+            - Creating a :class:`~psychopy.visual.Window` (:func:`create_window`)
+            - Creating stimuli (:func:`create_stimuli`)
+            - Creating trial structure (:func:`create_trial`)
+            - Combining trials into a trial list  (:func:`create_triaList`)
             - Creating a :class:`~psychopy.data.TrialHandler` using the
-              defined trialList  (:func:``)
+              defined trialList  (:func:`create_TrialHandler`)
 
         :Kwargs:
             create_win (bool, default: True)
@@ -383,16 +380,16 @@ class Experiment(TrialHandler):
         else:
             return mon_sizes[screen]
 
-    def create_win(self, debug = False,
-                   color = (100/255.*2-1,100/255.*2-1,100/255.*2-1)):
+    def create_win(self, debug = False, color = 'DimGray'):
         """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
 
         :Kwargs:
             - debug (bool, default: False)
                 - If True, then the window is half the screen size.
                 - If False, then the windon is full screen.
-            - color (tuple of 3 values, default: )
-                Window background color. Default is dark gray.
+            - color (str, str with a hexadecimal value, or a tuple of 3 values, default: "DimGray')
+                Window background color. Default is dark gray. (`See accepted
+                color names <http://www.w3schools.com/html/html_colornames.asp>`_
         """
         current_level = logging.getLevel(logging.console.level)
         logging.console.setLevel(logging.ERROR)
@@ -489,7 +486,7 @@ class Experiment(TrialHandler):
                 Size of Latin square. Should be equal to the number of
                 conditions you have.
                 :note: n must be even. For an odd n, I am not aware of a
-                general method to produce a Latin square.
+                          general method to produce a Latin square.
 
         :Returns:
             A `numpy.array` with each row representing one possible ordering
@@ -542,12 +539,13 @@ class Experiment(TrialHandler):
         """
         Define stimuli as a dictionary
 
-        Example:
-        self.create_fixation(color='white')
-        self.s = {
-            'fix': self.fixation,
-            'stim1': [visual.ImageStim(self.win, name='stim1')],
-            }
+        Example::
+
+            self.create_fixation(color='white')
+            self.s = {
+                'fix': self.fixation,
+                'stim1': [visual.ImageStim(self.win, name='stim1')],
+                }
         """
         raise NotImplementedError
 
@@ -555,15 +553,35 @@ class Experiment(TrialHandler):
         """
         Create a list of events that constitute a trial.
 
-        Example:
-        self.trial = [{'dur': .100,
-                       'display': self.s['fix'],
-                       'defaultFun': self.waitEvent},
+        Example::
 
-                       {'dur': .300,
-                       'display': self.s['stim1'],
-                       'defaultFun': self.during_trial},
-                       ]
+            self.trial = [{'dur': .100,
+                           'display': self.s['fix'],
+                           'defaultFun': self.waitEvent},
+
+                           {'dur': .300,
+                           'display': self.s['stim1'],
+                           'defaultFun': self.during_trial},
+                           ]
+        """
+        raise NotImplementedError
+
+    def create_trialList(self):
+        """
+        Put together trials into a trialList.
+
+        Example::
+
+            OrderedDict([
+                ('cond', self.morphInd[mNo]),
+                ('name', self.paraTable[self.morphInd[mNo]]),
+                ('onset', ''),
+                ('dur', self.trialDur),
+                ('corrResp', corrResp),
+                ('subjResp', ''),
+                ('accuracy', ''),
+                ('RT', ''),
+                ])
         """
         raise NotImplementedError
 
@@ -716,8 +734,8 @@ class Experiment(TrialHandler):
         """
         Iterate over the sequence of trials and events.
 
-        :note: In the output file, floats are formatted to 1 ms precision so
-        that output files are nice.
+        .. note:: In the output file, floats are formatted to 1 ms precision so
+                  that output files are nice.
 
         :Kwargs:
             - datafile (str, default: 'data.csv')
@@ -921,7 +939,7 @@ class Experiment(TrialHandler):
 
         If `noOutput`, nothing is done.
         """
-        if not self.runParams['debug']:
+        if not self.runParams['noOutput']:
             if message is None:
                 message = 'data for participant %s' % self.extraInfo['subjID']
             rev = self._detect_rev()

@@ -22,7 +22,8 @@ def aggregate(df, rows=None, col=None, values=None,
     Aggregates data over specified columns.
 
     :Args:
-        df (pandas.DataFrame): A DataFrame with your data
+        df (pandas.DataFrame)
+            A DataFrame with your data
 
     :Kwargs:
         - rows (str or list of str, default: None)
@@ -44,6 +45,7 @@ def aggregate(df, rows=None, col=None, values=None,
                 - level n-1: column
             - rows:
                 yerr
+
         This format makes it easy to do further computations such as mean over
         `yerr`: a simple `df.mean()` will do the trick.
     """
@@ -87,7 +89,7 @@ def _aggregate_panel(df, rows=None, cols=None, values=None,
         - minor_xs: `cols`
 
     TODO: convert between DataFrame/Panel upon request
-    TODO: use `reindex <http://pandas.pydata.org/pandas-docs/dev/indexing.html#advanced-reindexing-and-alignment-with-hierarchical-index>`_
+    TODO: use `reindexing <reindex <http://pandas.pydata.org/pandas-docs/dev/indexing.html#advanced-reindexing-and-alignment-with-hierarchical-index>`_
     to keep a stable order
 
     :Args:
@@ -243,7 +245,7 @@ def p_corr(df1, df2):
     distribution) on a pandas.DataFrame.
 
     Ignores null values when computing significance. Based on
-    `http://en.wikipedia.org/wiki/Pearson_product-moment_correlation_coefficient#Testing_using_Student.27s_t-distribution`_
+    `this Wikipedia entry <http://en.wikipedia.org/wiki/Pearson_product-moment_correlation_coefficient#Testing_using_Student.27s_t-distribution>`_
 
     :Args:
         df1: `pandas.DataFrame`

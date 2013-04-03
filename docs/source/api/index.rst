@@ -7,5 +7,6 @@ API reference
    exp
    fmri
    models
+   stats
    plot
    ui
