@@ -921,7 +921,7 @@ class Experiment(TrialHandler):
 
         If `noOutput`, nothing is done.
         """
-        if not self.runParams['noOutput']:
+        if not self.runParams['debug']:
             if message is None:
                 message = 'data for participant %s' % self.extraInfo['subjID']
             rev = self._detect_rev()
