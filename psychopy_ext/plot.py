@@ -411,7 +411,7 @@ class Plot(object):
         width = .75 / n
         rects = []
         for i, (label, column) in enumerate(data.iteritems()):
-            rect = ax.bar(idx+i*width, column, width, label=label,
+            rect = ax.bar(idx+i*width, column, width, label=str(label),
                 yerr = yerr[label], color = colors[i], ecolor='black')
             # TODO: yerr indexing might need fixing
             rects.append(rect)
