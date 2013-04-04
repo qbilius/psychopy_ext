@@ -31,7 +31,8 @@ class Control(object):
         """
         :Args:
             exp_choices: could be one of the following
-                - `module` or a path to a module (str)
+                - `module`
+                - a path to a module (str)
                 - a list of tuples (name, path, alias for cmd)
         :Kwargs:
             title
@@ -40,11 +41,15 @@ class Control(object):
         if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):  # direct path to the experiment
             exp_choices = [('Experiment', exp_choices, 'main')]
         elif len(exp_choices) == 0:
-            raise SyntaxError('exp_choices is not supposed to be empty')
+            sys.exit('exp_choices is not supposed to be empty')
 
+        choices = []
         for choice in exp_choices:
             if len(choice) == 3:
-                choice.extend(None)
+                choices.append(choice + (None,))
+            else:
+                choices.append(choice)
+        exp_choices = choices
 
         if len(sys.argv) > 1:  # command line interface desired
             self.cmd(exp_choices)
@@ -72,12 +77,12 @@ class Control(object):
             try:
                 idx = avail_mods.index(input_mod_alias)
             except:
-                raise Exception("module '%s' not recognized" % input_mod_alias)
+                sys.exit("module '%s' not recognized" % input_mod_alias)
             module = exp_choices[idx][1]
 
         if class_order is not None:
             if input_class_alias not in class_order:
-                raise Exception('Class %s not available. Choose from:\n%s' %
+                sys.exit('Class %s not available. Choose from:\n%s' %
                     (input_class_alias, ', '.join(class_order)))
 
         if isinstance(module, str):
@@ -90,7 +95,7 @@ class Control(object):
         class_aliases, class_obj = _get_classes(module,
             input_class_alias=input_class_alias, class_order=class_order)
         if class_obj is None:
-            raise Exception('Class %s not found. Choose from:\n%s' %
+            sys.exit('Class %s not found. Choose from:\n%s' %
                 (input_class_alias, ', '.join([c[0] for c in class_aliases])))
 
         try:
@@ -105,13 +110,13 @@ class Control(object):
         i = arg_start
         if len(sys.argv) > i:
             if sys.argv[i][0] != '-':
-                raise IOError('%s should be followed by function arguments '
+                sys.exit('%s should be followed by function arguments '
                 'that start with a - or --' % ' '.join(sys.argv[:i]))
 
             while i < len(sys.argv):
                 input_key = sys.argv[i].lstrip('-')
                 if input_key == '':
-                    raise IOError("There cannot be any '-' just by themselves "
+                    sys.exit("There cannot be any '-' just by themselves "
                                   "in the input")
                 item = None
                 for key, value in class_init.extraInfo.items():
@@ -126,13 +131,13 @@ class Control(object):
                             params = runParams
                             break
                 if item is None:
-                    raise IOError('Argument %s is not recognized' % input_key)
+                    sys.exit('Argument %s is not recognized' % input_key)
 
                 key = item[0]
                 if isinstance(value, bool):
                     try:
                         if sys.argv[i+1][0] != '-':
-                            raise IOError('Expected no value after %s because it '
+                            sys.exit('Expected no value after %s because it '
                                             'is bool' % input_key)
                         else:
                             params[key] = True
@@ -143,7 +148,7 @@ class Control(object):
                     try:
                         input_value = sys.argv[i+1]
                     except IndexError:
-                        raise Exception('Expected a value after %s but got nothing'
+                        sys.exit('Expected a value after %s but got nothing'
                              % input_key)
 
                     try:
@@ -151,7 +156,7 @@ class Control(object):
                         params[key] = eval(input_value)
                     except:
                         if input_value[0] == '-':
-                            raise IOError('Expected a value after %s but got '
+                            sys.exit('Expected a value after %s but got '
                                         'another argument' % input_key)
                         else:
                             params[key] = input_value
@@ -164,13 +169,13 @@ class Control(object):
         try:
             func = getattr(class_init, input_func)
         except AttributeError:
-            print 'Function %s not defined in class %s' % (input_func,
-                                                           class_obj.__name__)
+            sys.exit('Function %s not recognized in class %s. Check spelling?' %
+                     (input_func, class_obj.__name__))
         else:
             if hasattr(func, '__call__'):
                 func()
             else:
-                raise Exception('Object %s not callable; is it really a function?' %
+                sys.exit('Object %s not callable; is it really a function?' %
                                 input_func)
 
     def app(self, exp_choices=[], title='Experiment', size=(400,300)):
@@ -295,7 +300,7 @@ def _get_classes(module, input_class_alias=None, class_order=None):
             else:
                 class_aliases.append((class_alias, obj))
     # if some class not found; get rid of it
-    class_aliases = [c for c in class_aliases if c is not None]        
+    class_aliases = [c for c in class_aliases if c is not None]
     return class_aliases, class_obj
 
 def _get_class_alias(module, obj):
