@@ -1,3 +1,6 @@
+*Please refer to the [online documentation](https://psychopy_ext.readthedocs.org) for a more in depth explanation how to use the package.*
+
+
 Introduction
 ============
 
@@ -33,10 +36,7 @@ There are two possibilities then to use the repository:
 
 - In `run.py` add a line `sys.path.insert(0, '../psychopy_ext/')` (or where
 your `psychopy_ext` is)
-
 - Simply append the location of `psychopy_ext` to PYTHONPATH
-
-
 
 
 Dependencies
@@ -66,9 +66,7 @@ Getting started
 You have at least three options:
 
 * Double-click on `run.py`. A window will open with a number of choices for running experiments.
-
 * Open a terminal window (known as command line on Windows, search for cmd.exe), navigate to the folder with these scripts, and type `python run.py`
-
 * Open `run.py` in PsychoPy and hit the greed running man icon to run
 
 
@@ -88,6 +86,8 @@ combinations, combinations_with_replacement, OrderedDict, HMAX, GaborJet
 Acknowledgements
 ================
 
-Jonathan Peirce, Jeremy Gray et al. for PsychoPy and well maintained code for
-me to learn from, as well as for elaborate instructions how to do version control (http://www.psychopy.org/developers/repository.html)
+Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
+
+Jonathan Peirce, Jeremy Gray and all [PsychoPy](http://www.psychopy.org/) developers for the well maintained code from which I learned a lot about development.
+
 Scott Torborg for a guide to packaging (http://www.scotttorborg.com/python-packaging)
