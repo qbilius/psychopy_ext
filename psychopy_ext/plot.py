@@ -161,7 +161,7 @@ class Plot(object):
         Returns the current or the requested axis from the current figure.
 
         :note: The :class:`Plot()` is indexable so you should access axes as
-        `Plot()[key]` unless you want to pass a list
+        `Plot()[key]` unless you want to pass a list like (row, col).
 
         :Kwargs:
             subplotno (int, default: None)
@@ -178,6 +178,9 @@ class Plot(object):
         if isinstance(no, int):
             ax = self.axes[no]
         else:
+            if no[0] < 0: no += len(self.axes._nrows)
+            if no[1] < 0: no += len(self.axes._ncols)
+
             if isinstance(self.axes, ImageGrid):  # axes are a list
                 if self.axes._direction == 'row':
                     no = self.axes._ncols * no[0] + no[1]
@@ -188,6 +191,17 @@ class Plot(object):
             ax = self.axes[no]
 
         return ax
+
+    def next(self):
+        """
+        Returns the next axis.
+
+        This is useful when a plotting function is not implemented by
+        :mod:`plot` and you have to instead rely on matplotlib's plotting
+        which does not advance axes automatically.
+        """
+        self.subplotno += 1
+        return self.get_ax()
 
     def sample_paired(self, ncolors=2):
         """
@@ -379,11 +393,14 @@ class Plot(object):
         Hides an axis.
 
         :Args:
-            nums (int or list)
-                Which axis to hide.
+            nums (int, tuple or list of ints)
+                Which axes to hide.
         """
-        ax = self.get_ax(nums)
-        ax.axis('off')
+        if isinstance(nums, int) or isinstance(nums, tuple):
+            nums = [nums]
+        for num in nums:
+            ax = self.get_ax(num)
+            ax.axis('off')
 
     def barplot(self, data, yerr=None, ax=None):
         """
