@@ -194,7 +194,7 @@ def _agg_df(df, rows=None, cols=None, values=None,
             aggfunc=aggfunc)
     return {'column': agg}
 
-def nan_outliers(self, df, values=None, group=None):
+def nan_outliers(df, values=None, group=None):
     """
     Remove outliers 3 standard deviations away from the mean
 
