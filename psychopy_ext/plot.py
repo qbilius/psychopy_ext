@@ -88,7 +88,7 @@ plt.rcParams.update(s)
 class Plot(object):
 
     def __init__(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
-        cbar_mode='single', squeeze=False, **kwargs):
+                 cbar_mode='single', squeeze=False, **kwargs):
         self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
@@ -118,9 +118,12 @@ class Plot(object):
         else:
             nrows_ncols = kwargs['nrows_ncols']
             del kwargs['nrows_ncols']
-
+        try:
+            num = self.fig.number
+        except:
+            num = None
         if kind == 'matrix':
-            self.fig = self.figure(figsize=figsize)
+            self.fig = self.figure(figsize=figsize, num=num)
             self.axes = ImageGrid(self.fig, rect,
                                   nrows_ncols=nrows_ncols,
                                   cbar_mode=cbar_mode,
@@ -132,6 +135,7 @@ class Plot(object):
                 ncols=nrows_ncols[1],
                 figsize=figsize,
                 squeeze=squeeze,
+                num=num,
                 **kwargs
                 )
             self.axes = self.axes.ravel()  # turn axes into a list
@@ -266,17 +270,51 @@ class Plot(object):
                    title=title, kind=kind, xtickson=xtickson, ytickson=ytickson,
                    no_yerr=no_yerr, numb=numb, autoscale=autoscale, **kwargs)
 
-    def plot(self, agg, subplots=None, subplots_order=None, **kwargs):
+    def plot(self, agg, subplots=None, **kwargs):
+        """
+        The main plotting function.
+
+        :Args:
+            agg (`pandas.DataFrame` or similar)
+                A structured input, preferably a `pandas.DataFrame`, but in
+                principle accepts anything that can be converted into it.
+
+        :Kwargs:
+            - subplots (None, True, or False; default=None)
+                Whether you want to split data into subplots or not. If True,
+                the top level is treated as a subplot. If None, detects
+                automatically based on `agg.columns.names` -- the first entry
+                to start with `subplots.` will be used. This is the default
+                output from `stats.aggregate` and is recommended.
+            - **kwargs
+                Keyword arguments for plotting
+
+        :Returns:
+            A list of axes of all plots.
+        """
         agg = pandas.DataFrame(agg)
+        axes = []
 
-        if subplots is None:
-            ax = self._plot_ax(agg, **kwargs)
-            return ax
+        if subplots is not None:
+            s_idx = [0]
         else:
-            for subname in agg.columns.levels[0]:
-                self._plot_ax(agg[subname], title=subname, **kwargs)
+            s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
 
-    def _plot_ax(self, agg, ax=None, subplots=False, legend=True,
+        if len(s_idx) == 0:
+            axes = [self._plot_ax(agg, **kwargs)]
+        else:
+            # if haven't made any plots yet...
+            if self.subplotno == -1:
+                num_subplots = len(agg.columns.levels[s_idx[0]])
+                # ...can still adjust the number of subplots
+                if num_subplots > len(self.axes):
+                    self._create_subplots(ncols=num_subplots)
+            for subname in agg.columns.levels[s_idx[0]]:
+                    axes.append(self._plot_ax(agg[subname], title=subname,
+                                **kwargs))
+        return axes
+
+    def _plot_ax(self, agg, ax=None,
                    title='', kind='bar',
                    xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, order=None,
@@ -291,10 +329,11 @@ class Plot(object):
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
 
-        if legend:
-            #import pdb; pdb.set_trace()
-            mean = mean.unstack()  # make columns which will turn into legend entries
-            p_yerr = p_yerr.unstack()
+        # make columns which will turn into legend entries
+        for name in agg.columns.names:
+            if name.startswith('cols.'):
+                mean = mean.unstack(level=name)
+                p_yerr = p_yerr.unstack(level=name)
 
         if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
