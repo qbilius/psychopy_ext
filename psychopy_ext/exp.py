@@ -11,7 +11,8 @@ A library of helper functions for creating and running experiments.
 All experiment-related methods are kept here.
 """
 
-import sys, os, csv, glob, random, threading
+import sys, os, csv, glob, random
+from UserDict import DictMixin
 
 import numpy as np
 import wx
@@ -78,6 +79,7 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'data': os.path.join(exp_root, 'data/'),
         'data_behav': os.path.join(fmri_root, 'data_behav/'),  # for fMRI behav data
         'data_fmri': os.path.join(fmri_root,'data_fmri/'),
+        'data_struct': os.path.join(fmri_root,'data_struct/'),  # anatomical data
         'spm_analysis': os.path.join(fmri_root, 'analysis/'),
         'rec': os.path.join(fmri_root,'reconstruction/'), # CARET reconstructions
         'data_rois': os.path.join(fmri_root,'data_rois/'), # preprocessed and masked data
@@ -143,12 +145,6 @@ class Experiment(TrialHandler):
         self.parent = parent
         self.name = name
         self.version = version
-        self.extraInfo = extraInfo
-        self.runParams = runParams
-        #if extraInfo is not None:
-            #self.extraInfo.update(extraInfo)
-        #if runParams is not None:
-            #self.runParams.update(runParams)
         self.instructions = instructions
         self.actions=actions
         self.nReps = nReps
@@ -157,48 +153,19 @@ class Experiment(TrialHandler):
         self.dataTypes = dataTypes
         self.originPath = originPath
 
-        self.signalDet = {
-            False: 'Incorrect',
-            True: 'Correct',
-            '': 'No response'}
+        self.signalDet = {False: 'Incorrect', True: 'Correct'}
 
-        #self.comp = Computer()
-        # if self.parent is None:
-        #     Control(exp_choices=[(name,self)], title=name)
-
-        #if self.trialList not in [None, []]: self.create_TrialHandler()
-
-    # def __init__(self,
-                # name='',
-                # version='',
-                # extraInfo=None,
-                # runtimeInfo=None,
-                # originPath=None,
-                # savePickle=True,
-                # saveWideText=True,
-                # dataFileName=''):
-#
-        # ExperimentHandler.__init__(self,
-                # name=name,
-                # version=version,
-                # extraInfo=extraInfo,
-                # runtimeInfo=runtimeInfo,
-                # originPath=originPath,
-                # savePickle=savePickle,
-                # saveWideText=saveWideText,
-                # dataFileName=dataFileName)
-
-
-    #def get_input(self, info):
-        #"""Creates a dialog to get user input and loads stored values.
-        #"""
-
-        #dlg = gui.DlgFromDict(dictionary=info,title=self.name)
-        #if dlg.OK == False:
-            #core.quit() # user pressed cancel
-        #else:
-            #return info
-
+        # minimal parameters that Experiment expects in extraInfo and runParams
+        self.extraInfo = OrderedDict([('subjID', 'subj')])
+        self.runParams = OrderedDict([('noOutput', False),
+                ('debug', False),
+                ('autorun', 0),  # if >0, will autorun at the specified speed
+                ('push', False),
+                ])
+        if extraInfo is not None:
+            self.extraInfo.update(extraInfo)
+        if runParams is not None:
+            self.runParams.update(runParams)
 
     def setup(self, create_win=True):
         """
@@ -222,8 +189,6 @@ class Experiment(TrialHandler):
                 between the sessions.
         """
         self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        #self.create_seed(seed=self.seed)
-
         if create_win:  # maybe you have a screen already
             self.create_win(debug=self.runParams['debug'])
         self.create_stimuli()
@@ -316,8 +281,10 @@ class Experiment(TrialHandler):
             self.seed = seed
         return self.seed
 
-    def guess_participant(self, data_path, default_subjID='01'):
+    def _guess_participant(self, data_path, default_subjID='01'):
         """Attempts to guess participant ID (it must be int).
+
+        .. :Warning:: Not usable yet
 
         First lists all csv files in the data_path, then finds a maximum.
         Returns maximum+1 or an empty string if nothing is found.
@@ -338,8 +305,10 @@ class Experiment(TrialHandler):
         if len(partids) > 0: return '%02d' %(max(partids) + 1)
         else: return default_subjID
 
-    def guess_runNo(self, data_path, default_runNo = 1):
+    def _guess_runNo(self, data_path, default_runNo = 1):
         """Attempts to guess run number.
+
+        .. :Warning:: Not usable yet
 
         First lists all csv files in the data_path, then finds a maximum.
         Returns maximum+1 or an empty string if nothing is found.
@@ -372,7 +341,7 @@ class Experiment(TrialHandler):
         :Returns:
             a tuple or a list of tuples of each monitor's resolutions
         """
-        app = wx.App(False)  # create an app but don't show it
+        app = wx.App(False)  # create an app if there isn't one and don't show it
         nmons = wx.Display.GetCount()  # how many monitors we have
         mon_sizes = [wx.Display(i).GetGeometry().GetSize() for i in range(nmons)]
         if screen is None:
@@ -618,7 +587,7 @@ class Experiment(TrialHandler):
                 #self.win.getMovieFrame()
                 self.last_keypress()
 
-    def autorun(self, trialList):
+    def set_autorun(self, trialList):
         """
         Automatically runs experiment by simulating key responses.
 
@@ -657,9 +626,6 @@ class Experiment(TrialHandler):
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
 
-        If `autorun`, then the `trialList` is first appended with autorun
-        information.
-
         :Args:
             trialList (a list of dict)
                 A list of trials. Each trial is a dict with stimulus properties.
@@ -667,8 +633,6 @@ class Experiment(TrialHandler):
                 a dict for defining properties because then these properties are
                 written to a file in the same (logical) order.
         """
-        if self.runParams['autorun']:
-            trialList = self.autorun(trialList)
         TrialHandler.__init__(self,
             trialList,
             nReps=self.nReps,
@@ -685,10 +649,25 @@ class Experiment(TrialHandler):
         Setup and go!
         """
         self.setup()
+        if self.runParams['autorun']:
+            trialList = self.set_autorun(self.trialList)
+            self.create_TrialHandler(trialList)  # remake TrialHandler
         self.show_instructions(**self.instructions)
         self.loop_trials(
             datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
             noOutput=self.runParams['noOutput'])
+        if self.runParams['push']:
+            self.commitpush()
+
+    def autorun(self):
+        """
+        Automatically runs the experiment just like it would normally work but
+        responding automatically (as defined in :func:`self.set_autorun`) and
+        at the speed specified by `self.runParams['autorun']` parameter. If
+        speed is not specified, it is set to 100.
+        """
+        self.runParams['autorun'] = 100
+        self.run()
 
     def show_instructions(self, text='', wait=0, wait_stim=None):
         """
@@ -931,7 +910,7 @@ class Experiment(TrialHandler):
             thisTrial['RT'] = thisResp[1]
         else:
             thisTrial['subjResp'] = ''
-            thisTrial['accuracy'] = 'No response'
+            thisTrial['accuracy'] = ''
             thisTrial['RT'] = ''
 
         return thisTrial
@@ -940,25 +919,24 @@ class Experiment(TrialHandler):
         """
         Add, commit, and push changes to a remote repository.
 
-        If `noOutput`, nothing is done.
+        TODO: How to set this up.
         """
-        if not self.runParams['noOutput']:
-            if message is None:
-                message = 'data for participant %s' % self.extraInfo['subjID']
-            rev = self._detect_rev()
-            if rev == 'hg':
-                cmd = 'hg commit -A -m "%s"' % message
+        if message is None:
+            message = 'data for participant %s' % self.extraInfo['subjID']
+        rev = self._detect_rev()
+        if rev == 'hg':
+            cmd = 'hg commit -A -m "%s"' % message
+            hg, err = core.shellCall(cmd, stderr=True)
+            self.logFile.write('\n'.join((cmd, hg, err)))
+            sys.stdout.write('\n'.join((cmd, hg, err)))
+            if err == '':
+                cmd = 'hg push'
                 hg, err = core.shellCall(cmd, stderr=True)
                 self.logFile.write('\n'.join((cmd, hg, err)))
                 sys.stdout.write('\n'.join((cmd, hg, err)))
-                if err == '':
-                    cmd = 'hg push'
-                    hg, err = core.shellCall(cmd, stderr=True)
-                    self.logFile.write('\n'.join((cmd, hg, err)))
-                    sys.stdout.write('\n'.join((cmd, hg, err)))
-            else:
-                logging.error('%s revision control is not supported for commiting' %
-                               rev)
+        else:
+            logging.error('%s revision control is not supported for commiting' %
+                           rev)
 
     def _detect_rev(self):
         """
@@ -1347,11 +1325,12 @@ class ThickShapeStim(visual.ShapeStim):
                 self.stimulus.append(line)
 
 
-from UserDict import DictMixin
-
 class OrderedDict(dict, DictMixin):
     """
     OrderedDict code (because some are stuck with Python 2.5)
+
+    Produces an dictionary but with (key, value) pairs in the defined order.
+
     Created by Raymond Hettinger on Wed, 18 Mar 2009, under the MIT License
     <http://code.activestate.com/recipes/576693/>_
     """
@@ -1452,13 +1431,26 @@ class OrderedDict(dict, DictMixin):
     def __ne__(self, other):
         return not self == other
 
-
-# From Python 2.7 docs under the Python Software Foundation License
-# http://docs.python.org/library/itertools.html#itertools.combinations
 def combinations(iterable, r):
-    # combinations('ABCD', 2) --> AB AC AD BC BD CD
-    # combinations(range(4), 3) --> 012 013 023 123
-    # from Python 2.6
+    """
+    Produces combinations of `iterable` elements of lenght `r`.
+
+    Examples:
+        - combinations('ABCD', 2) --> AB AC AD BC BD CD
+        - combinations(range(4), 3) --> 012 013 023 123
+
+    `From Python 2.6 docs <http://docs.python.org/library/itertools.html#itertools.combinations>`_
+    under the Python Software Foundation License
+
+    :Args:
+        - iterable
+            A list-like or a str-like object that contains some elements
+        - r
+            Number of elements in each ouput combination
+
+    :Returns:
+        A generator yielding combinations of lenght `r`
+    """
     pool = tuple(iterable)
     n = len(pool)
     if r > n:
@@ -1476,11 +1468,25 @@ def combinations(iterable, r):
             indices[j] = indices[j-1] + 1
         yield tuple(pool[i] for i in indices)
 
-
-# From Python 2.7 docs under the Python Software Foundation License
-# http://docs.python.org/library/itertools.html#itertools.combinations_with_replacement
 def combinations_with_replacement(iterable, r):
-    # combinations_with_replacement('ABC', 2) --> AA AB AC BB BC CC
+    """
+    Produces combinations of `iterable` elements of length `r` with
+    replacement: identical elements can occur in together in some combinations.
+
+    Example: combinations_with_replacement('ABC', 2) --> AA AB AC BB BC CC
+
+    `From Python 2.6 docs <http://docs.python.org/library/itertools.html#itertools.combinations_with_replacement>`_
+    under the Python Software Foundation License
+
+    :Args:
+        - iterable
+            A list-like or a str-like object that contains some elements
+        - r
+            Number of elements in each ouput combination
+
+    :Returns:
+        A generator yielding combinations (with replacement) of length `r`
+    """
     pool = tuple(iterable)
     n = len(pool)
     if not n and r:
