@@ -5,15 +5,22 @@
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
-"""A wrapper of PyMVPA2 for simple fMRI analyses"""
+"""
+A wrapper of PyMVPA2 for simple fMRI analyses using SPM preprocessing.
 
-import os, sys, glob, shutil
+Currently only signal, SVM, and correlational analyzes are stable. Other
+features are not as extensively tested.
+
+.. warning:: This library has not been thoroughly tested yet!
+"""
+
+import os, sys, glob, shutil, warnings
 import cPickle as pickle
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import mpl
 import pandas
+import mvpa2.suite
+import nibabel as nb
 
 # some modules are only available in Python 2.6
 try:
@@ -22,52 +29,203 @@ except:
     from exp import OrderedDict
 
 # stuff from psychopy_ext
-import plot
-
-import mvpa2.suite
-import nibabel as nb
-
-#class Analysis(object):
-
-    #def __init__(self):
-        #pass
-
-    #def time_course(self):
-        #ds = self.extract_samples(subjID, runType, ROI_list,
-                                                  #values=values)
-
-    #def signal(self):
-        #ds = self.extract_samples(subjID, runType, ROI_list,
-                                                  #values=values)
-
-    #def univariate(self):
-        #ds = self.extract_samples(subjID, runType, ROI_list,
-                                                  #values=values)
-
-    #def mvpa(self):
-        #ds = self.extract_samples(subjID, runType, ROI_list,
-                                                  #values=values)
-
+import plot, stats
 
 
 class Analysis(object):
+    """
+    For conducting functional magnetic resonance imaging analyses.
+
+    Assumptions:
+        1. For beta- and t-values, analyses were done is SPM.
+        2. Functional runs named as `func_<runNo>`, anatomicals named as
+           `struct<optional extra stuff>`
+        3. Beta-values model every condition, including fixation. But
+           t-values are computed as each conditions versus a fixation.
+        4. Conditions are in the 'cond' column of data files, trial
+           duration is in 'dur'
+
+    :Args:
+        paths (dict of str:str pairs)
+            A dictionary of paths where data is stored. Expected to have at
+            least the following keys: 'analysis' (for storing analysis outputs),
+            'data_behav' (behavioral data with condition labels), 'data_fmri',
+            'rec' (for ROIs from surface reconstruction in Caret or so),
+            'data_rois' (for storing the extracted signals in these ROIs),
+
+    :Kwargs:
+        - extraInfo (dict, default: None)
+            All parameters related to
+        - runParams (dict, default: None)
+            All runtime parameters that you want to be able to access from GUI
+            or CLI. Expected to have at least
+                - noOutput
+                - verbose
+                - force
+        - tr (int, default: None)
+            Time of repetition of your fMRI scans. This information is not
+            reliably coded in NIfTI files, so you need to define it yourself.
+        - fmri_prefix (str, default: 'swa*')
+            Prefix of SPM output functional scans that you want to analyze.
+        - rois (list of str)
+            A list of ROIs to analyze. See :func:`make_roi_pattern` for
+            accepted formats.
+    """
 
     def __init__(self,
                  paths,
                  tr,
-                 visualize = False,
-                 noOutput = False
+                 extraInfo=None,
+                 runParams=None,
+                 fmri_prefix='swa*',
+                 rois=None,
                  ):
-        #self.filename = filename
-        self.visualize = visualize
+        self.extraInfo = extraInfo
+        self.runParams = runParams
+        # minimal parameters that Analysis expects in extraInfo and runParams
+        self.extraInfo = OrderedDict([
+            ('subjID', 'subj'),
+            ('runType', 'main'),
+            ])
+        self.runParams = OrderedDict([
+            ('method', 'timecourse'),
+            ('values', 'raw'),
+            ('noOutput', False),
+            ('debug', False),
+            ('verbose', True),
+            ('visualize', False),
+            ('force', False),
+            ('dry', False)
+            ])
+        if extraInfo is not None:
+            self.extraInfo.update(extraInfo)
+        if runParams is not None:
+            self.runParams.update(runParams)
+
         self.paths = paths
         self.tr = tr
-        self.noOutput = noOutput
+        self.fmri_prefix = fmri_prefix
+        self.rois = make_roi_pattern(runParams['rois'])
+
+    def run(self):
+        """
+        A wrapper for running an analysis specified in `self.runParams`.
+
+        Steps:
+            - Try to load a saved analysis, unless a `force` flag is given
+            - Otherwise, either generate synthetic data (values = `sim`) or
+            extract it from the real data using :func:`run_method`.
+            - Save a `pandas.DataFrame` in the analysis folder with the
+            filename like `df_<method>_<values>.pkl`
+
+        :Returns:
+            A DataFrame with the output of a particular analysis in the
+            `subjResp` column, and a file name where that data is stored.
+
+        """
+        df, df_fname = self.get_df()
+        if self.runParams['plot']:
+            self.plot(df)
+        return df, df_fname
+
+    def get_df(self):
+        df_fname = (self.paths['analysis']+'df_%s_%s.pkl' %
+                    (self.runParams['method'], self.runParams['values']))
+        try:
+            if self.runParams['force']:
+                raise  # redo the analysis
+            else:
+                df = pickle.load(open(df_fname,'rb'))
+                if self.runParams['verbose']:
+                    print ("loaded stored dataset of %s %s results" %
+                        (self.runParams['values'], self.runParams['method']))
+        except:
+            res_fname = self.paths['analysis']+'%s_%s_%s.pkl'
+            # generate some fake data to check a particular hypothesis
+            if self.runParams['values'] == 'sim':
+                simds = self.genFakeData()
+            else:
+                simds = None
+            header, results = self.run_method(self.extraInfo['subjID'],
+                self.extraInfo['runType'], self.rois, offset=self.offset,
+                dur=self.dur, filename=res_fname,
+                method=self.runParams['method'], values=self.runParams['values'],
+                simds=simds)
+            df = pandas.DataFrame(results, columns=header)
+            if not self.runParams['noOutput']:
+                pickle.dump(df, open(df_fname,'wb'))
+                if self.runParams['verbose']:
+                    print ("saved dataset of %s %s results to %s" %
+                          (self.runParams['values'], self.runParams['method'],
+                              df_fname))
+
+        return df, df_fname
+
+    def plot(self, df, plt=None):
+        if plt is None:
+            plt = plot.Plot(nrows_ncols=(3,2), figsize=(10, 12))
+
+        if self.runParams['method'] == 'timecourse':
+            plot_timecourse(df, plt=plt,
+                cols=['stim1.cond', 'name'])
+        else:
+            agg = self.get_data(df)
+            order = [r[1] for r in self.rois]
+            plt.plot(agg, subplots='ROI', subplots_order=order, kind='bar')
+        plt.tight_layout()
+
+        if self.runParams['saveplot'] and not self.runParams['noOutput']:
+            plt.savefig(self.paths['analysis']+'%s_%s.png' %
+                (self.runParams['method'],
+                 self.runParams['values'])
+                 )
+        plt.show()
 
     def run_method(self, subjIDs, runType, rois, method='svm', values='raw',
-                offset=None, dur=None, filename = 'RENAME.pkl',):
+                offset=None, dur=None, filename = 'RENAME.pkl', simds=None):
+        """
+        A wrapper for running a specified analysis.
 
-        if type(subjIDs) not in [list, tuple]: subjIDs = [subjIDs]
+        Process:
+            1. Attempt to load stored results from the analysis that was done
+            before. (stored in teh analysis folder in a file
+            `<method>_<values>_<subjID>.pkl`
+            2. If that fails, it's probably because the analysis has
+            not been performed yet or, in rare cases, because the data
+            file is corrupt or missing. So a new analysis is initiated.
+                1. First, Regions of Interest (ROIs) are loaded from ``PATHS['data_rois']``
+                2. If that is not possible, then ROIs are extracted from
+                   anatomical data using functional localizer data from SPM.
+                3. Extracted ROIs are stored in ``PATHS['data_rois']``.
+                4. Finally, the specified analysis is performed.
+
+        :Args:
+            - subjIDs (str of list of str)
+                Which participants should be analyzed
+            - runType (str)
+                Which run type should be taken. Usually you have a few runs,
+                such as main experimental runs and localizer runs. They should
+                have be labeled data file
+
+        :Kwargs:
+            - method: {'timecourse', 'univariate', 'signal', 'corr',  'svm'} (default: 'svm'}
+                Method to analyze data.
+            - values: {'raw', 'beta', 't'}
+                fMRI signal values to use. If 'raw', you have to pass offset
+                and duration. If you intend to try a few different parameters
+                for 'raw', e.g. a duration of 1 TR and 3 TRs, you may indicate
+                that in the value parameter like ``values='raw_3'`` which will
+                be useful in order not to confuse output files (they get
+                prefixes based on the value name).
+
+
+                e.g.:
+                    ``offset = {'V1': 4, 'V2': 4, 'V3': 4, 'LO': 3, 'pFs': 3}
+                    dur = 1
+        """
+
+        if type(subjIDs) not in [list, tuple]:
+            subjIDs = [subjIDs]
         results = []
         #loadable = []
         ## quick way to see if we need to import mvpa2.suite
@@ -80,97 +238,59 @@ class Analysis(object):
         #import pdb; pdb.set_trace()
         #if not np.all(loadable):
 
-
         for subjID in subjIDs:
-            print subjID
+            print subjID,
             try:
-                filename = filename % (method, values, subjID)
+                out_fname = filename % (method, values, subjID)
             except:
                 pass
             loaded = False
             if method in ['corr', 'svm']:
                 try:
-                    header, result = pickle.load(open(filename,'rb'))
+                    header, result = pickle.load(open(out_fname,'rb'))
                     results.extend(result)
                     # result = pickle.load(open(filename,'rb'))
                     # header = [i[0] for i in result[0]]
                     # for res in result:
                     #     results.append([r[1] for r in res])
-                    print '%s: loaded stored %s %s results' % (subjID, values)
+                    print ': loaded stored %s results' % values
                     loaded = True
                 except:
-                    print "WARNING: %s: Could't load from the file %s" % (subjID, filename)
-
+                    print
+                    print "Could not load or find the results file %s" % out_fname
+                    print "Will proceed to do %s analysis from scratch" % method
             if not loaded:
                 temp_res = []
                 for r, ROI_list in enumerate(rois):
                     print ROI_list[1],
-                    ds = self.extract_samples(subjID, runType, ROI_list,
+                    if simds is not None:
+                        values = 'sim'
+                    else:
+                        ds = self.extract_samples(subjID, runType, ROI_list,
                                                   values=values)
-                    if values in ['raw', 'raw_top']:
+                    if values.startswith('raw'):
                         ds = self.detrend(ds)
                         if type(offset) == dict:  # different offsets for ROIs
                             off = offset[ROI_list[1]]
                         else:
                             off = offset
+                        ds = self.nan_to_num(ds, value=0)
                         evds = self.ds2evds(ds, offset=off, dur=dur)
-                    elif values in ['t', 'beta']:
+                    elif values in ['t', 'beta', 'sim']:
                         # SPM sets certain voxels to NaNs
                         # we just gonna convert them to 0
-                        # import pdb; pdb.set_trace()
-                        # ds = ds[np.logical_not(np.isnan(ds.samples))]
-                        # import pdb; pdb.set_trace()
-                        ds.samples = np.nan_to_num(ds.samples)
-                        evds = ds
+                        evds = self.nan_to_num(ds)
 
                     if method == 'timecourse':
                         header, result = self.get_timecourse(evds)
-                    elif method == 'signal':
+                    elif method in ['signal', 'univariate']:
                         header, result = self.get_signal(evds, values)
-                    elif method == 'univariate':
-                        header, result = self.get_univariate(evds, values)
                     elif method == 'corr':
                         evds = evds[evds.sa.targets != 0]
                         header, result = self.get_correlation(evds, nIter=100)
                     elif method == 'svm':
                         evds = evds[evds.sa.targets != 0]
                         header, result = self.get_svm(evds, nIter=100)
-
-
-                    #if values in ['raw', 'raw_top']:
-                        #ds = self.extract_samples(subjID, runType, ROI_list, values=values)
-                        #ds = self.detrend(ds)
-                        #if type(offset) == dict:  # different offsets for ROIs
-                            #off = offset[ROI_list[1]]
-                        #else:
-                            #off = offset
-                        #evds = self.ds2evds(ds, offset=off, dur=dur)
-                        #if method == 'time_course':
-                            #header, result = self.get_psc(evds)
-                        #elif method == 'univariate':
-                            #header, result = self.psc_diff(evds)
-                        #else:
-                            #evds = evds[evds.sa.targets != 0]
-                            #if method == 'corr':
-                                #header, result = self.correlation(evds, nIter=100)
-                            #elif method == 'svm':
-                                #header, result = self.svm(evds, nIter=100)
-                    #elif values in ['t', 'beta']:
-                        #ds = self.extract_samples(subjID, runType, ROI_list,
-                                                  #values=values)
-                        #ds = ds[ds.sa.targets != 0]
-                        ## SPM sets certain voxels to NaNs
-                        ## we just gonna convert them to 0
-                        ## import pdb; pdb.set_trace()
-                        ## ds = ds[np.logical_not(np.isnan(ds.samples))]
-                        ## import pdb; pdb.set_trace()
-                        #ds.samples = np.nan_to_num(ds.samples)
-
-                        ## ds.samples = ds.samples[:,keep]
-                        #if method == 'corr':
-                            #header, result = self.correlation(ds, nIter=100)
-                        #elif method == 'svm':
-                            #header, result = self.svm(ds, nIter=100)
                     else:
                         raise NotImplementedError('Analysis for %s values is not '
                                                   'implemented')
@@ -190,7 +310,7 @@ class Analysis(object):
                     except:
                         pass
 
-                    pickle.dump([header,temp_res], open(filename,'wb'))
+                    pickle.dump([header,temp_res], open(out_fname,'wb'))
 
         return header, results
 
@@ -232,25 +352,28 @@ class Analysis(object):
     #     evds = evds[evds.sa.targets != 0]
     #     return self.svm(evds)
 
+    def get_data(self, filename):
+        """
+        Get MRI data with the affine transformation (world coordinates) applied.
 
-    def get_evds(self, ds):
-        pass
-
-
+        :Args:
+            filename (str)
+                A filename of data to load
+        """
+        nim = nb.load(filename)
+        data = nim.get_data()
+        # reorient data based on the affine information in the header
+        ori = nb.io_orientation(nim.get_affine())
+        data = nb.apply_orientation(data, ori)
+        data = np.squeeze(data)  # remove singular dimensions (useful for ROIs)
+        return data
 
     def extract_samples(self,
         subjID,
         # runNo,
         runType,
         ROIs,
-        values='raw',
-        # tabData = None,
-        # ROIs = None,
-        # # filter = None,
-        # shiftTp = 2,
-        # rp = None,
-        # roi_path = './',
-        # rec_path = './',
+        values='raw'
         ):
         """
         Produces a detrended dataset with info for classifiers.
@@ -276,127 +399,112 @@ class Analysis(object):
         """
 
         reuse = True
-        if values in ['raw', 'raw_top']:
+        if values.startswith('raw'):
             add = ''
         else:
             add = '_' + values
         suffix = ROIs[1] + add + '.gz.hdf5'
         roiname = self.paths['data_rois'] %subjID + suffix
-        # import pdb; pdb.set_trace()
         if reuse and os.path.isfile(roiname):
             ds = mvpa2.suite.h5load(roiname)
             print '(loaded)',
+            return ds
 
-        else:
-            # make a mask by combining all ROIs
-            allROIs = []
-            for ROI in ROIs[2]:
-                theseROIs = glob.glob((self.paths['rec']+ROI+'.nii') %subjID)
-                allROIs.extend(theseROIs)
-            # import pdb; pdb.set_trace()
-            thisROI = sum([np.squeeze(nb.load(roi).get_data()) for roi in allROIs])
-            #thisROI = sum([mvpa2.suite.fmri_dataset(roi).samples for roi in allROIs])
-            #thisMask = nb.load(thisROI)
-            # change 4D mask to 3D by removing the first dim (time)
-            #maskData = thisMask.get_data[:,:,:,::-1] # flip ROI because functional data is flipped
-            #thisMask = thisMask.setDataArray(maskData.reshape(maskData.shape[1:]))
-            #print nb.load("C:/Python27/Lib/site-packages/mvpa/data/bold.nii.gz").shape
+        # else
+        # make a mask by combining all ROIs
+        allROIs = []
+        for ROI in ROIs[2]:
+            theseROIs = glob.glob((self.paths['rec'] + ROI + '.nii') %subjID)
+            allROIs.extend(theseROIs)
+        # add together all ROIs -- and they should not overlap too much
+        thisMask = sum([self.get_data(roi) for roi in allROIs])
 
-            thisMask = np.squeeze(thisROI)
-            # LEFT/RIGHT flip due to SPM's flipped output
-            thisMask = thisMask[::-1]
+        if values.startswith('raw'):
+            # find all functional runs of a given runType
+            allImg = glob.glob((self.paths['data_fmri'] + self.fmri_prefix + \
+                               runType + '.nii') % subjID)
+            data_path = self.paths['data_behav']+'data_%02d_%s.csv'
+            labels = self.extract_labels(allImg, data_path, subjID, runType)
+            ds = self.fmri_dataset(allImg, labels, thisMask)
+        elif values == 'beta':
+            data_path = self.paths['data_behav'] + 'data_*_%s.csv'
+            behav_data = self.read_csvs(data_path %(subjID, runType))
+            try:
+                labels = np.unique(behav_data['stim1.cond']).tolist()
+            except:
+                labels = np.unique(behav_data['cond']).tolist()
+            numRuns = len(np.unique(behav_data['runNo']))
+            analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
+            betaval = np.array(sorted(glob.glob(analysis_path + 'beta_*.img')))
+            if len(betaval) != (len(labels) + 6) * numRuns + numRuns:
+                raise Exception('Number of beta value files is incorrect '
+                    'for participant %s' % subjID)
+            select = [True]*len(labels) + [False]*6
+            select = np.array(select*numRuns + [False]*numRuns)
+            allImg = betaval[select]
 
-            if self.visualize: self.plot_struct(self.paths['data_fmri']
-                 %subjID + 'swmeanafunc_*.nii')
-
-            if values in ['raw', 'raw_top']:
-                # find all functional runs of a given runType
-                allImg = glob.glob((self.paths['data_fmri'] + 'swa*' + \
-                                   runType + '.nii') % subjID)
-                data_path = self.paths['data_behav']+'data_%02d_%s.csv'
-                labels = self.extract_labels(allImg, data_path, subjID,
-                                             runType)
-                ds = self.fmri_dataset(allImg, labels, thisMask)
-            elif values == 't':
-                data_path = self.paths['data_behav'] + 'data_*_%s.csv'
-                behav_data = self.get_behav_data(data_path %(subjID, runType))
-                try:
-                    labels = np.unique(behav_data['stim1.cond']).tolist()
-                except:
-                    labels = np.unique(behav_data['cond']).tolist()
-                labels = labels[1:]  # we skip fixation in t-values
-                numRuns = len(np.unique(behav_data['runNo']))
-                analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
-                tval = np.array(sorted(glob.glob(analysis_path + 'spmT_*.img')))
-                if len(tval) != (numRuns + 1) * len(labels):
-                    raise Exception('Number of t value files is incorrect '
-                        'for participant %s' % subjID)
-                allImg = tval[np.arange(len(tval)) % (numRuns+1) != numRuns]
-                ds = mvpa2.suite.fmri_dataset(
-                    samples = allImg.tolist(),
-                    targets = np.repeat(labels, numRuns).tolist(),
-                    chunks = np.tile(np.arange(numRuns), len(labels)).tolist(),
+            ds = []
+            nLabels = len(labels)
+            for runNo in range(numRuns):
+                ds.append( mvpa2.suite.fmri_dataset(
+                    samples = allImg[runNo*nLabels:(runNo+1)*nLabels].tolist(),
+                    targets = labels,
+                    chunks = runNo,
                     mask = thisMask
-                    )
-            elif values == 'beta':
-                data_path = self.paths['data_behav'] + 'data_*_%s.csv'
-                behav_data = self.get_behav_data(data_path %(subjID, runType))
-                try:
-                    labels = np.unique(behav_data['stim1.cond']).tolist()
-                except:
-                    labels = np.unique(behav_data['cond']).tolist()
-                numRuns = len(np.unique(behav_data['runNo']))
-                analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
-                betaval = np.array(sorted(glob.glob(analysis_path + 'beta_*.img')))
-                if len(betaval) != (len(labels) + 6) * numRuns + numRuns:
-                    raise Exception('Number of beta value files is incorrect '
-                        'for participant %s' % subjID)
-                select = [True]*len(labels) + [False]*6
-                select = np.array(select*numRuns + [False]*numRuns)
-                # if subjID == 'twolines2_03':
-                #     import pdb; pdb.set_trace()
-                allImg = betaval[select]
+                    ))
+            ds = mvpa2.suite.vstack(ds)
+        elif values == 't':
+            data_path = self.paths['data_behav'] + 'data_*_%s.csv'
+            behav_data = self.read_csvs(data_path %(subjID, runType))
+            try:
+                labels = np.unique(behav_data['stim1.cond']).tolist()
+            except:
+                labels = np.unique(behav_data['cond']).tolist()
+            # t-values did not model all > fixation, so we skip it now
+            labels = labels[1:]
+            numRuns = len(np.unique(behav_data['runNo']))
+            analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
+            tval = np.array(sorted(glob.glob(analysis_path + 'spmT_*.img')))
+            if len(tval) != (numRuns + 1) * len(labels):
+                raise Exception('Number of t value files is incorrect '
+                    'for participant %s' % subjID)
+            allImg = tval[np.arange(len(tval)) % (numRuns+1) != numRuns]
+            ds = mvpa2.suite.fmri_dataset(
+                samples = allImg.tolist(),
+                targets = np.repeat(labels, numRuns).tolist(),
+                chunks = np.tile(np.arange(numRuns), len(labels)).tolist(),
+                mask = thisMask
+                )
+        else:
+            raise Exception('values %s are not recognized' % values)
 
-                ds = []
-                nLabels = len(labels)
-                for runNo in range(numRuns):
-                    ds.append( mvpa2.suite.fmri_dataset(
-                        samples = allImg[runNo*nLabels:(runNo+1)*nLabels].tolist(),
-                        targets = labels,
-                        chunks = runNo,
-                        mask = thisMask
-                        ))
-                ds = mvpa2.suite.vstack(ds)
-                #import pdb; pdb.set_trace()
-                # ds = self.tvalue_dataset(allImg, labels, analysis_path, thisMask)
-
-            if True:
-                try:
-                    os.makedirs(self.paths['data_rois'] %subjID)
-                except:
-                    pass
-                mvpa2.suite.h5save(roiname, ds, compression=9)
+        if not self.runParams['noOutput']:  # save the extracted data
+            try:
+                os.makedirs(self.paths['data_rois'] %subjID)
+            except:
+                pass
+            mvpa2.suite.h5save(roiname, ds, compression=9)
 
         return ds
-
-
 
     def extract_labels(self, img_fnames, data_path, subjID, runType):
         """
         Extracts data labels (targets) from behavioral data files.
+
+        .. note:: Assumes that each block/condition is a multiple of TR.
         """
         labels = []
         for img_fname in img_fnames:
             runNo = int(img_fname.split('_')[-2])
 
-            behav_data = self.get_behav_data(data_path %(subjID, runNo, runType))
+            behav_data = self.read_csvs(data_path %(subjID, runNo, runType))
             # indicate which condition was present for each acquisition
-            # !!!ASSUMES!!! that each block/condition is a multiple of TR
+            # FIX: !!!ASSUMES!!! that each block/condition is a multiple of TR
             run_labels = []
             for lineNo, line in behav_data.iterrows():
                 # how many TRs per block or condition
-                repeat = int(line['dur'] / self.tr)
-                run_labels.extend( [line['stim1.cond']] * repeat )
+                repeat = int(line['dur'] / self.tr)  # FIX
+                run_labels.extend( [line['cond']] * repeat )  #FIX
             labels.append(run_labels)
 
         return labels
@@ -406,7 +514,7 @@ class Analysis(object):
         """
         Create a dataset from an fMRI timeseries image.
 
-        Overrides mvpa2.datasets.mri.fmri_dataset which has a buggy multiple
+        Overrides `mvpa2.datasets.mri.fmri_dataset` which has a buggy multiple
         images reading.
         """
         # Load in data for all runs and all ROIs
@@ -431,12 +539,29 @@ class Analysis(object):
         return ds
 
     def detrend(self, ds):
+        """
+        Second-order detrending of data per chunk with the mean added back for
+        a convenient percent signal change calculation.
+        """
         dsmean = np.mean(ds.samples)
         mvpa2.suite.poly_detrend(ds, polyord=2, chunks_attr='chunks')
         ds.samples += dsmean # recover the detrended mean
         return ds
 
     def ds2evds(self, ds, offset=2, dur=2):
+        """
+        Converts a dataset to an event-related dataset.
+
+        :Args:
+            ds
+
+        :Kwargs:
+            - offset (int, default: 2)
+                How much labels should be shifted due to the hemodynamic lag. A
+                good practice is to first plot data to see where the peaks are
+            - dur (int, default: 2)
+                How many timepoints per condition.
+        """
 
         # if self.visualize: self.plotChunks(ds, chunks=[0], shiftTp=2)
 
@@ -516,27 +641,17 @@ class Analysis(object):
 
     def get_timecourse(self, evds):
         """
-        For each condition, extracts all timepoints as specified in the evds window, and averages across voxels
+        For each condition, extracts all timepoints as specified in the evds
+        window, and averages across voxels
         """
-        # plt.subplot(111)
-        #vx_lty = ['-', '--']
-        #t_col = ['b', 'r']
-
-        #evds[]
-        # allConds = exp.OrderedDict([
-        #     ('metric',[1,4,7,10]),
-        #     ('non-accidental',[2,5,8,11]),
-        #     ('other',[3,6,9,12]),
-        #     ])
-        #allConds = OrderedDict([(str(i+1),[i+1]) for i in range(12) ])
         baseline = evds[evds.sa.targets == 0].samples
         baseline = evds.a.mapper[-1].reverse(baseline)
         # average across all voxels and all blocks
         baseline = np.mean(np.mean(baseline,2),0)
         if np.any(baseline<0):
-            print 'WARNING: some baseline values are negative'
+            warnings.warn('Some baseline values are negative')
         # now plot the mean timeseries and standard error
-        header = ['stim1.cond', 'time', 'subjResp']
+        header = ['cond', 'time', 'subjResp']
         results = []
         for cond in evds.UT:
             if cond != 0:
@@ -545,9 +660,6 @@ class Analysis(object):
                 evdsMean = evds.a.mapper[-1].reverse(evdsMean)
                 # average across all voxels and measurements
                 evdsMean = np.mean(np.mean(evdsMean,2),0)
-                # import pdb; pdb.set_trace()
-                # l = mvpa2.suite.plot_err_line((evdsMean-baseline)/baseline*100)
-
                 thispsc = (evdsMean - baseline) / baseline * 100
                 #time = np.arange(len(thispsc))*self.tr
                 for pno, p in enumerate(thispsc):
@@ -555,40 +667,76 @@ class Analysis(object):
         return header, results
 
     def get_signal(self, evds, values):
-        header = ['stim1.cond', 'subjResp']
+        """
+        Extracts fMRI signal.
+
+        .. note:: Assumes the condition 0 is the fixation condition, which
+                  will be used in percent signal change computations of raw
+                  values
+
+        .. warning:: must be reviewed
+
+        :Args:
+            - evds (event-related mvpa dataset)
+            - values {'raw', 'beta', 't'}
+
+        :Returns:
+            fMRI signal for each condition (against the fixation condition)
+        """
+        header = ['cond', 'subjResp']
         results = []
-        baseline = evds[evds.sa.targets == 0].samples
-        baseline = np.mean(baseline)
-        for cond in evds.UT:
+
+        # calculate the mean per target per chunk (across trials)
+        run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
+        evds_avg = evds.get_mapped(run_averager)
+
+        # calculate mean across conditions per chunk per voxel
+        target_averager = mvpa2.suite.mean_group_sample(['chunks'])
+        mean = evds_avg.get_mapped(target_averager)
+        mean = np.mean(mean, 1)  # mean across voxels
+
+        if values.startswith('raw') or values == 'beta':
+            baseline = mean[mean.sa.targets == 0].samples
+            #baseline = np.mean(baseline)
+        for cond in mean.UT:
             if cond != 0:
-                evds_cond = evds[np.array([t == cond for t in evds.sa.targets])].samples
-                evdsMean = np.mean(evds_cond)
-                if values in ['raw', 'raw_top']:
-                    evdsMean = (evdsMean - baseline) / baseline * 100
+                sel = np.array([t == cond for t in mean.sa.targets])
+                mean_cond = mean[sel].samples
+                #evdsMean = np.mean(evds_cond)
+                if values.startswith('raw'):
+                    mean_cond = (mean_cond - baseline) / baseline * 100
+                elif values == 'beta':
+                    mean_cond = mean_cond - baseline
+                evdsMean = np.mean(mean_cond)
                 results.append([cond, evdsMean])
         return header, results
 
-
     def get_univariate(self, evds, values):
-        # run_averager = mvpa2.suite.mean_group_sample(['targets'])
-        # evds_avg = evds.get_mapped(run_averager)
-        # numT = len(evds_avg.UT)
-        head, psc = self.get_signal(evds, values)
-        df = pandas.DataFrame(psc, columns=head)
-        agg = df.groupby('stim1.cond')['subjResp'].mean()
-        header = ['stim1.cond', 'stim2.cond', 'subjResp']
-        results = []
-        for stim1, val1 in agg.iteritems():
-            for stim2, val2 in agg.iteritems():
-                results.append([stim1, stim2,
-                    np.abs(val1-val2)])
-        return header, results
+        """Alias for :func:`get_signal`
+        """
+        return self.get_signal(evds, values)
 
+    def correlation(self, evds, nIter=100):
+        """
+        Computes a correlation between multiple splits in half of the data.
 
-    def get_correlation(self,
-                    evds,
-                    nIter = 10  # how many iterations for
-                    ):
+        Reported as one minus a correlation to provide a dissimilarity measure
+        as in svm.
+
+        :Args:
+            evds (event-related mvpa dataset)
+
+        :Kwargs:
+            nIter (int, default: 100)
+                Number of random splits in half of the entire dataset.
+
+        :Returns:
+            A header and a results matrix with four columns:
+                - iter: iteration number
+                - stim1.cond: first condition
+                - stim2.cond: second condition
+                - subjResp: one minus the correlation value
+        """
 
         # calculate the mean per target per chunk (across trials)
         run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
@@ -609,7 +757,6 @@ class Analysis(object):
         header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
         results = []
         for n in range(nIter):
-            #print n,
             np.random.shuffle(runtype)
             evds_avg.sa['runtype'] = np.repeat(runtype,numT)
 
@@ -627,30 +774,45 @@ class Analysis(object):
                 for j in range(0, numT):
                     results.append([n, targets[i], targets[j], result[i,j]])
 
-        print
-        # meanPerIter = np.mean(np.mean(results, 2), 1)
-        # cumMean = np.cumsum(meanPerIter)/range(1, len(meanPerIter)+1)
-        # plt.plot(cumMean)
-    #    plt.show()
-
         return header, results
 
 
-    def get_svm(self,
-            evds,
-            nIter = 100,  # how many iterations for
-            clf=None  # classifier
-            ):
-        if clf is None:
-            clf = clf = mvpa2.suite.LinearNuSVMC()
+    def svm(self, evds, nIter=100, clf=mvpa2.suite.LinearNuSVMC()):
+        """
+        Runs a support vector machine pairwise.
 
+        .. note: Might be not the most efficient implementation of SVM, but
+        it is at least intuitive.
+
+        Process:
+            - Split data into a training set (about 75% of all values) and a testing
+            set (about 25% of values).
+            - For each pair of conditions, train the classifier.
+            - Then test on the average of the testing set, i.e., only on two
+            samples. This trick usually boosts the performance (credit:
+            Hans P. Op de Beeck)
+
+        :Args:
+            evds (event-related mvpa dataset)
+
+        :Kwargs:
+            - nIter (int, default: 100)
+                Number of random splits into a training and testing sets.
+            - clf (mvpa classfier, default: Linear Nu SVM)
+
+        :Returns:
+            A header and a results matrix with four columns:
+                - iter: iteration number
+                - stim1.cond: first condition
+                - stim2.cond: second condition
+                - subjResp: one minus the correlation value
+        """
         # calculate the mean per target per chunk (across trials)
         run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
         evds_avg = evds.get_mapped(run_averager)
         numT = len(evds_avg.UT)
 
         # subtract the mean across voxels (per target per chunk)
-    #    import pdb; pdb.set_trace()
         evds_avg.samples -= np.tile(np.mean(evds_avg, 1), (evds_avg.shape[1],1) ).T
         # and divide by standard deviation across voxels
         evds_avg.samples /= np.tile(np.std(evds_avg, axis=1, ddof=1),
@@ -700,16 +862,10 @@ class Analysis(object):
                         ind_test = np.array([k in targets for k in evds_test.sa.targets])
                         # keep = np.logical_not(np.isnan(evds_test))
                         evds_test_ij = evds_test[ind_test]
-                        # import pdb; pdb.set_trace()
-
-
                         # evds_test_ij = evds_test_ij[:,keep]
                         # fsel = mvpa2.suite.StaticFeatureSelection(keep)
                         # clf = mvpa2.suite.LinearNuSVMC()
                         # clf = mvpa2.suite.FeatureSelectionClassifier(clf, fsel)
-
-
-
                         clf.train(evds_train_ij)
                         #fsel = mvpa2.suite.SensitivityBasedFeatureSelection(
                             #mvpa2.suite.OneWayAnova(),
@@ -730,17 +886,9 @@ class Analysis(object):
                         predictions = clf.predict(evds_test_ij.samples)
                         pred = np.mean(predictions == evds_test_ij.sa.targets)
                     results.append([n, targets[0], targets[1], pred])
-
-
-
         print
-    #    meanPerIter = np.mean(np.mean(results, 2), 1)
-    #    cumMean = np.cumsum(meanPerIter)/range(1, len(meanPerIter)+1)
-    #    plt.plot(cumMean)
-    #    plt.show()
 
         return header, results
-
 
 
     def dissimilarity(self,
@@ -855,6 +1003,8 @@ class Analysis(object):
 
 
     def searchlight(self, ds):
+        """ Basic searchlight analysis
+        """
         run_averager = mvpa2.suite.mean_group_sample(['targets', 'chunks'])
         ds = ds.get_mapped(run_averager)
         clf = mvpa2.suite.LinearNuSVMC()
@@ -900,30 +1050,117 @@ class Analysis(object):
                   vlim=(0, None), slices=18, **mri_args)
 
 
-    def plot_struct(self, nim, coords=None, roi=None):
+    def _plot_slice(self, volume_path, rois=None, coords=None, fig=None):
         """
-        Plots structural scan from the three sides.
+        Plots a slice from the three sides.
+
+        .. note:: ROIs (masks) are averaged across all slices so that you
+        would definitely get to see the ROIs independent of the plotted slice.
+
+        :Args:
+            volume_path (str)
+                Path to the volume you want to plot.
+
+        :Kwargs:
+            - mask (str, default: None)
+                Path to the ROI data. If it contains data (i.e., it comes from
+                the `data_roi` folder), the data is
+            - rois
+            - coords (tuple of 3 or 4 ints; default: None)
+
+            - fig (:class:`plot.Plot`; default: None)
+                Pass an existing plot if you want to plot in it.
+
         """
-        for i in range(3):
-            plt.subplot(2,3,i+1)
-            plt.imshow( np.mean(thisMask,i).T, cmap=mpl.cm.gray,
-                origin='lower', interpolation='nearest' )
+        if fig is None:
+            fig = plot.Plot(ncols=3)
+            showplot = True
+        else:
+            showplot = False  # the caller probably has more plots to do
 
-        meanFuncName = glob.glob()
-        meanFunc = nb.load(meanFuncName[0]).get_data()
-        if coords is None:
-            coords = [m/2 for m in meanFunc.shape]  # middle
+        labels = ['parasagittal', 'coronal', 'horizontal']
+        allvols = glob.glob(volume_path)
+        if len(allvols) == 0:
+            raise Exception('Volume not found at %s' % volume_path)
 
-        plt.subplot(234)
-        plt.imshow(meanFunc[coords[0]].T, cmap=mpl.cm.gray,
-            origin='lower', interpolation='nearest')
-        plt.subplot(235)
-        plt.imshow(meanFunc[:,coords[1]].T, cmap=mpl.cm.gray,
-            origin='lower', interpolation='nearest')
-        plt.subplot(236)
-        plt.imshow(meanFunc[:,:,coords[2]].T, cmap=mpl.cm.gray,
-            origin='lower', interpolation='nearest')
-        plt.show()
+        for vol in allvols:
+            data = self.get_data(vol)
+            if coords is None or len(coords) <= 2:
+                coords = [m/2 for m in data.shape]  # middle
+            if data.ndim == 4:  # time volume
+                if len(coords) == 4:
+                    data = data[:,:,:,coords[3]]
+                else:
+                    data = data[:,:,:,0]
+
+            for i in range(3):
+                if i == 0:
+                    mf = data[coords[i]]
+                elif i == 1:
+                    mf = data[:, coords[i]]
+                else:
+                    mf = data[:, :, coords[i]]
+                ax = fig.next()
+                ax.imshow(mf.T, cmap='gray', origin='lower',
+                          interpolation='nearest')
+                ax.set_title('%s at %s' % (labels[i], coords[i]))
+
+                if rois is not None:
+                    mask = sum([self.get_data(roi[1]) for roi in rois])
+                    mean_mask = np.mean(mask, i).T
+                    # make it uniform color
+                    mean_mask[np.nonzero(mean_mask)] = 1.  # ROI voxels are 1
+                    mean_mask[mean_mask==0] = np.nan  # non-ROI voxels are nan
+                    mask_rgba = np.zeros(mean_mask.shape + (4,))  # add transparency
+                    mask_rgba[:] = np.nan  # default is nan
+                    mask_rgba[:,:,0] = mean_mask  # make mask red
+                    mask_rgba[:,:,3] = mean_mask  # transparency should have nans
+                    ax.imshow(mask_rgba, alpha=.5,
+                            origin='lower', interpolation='nearest')
+        if showplot:
+            fig.show()
+
+    def plot_roi(self):
+        """
+        Plots Regions of Interest (ROIs) on the functional data.
+        """
+        subjID = self.extraInfo['subjID']
+        if not isinstance(subjID, str):
+            raise TypeError('subjID is supposed to be a string, '
+                            'but got %s instead' % subjID)
+        allROIs = []
+        for ROIs in self.rois:
+            for ROI in ROIs[2]:
+                theseROIs = glob.glob((self.paths['rec'] + ROI + '.nii') %subjID)
+                allROIs.extend(theseROIs)
+        if len(allROIs) == 0:
+            raise Exception('Could not find matching ROIS at %s' %
+                             (self.paths['rec'] %subjID))
+        else:
+            allROIs = (None, '-'.join([r[1] for r in self.rois]), allROIs)
+
+        fig = plot.Plot(nrows=5, ncols=3, sharex=False, sharey=False)
+        self._plot_slice(self.paths['data_struct']
+                 %subjID + 'wstruct*', fig=fig)
+        self._plot_slice(self.paths['data_fmri']
+                 %subjID + 'swmeanafunc_*.nii', rois=allROIs[1], fig=fig)
+
+        # plot ROI values
+        ds = self.extract_samples(subjID, self.extraInfo['runType'],
+            allROIs, values=self.runParams['values'])
+        if not self.runParams['values'].startswith('raw'):
+            nans = np.sum(np.isnan(ds)) * 100. / ds.samples.size
+            title = '%d%% of ROI voxels are nans' % nans
+        else:
+            title = ''
+        ax = fig.next()
+        ax.hist(ds.samples.ravel(), label=title)
+        fig.hide_plots([-2,-1])
+        fig.show()
+
+
+    def _calc_nans(self):
+        pass
 
 
     def genFakeData(self, nChunks = 4):
@@ -950,15 +1187,20 @@ class Analysis(object):
         fakeDS = mvpa2.suite.multiple_chunks(fake,nChunks)
         return fakeDS
 
+    def read_csvs(self, path):
+        """
+        Reads multiple CSV files and concatinates tehm into a single
+        `pandas.DataFrame`
 
-    def get_behav_data(self, path):
+        :Args:
+            path (str)
+                Where to find the data
+        """
         df_fnames = glob.glob(path)
         dfs = []
         for dtf in df_fnames:
-            dfs.append( pandas.io.parsers.read_csv(dtf) )
+            dfs.append(pandas.read_csv(dtf))
         return pandas.concat(dfs, ignore_index=True)
-
-
 
     def roi_params(self,
         rp,
@@ -1083,46 +1325,110 @@ class Analysis(object):
 
 
 class Preproc(object):
+    """
+    Generates batch scripts from SPM preprocessing.
+
+    .. note:: Presently, only batch scripts for statistical analyses in SPM
+              are available.
+
+    :Args:
+        paths (dict of str:str pairs)
+            A dictionary of paths where data is stored. Expected to have at
+            least the following keys:
+                - 'fmri_root' for moving the original realignment parameter
+                (prefix `rp`) file
+                - 'data_behav' - where to find behavioral data with condition
+                labels (passed`condcol` variable), onsets, and durations
+                - 'data_fmri' - where to find fMRI functional data
+            'rec' (for ROIs from surface reconstruction in Caret or so),
+            'data_rois' (for storing the extracted signals in these ROIs),
+    """
     def __init__(self, paths):
         self.paths = paths
 
-    def split_reg(self, subjID):
+    def split_rp(self, subjID):
         """
         Splits the file that has realignment information by run.
-        This is used for stats as each run with its covariates has to be entered separately.
-        """
-        funcImg = glob.glob(self.paths['data_fmri']%subjID + 'func_*_*.nii')
-        regFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_afunc_*.txt')
 
-        if regFiles != []:  # if split_reg has not been done before
-            reg = []
-            for regFile in regFiles:
-                with open(regFile) as f: reg.extend( f.readlines() )
-                shutil.move(regFile,
-                            (self.paths['fmri_root'] %subjID)+os.path.basename(regFile))
+        This is used for stats as each run with its covariates has to be
+        entered separately.
+
+        Assumptions:
+            - Realignment parameters are supposed to be called like
+            `rp_afunc_<runNo>.txt`
+            - Functional data is expected to be in the `paths['data_fmri']` folder
+            - `paths['fmri_root'] should also be specified so that the original
+            rp file would be backuped there.
+
+        :Args:
+            subjID (str)
+                For which subject the split is done.
+        """
+        funcImg = glob.glob(self.paths['data_fmri'] % subjID + 'func_*_*.nii')
+        rp_pattern = self.paths['data_fmri'] % subjID + 'rp_afunc_*.txt'
+        rpFiles = glob.glob(rp_pattern)
+
+        if len(rpFiles) == 0:  # probably split_rp has been done before
+            if self.runParams['verbose']:
+                print 'No rp files like %s found' % rp_pattern
+        else:
+            rp = []
+            for rpFile in rpFiles:
+                f = open(rpFile)
+                rp.extend(f.readlines())
+                f.close()
+                rp_bck = self.paths['fmri_root'] % subjID
+                rp_bck += os.path.basename(rpFile)
+                if not self.runParams['dry']:
+                    shutil.move(rpFile, rp_bck)
+                else:
+                    print '%s --> %s' % (rpFile, rp_bck)
 
             last = 0
             for func in funcImg:
                 runNo = func.split('.')[0].split('_')[-2]
-
-                nim = nb.load(func)
-                dynScans = nim.get_shape()[3] # get number of acquisitions
+                dynScans = self.get_data(func).shape[3] # get number of acquisitions
 
                 runType = func.split('.')[0].split('_')[-1]
                 outName = self.paths['data_fmri']%subjID + 'rp_%s_%s.txt' %(runNo,runType)
 
-                with open(outName, 'w') as f:
-                    f.writelines(reg[last:last+dynScans])
-                    last += dynScans
+                if not self.runParams['dry']:
+                    f = open(outName, 'w')
+                    f.writelines(rp[last:last+dynScans])
+                    f.close()
+                else:
+                    print '%s: %s' % (func, outName)
+
+                last += dynScans
+
+            if len(rp) != last:
+                warnings.warn('Splitting was performed but the number of '
+                       'lines in the rp file did not match the total number of '
+                       'scans in the functional runs.')
 
 
-    def gen_stats_batch(self, subjID, runType=None, condcol='cond', descrcol='name'):
-        if runType is None:
-            runType = ['main','loc','mer']
-        elif type(runType) not in [tuple, list]:
+    def gen_stats_batch(self, subjID, runType=['main','loc','mer'],
+                        condcol='cond', descrcol='name'):
+        """
+        Generates a batch file for statistical analyses in SPM.
+
+        :Args:
+            subjID
+
+        :Kwargs:
+            - runType (str or list of str, default: ['main', 'loc', 'mer'])
+                The prefix of functional data files indicating which kind of
+                run it was.
+            - condcol (str)
+                Column in the data files with condition labels (numbers)
+            - descrcol (str)
+                Column in the data files with condition names
+
+        """
+        if isinstance(runType, str):
             runType = [runType]
 
-        self.split_reg(subjID)
+        self.split_rp(subjID)
         # set the path where this stats job will sit
         # all other paths will be coded as relative to this one
         curpath = os.path.join(self.paths['fmri_root'] %subjID,'jobs')
@@ -1130,7 +1436,8 @@ class Preproc(object):
         f.write("spm('defaults','fmri');\nspm_jobman('initcfg');\nclear matlabbatch\n\n")
 
         for rtNo, runType in enumerate(runType):
-            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),'analysis',runType))
+            analysisDir = os.path.normpath(os.path.join(os.path.abspath(self.paths['fmri_root']%subjID),
+            'analysis',runType))
             try:
                 os.makedirs(analysisDir)
             except:
@@ -1139,39 +1446,45 @@ class Preproc(object):
             # make analysis path relative to stats.m
             analysisDir_str = ("cellstr(spm_select('CPath','%s'))" %
                                 os.path.relpath(analysisDir, curpath))
-            dataFiles = glob.glob(self.paths['data_behav']%subjID + 'data_*_%s.csv' %runType)
-            # import pdb; pdb.set_trace()
-            regressorFiles = glob.glob(self.paths['data_fmri']%subjID + 'rp_*_%s.txt' %runType)
-            f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = %s;\n" %(3*rtNo+1, analysisDir_str))
-            f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.units = 'secs';\n" %(3*rtNo+1))
-            f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.RT = 2;\n" %(3*rtNo+1))
+            dataFiles = glob.glob(self.paths['data_behav'] % subjID +\
+                                  'data_*_%s.csv' %runType)
+            regressorFiles = glob.glob(self.paths['data_fmri'] % subjID +\
+                                       'rp_*_%s.txt' %runType)
+            f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = %s;\n" %
+                    (3*rtNo+1, analysisDir_str))
+            f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.units = 'secs';\n" %
+                    (3*rtNo+1))
+            f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.RT = 2;\n" %
+                    (3*rtNo+1))
 
             for rnNo, dataFile in enumerate(dataFiles):
                 runNo = int(os.path.basename(dataFile).split('_')[1])
 
                 data = np.recfromcsv(dataFile, case_sensitive = True)
                 swapath = os.path.relpath(self.paths['data_fmri']%subjID, curpath)
-                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = " %(3*rtNo+1,rnNo+1) +
+                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = " %
+                        (3*rtNo+1,rnNo+1) +\
                     # "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
-                    "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(swapath,runNo,runType))
+                    "cellstr(spm_select('ExtFPList','%s'," +\
+                    "'^swafunc_%02d_%s\.nii$',1:168));\n" %
+                    (swapath,runNo,runType))
 
                 conds = np.unique(data[condcol])
                 if runType == 'mer':
                     conds = conds[conds!=0]
-    #                import pdb; pdb.set_trace()
 
                 for cNo, cond in enumerate(conds):
                     agg = data[data[condcol] == cond]
-                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).cond(%d).name = '%d|%s';\n" % (3*rtNo+1,rnNo+1,cNo+1,
-                        cond, agg[descrcol][0]))
-                    # import pdb; pdb.set_trace()
-                    # onsets = ' '.join(map(str,agg['onset']))
+                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d)." +\
+                            "cond(%d).name = '%d|%s';\n" % (3*rtNo+1,rnNo+1,cNo+1,
+                            cond, agg[descrcol][0]))
                     if 'blockNo' in agg.dtype.names:
                         onsets = []
                         durs = []
                         for block in np.unique(agg['blockNo']):
-                            onsets.append( agg[agg['blockNo']==block]['onset'][0] )
-                            durs.append( np.around(sum( agg[agg['blockNo']==block]['dur'] ), decimals = 1) )
+                            onsets.append(agg[agg['blockNo']==block]['onset'][0])
+                            durs.append(np.around(sum(agg[agg['blockNo']==block]['dur']),
+                             decimals=1))
                     else:
                         onsets = np.round(agg['onset'])
                         durs = agg['dur']
@@ -1235,21 +1548,6 @@ class Preproc(object):
         f.close()
 
 
-"""
-Plotting tools
-"""
-class Plot(object):
-
-    def __init__(self):
-        pass
-
-def make_symmetric(similarity):
-    res = np.zeros(similarity.shape)
-    for i in range(similarity.shape[0]):
-        for j in range(similarity.shape[1]):
-            res[i,j] = (similarity[i,j]+similarity[j,i])/2
-    return res
-
 def make_full(distance):
     res = np.nan*np.ones(distance.shape)
     iu = np.triu_indices(len(distance),k=1)  # upper triangle less diagonal
@@ -1258,6 +1556,31 @@ def make_full(distance):
     res = res.T
     res[iu] = distance[iu]
     return res
+
+def plot_timecourse(df, title='', plt=None, cols='name'):
+    """Plots an fMRI time course for signal change.
+
+    :Args:
+        df (:class:`pandas.DataFrame`)
+            A DataFrame with fMRI signal change computed.
+
+    :Kwargs:
+        - title (str, default: '')
+            Title for the plot (i.e., for the current axis, not the whole figure)
+        - plt (:class:`plot.Plot`, default: None)
+            The plot you're working on.
+        - cols (str or list of str, default: 'name')
+            Column names to plot as separate conditions (different curves)
+
+    """
+    if plt is None:
+        plt = plot.Plot(sharex=True, sharey=True)
+    agg = stats.aggregate(df, values='subjResp', rows='time',
+                          cols=cols, yerr='subjID')
+    ax = plt.plot(agg, title=title, kind='line')
+    ax.set_xlabel('Time since trial onset, s')
+    ax.set_ylabel('Signal change, %')
+    ax.axhline(linestyle='--', color='0.6')
 
 def plot_similarity(similarity, names=None, percent=False):
     similarity = make_symmetric(similarity)
@@ -1368,26 +1691,27 @@ def make_roi_pattern(rois):
             using `glob`
 
     :Args:
-        rois (list): A list of ROI names. Can contain str and tuples, where the
-            first element are ROI names and the second one is their "pretty"
-            (unifying) name, e.g., ['V1', (['rh_V2','lh_V2'], 'V2')]
+        rois (list of str or tuples):
+            A list of ROI names, e.g., `['V1', (['rh_V2','lh_V2'], 'V2')]`.
+            If an element is a tuple, the first element is ROI names and the
+            second one is their "pretty" (unifying) name for printing.
 
     :Returns:
-        ROIs (list): a list of ROI names as described above
+        A list of ROI names in the format described above, e.g.
+        `[('V1','V1','*V1*'), (['rh_V2','lh_V2'], 'V2', ['*rh_V2*','*lh_V2*'])]`
     """
     def makePatt(ROI):
         """Expands ROI patterns by appennding *"""
         return ['*'+thisROI+'*' for thisROI in ROI]
 
+    if not isinstance(rois, list) and not isinstance(rois, tuple):
+        rois = [rois]
     ROIs = []
     for ROI in rois:
-        # renaming is provided
-        if type(ROI) == tuple:
+        if type(ROI) == tuple:  # renaming is provided
             ROIs.append(ROI + (makePatt(ROI[0]),))
-        # a list of ROIs is provived
-        elif type(ROI) == list:
-            ROIs.append((ROI,'-'.join(ROI),makePatt(ROI)))
-        # just a single ROI name provided
-        else:
-            ROIs.append((ROI,ROI,makePatt([ROI])))
+        elif type(ROI) == list:  # a list of ROIs is provided
+            ROIs.append((ROI, '-'.join(ROI), makePatt(ROI)))
+        else:  # just a single ROI name provided
+            ROIs.append((ROI, ROI, makePatt([ROI])))
     return ROIs
