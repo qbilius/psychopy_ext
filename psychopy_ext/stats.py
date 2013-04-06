@@ -16,7 +16,7 @@ import scipy.stats
 import pandas
 
 
-def aggregate(df, rows=None, col=None, values=None,
+def aggregate(df, rows=None, cols=None, values=None,
     value_filter=None, subplots=None, yerr=None, func='mean'):
     """
     Aggregates data over specified columns.
@@ -28,8 +28,8 @@ def aggregate(df, rows=None, col=None, values=None,
     :Kwargs:
         - rows (str or list of str, default: None)
             Name(s) of column(s) that will be aggregated and plotted on the x-axis
-        - col (str, default: None)
-            Name of column that will be shown in the legend
+        - cols (str, default: None)
+            Name(s) of column(s) that will be shown in the legend
         - values (str, default: None)
             Name of the column that is aggregated
         - yerr (str, default: None)
@@ -52,7 +52,9 @@ def aggregate(df, rows=None, col=None, values=None,
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
     if isinstance(rows, str):
         rows = [rows]
-    allconds = [subplots] + rows + [col] + [yerr]
+    if isinstance(cols, str):
+        cols = [cols]
+    allconds = [subplots] + rows + cols + [yerr]
     allconds = [c for c in allconds if c is not None]
 
     if df[values].dtype in (str, object):  # calculate accuracy
@@ -71,8 +73,18 @@ def aggregate(df, rows=None, col=None, values=None,
             except:
                 raise
         agg = df.groupby(allconds)[values].aggregate(func)
+
+    g = 0
+    groups = [('subplots',[subplots]), ('rows',rows), ('cols', cols),
+              ('yerr',[yerr])]
+    for group in groups:
+        for item in group[1]:
+            agg.index.names[g] = group[0] + '.' + item
+            g += 1
+
     if yerr is not None:
         agg = agg.unstack()
+
     return agg.T
 
 
