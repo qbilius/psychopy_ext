@@ -45,7 +45,13 @@ class Control(object):
 
         choices = []
         for choice in exp_choices:
-            if len(choice) == 3:
+            if len(choice) == 0:
+                sys.exit('Please give at least a path to the experiment')
+            elif len(choice) == 1:  # path to experiment is given
+                choices.append(('Experiment', choice, choice[1], None))
+            elif len(choice) == 2:  # if 'scripts.main', then cli call alias is 'main'
+                choices.append(choice + (choice[1].split('.',1)[1], None))
+            elif len(choice) == 3:
                 choices.append(choice + (None,))
             else:
                 choices.append(choice)
@@ -287,18 +293,25 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     class_obj = None
     found_classes = inspect.getmembers(module, inspect.isclass)
     for name, obj in found_classes:
-        if name[0] != '_':  # avoid private classes
-            class_alias = _get_class_alias(module, obj)
-            if class_alias == input_class_alias:
-                class_obj = obj
-            if class_order is not None:
-                try:
-                    idx = class_order.index(class_alias)
-                    class_aliases[idx] = (class_alias, obj)
-                except:
-                    pass
-            else:
-                class_aliases.append((class_alias, obj))
+        init_vars = inspect.getargspec(obj.__init__)
+        try:
+            init_vars.args.index('extraInfo')
+            init_vars.args.index('runParams')
+        except:
+            pass
+        else:
+            if name[0] != '_':  # avoid private classes
+                class_alias = _get_class_alias(module, obj)
+                if class_alias == input_class_alias:
+                    class_obj = obj
+                if class_order is not None:
+                    try:
+                        idx = class_order.index(class_alias)
+                        class_aliases[idx] = (class_alias, obj)
+                    except:
+                        pass
+                else:
+                    class_aliases.append((class_alias, obj))
     # if some class not found; get rid of it
     class_aliases = [c for c in class_aliases if c is not None]
     return class_aliases, class_obj
@@ -311,7 +324,7 @@ def _get_class_alias(module, obj):
         except:
             pass
         else:
-            try:  # must have a name otherwise what are you calling?
+            try:  # must have a name, extraInfo, and runParams
                 nameidx = init_vars.args.index('name')
             except:
                 pass
@@ -388,10 +401,12 @@ class Page(wx.Panel):
         wx.Panel.__init__(self, parent, -1)
         self.class_obj = class_obj
         class_init = class_obj()
-        self.sb1 = StaticBox(self, label="Information",
-            content=class_init.extraInfo)
-        self.sb2 = StaticBox(self, label="Parameters",
-            content=class_init.runParams)
+        if class_init.extraInfo is not None:
+            self.sb1 = StaticBox(self, label="Information",
+                content=class_init.extraInfo)
+        if class_init.runParams is not None:
+            self.sb2 = StaticBox(self, label="Parameters",
+                content=class_init.runParams)
 
         # generate buttons
         # each button launches a function in a given class
@@ -409,8 +424,10 @@ class Page(wx.Panel):
 
         pagesizer = wx.BoxSizer(wx.VERTICAL)
         # place the two boxes for entering information
-        pagesizer.Add(self.sb1.sizer)
-        pagesizer.Add(self.sb2.sizer)
+        if class_init.extraInfo is not None:
+            pagesizer.Add(self.sb1.sizer)
+        if class_init.runParams is not None:
+            pagesizer.Add(self.sb2.sizer)
         # put the buttons in the bottom
         pagesizer.Add(buttons, 1, wx.ALL|wx.ALIGN_LEFT)
 
