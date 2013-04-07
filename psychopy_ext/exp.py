@@ -194,6 +194,9 @@ class Experiment(TrialHandler):
         self.create_stimuli()
         self.create_trial()
         trialList = self.create_trialList()
+        if self.runParams['autorun']:
+            trialList = self.set_autorun(trialList)
+            #self.create_TrialHandler(trialList)  # remake TrialHandler
         self.create_TrialHandler(trialList)
         #dataFileName=self.paths['data']%self.extraInfo['subjID'])
 
@@ -431,17 +434,29 @@ class Experiment(TrialHandler):
                 vertices=[(-d1/2,0),(d1/2,0)],
                 ori=90
                 )
-            self.fixation = [oval, cross0, cross90, center]
+            fixation = GroupStim(stimuli=[oval, cross0, cross90, center],
+                                 name='fixation')
+            # when color is set, we only want the oval and the center to change
+            # so here we override :func:`GroupStim.setColor`
+            def _set_complex_fix_col(newColor):
+                for stim in fixation.stimuli:
+                    if stim.name in ['oval', 'center']:
+                        stim.setColor(newColor)
+            fixation.color = color
+            fixation.setColor = _set_complex_fix_col
+            self.fixation = fixation
 
         elif shape == 'dot':
-            self.fixation = [visual.PatchStim(
-                self.win,
-                name   = 'fixation',
-                color  = 'red',
-                tex    = None,
-                mask   = 'circle',
-                size   = .2,
-            )]
+            self.fixation = GroupStim(
+                stimuli=visual.PatchStim(
+                    self.win,
+                    name   = 'fixation',
+                    color  = 'red',
+                    tex    = None,
+                    mask   = 'circle',
+                    size   = .2,
+                ),
+                name='fixation')
 
     def latin_square(self, n=6):
         """
@@ -526,11 +541,11 @@ class Experiment(TrialHandler):
 
             self.trial = [{'dur': .100,
                            'display': self.s['fix'],
-                           'defaultFun': self.waitEvent},
+                           'func': self.waitEvent},
 
                            {'dur': .300,
                            'display': self.s['stim1'],
-                           'defaultFun': self.during_trial},
+                           'func': self.during_trial},
                            ]
         """
         raise NotImplementedError
@@ -554,10 +569,10 @@ class Experiment(TrialHandler):
         """
         raise NotImplementedError
 
-    def waitEvent(self, trialClock=None, eventClock=None,
+    def idle_event(self, trialClock=None, eventClock=None,
                   thisTrial=None, thisEvent=None, **kwargs):
         """
-        Default waiting function for the event.
+        Default idle function for the event.
 
         Sits idle catching key input of default keys (escape and trigger).
 
@@ -571,14 +586,17 @@ class Experiment(TrialHandler):
             - thisEvent (dict)
                 A dictionary with event properties
         """
+        if not isinstance(thisEvent['display'], tuple) and \
+        not isinstance(thisEvent['display'], list):
+            display = [thisEvent['display']]
 
         if thisEvent['dur'] == 0:
             self.last_keypress()
-            for stim in thisEvent['display']: stim.draw()
+            for stim in display: stim.draw()
             self.win.flip()
 
         else:
-            for stim in thisEvent['display']: stim.draw()
+            for stim in display: stim.draw()
             self.win.flip()
 
             while eventClock.getTime() < thisEvent['dur'] and \
@@ -586,6 +604,40 @@ class Experiment(TrialHandler):
             # globClock.getTime() < thisTrial['onset'] + thisTrial['dur']:
                 #self.win.getMovieFrame()
                 self.last_keypress()
+
+    def feedback(self, trialClock=None, eventClock=None,
+        thisTrial=None, thisEvent=None, allKeys=None, *args, **kwargs):
+        """
+        Gives feedback:
+            - correct: fixation change to green
+            - wrong: fixation change to red
+        """
+        thisResp = allKeys[-1]
+        subjResp = self.computer.validResponses[thisResp[0]]
+        if not isinstance(thisEvent['display'], tuple) and \
+            not isinstance(thisEvent['display'], list):
+                display = [thisEvent['display']]
+
+        for stim in display:
+            if stim.name == 'fixation':
+                orig_color = stim.color
+                break
+        for stim in display:
+            if stim.name == 'fixation':
+                if thisTrial['corrResp'] == subjResp:
+                    stim.setColor('DarkGreen')  # correct response
+                else:
+                    stim.setColor('DarkRed')  # incorrect response
+            stim.draw()
+        self.win.flip()
+
+        # sit idle
+        while eventClock.getTime() < thisEvent['dur']:
+            self.last_keypress()
+
+        for stim in display:  # reset fixation color
+            if stim.name == 'fixation':
+                stim.setColor(orig_color)
 
     def set_autorun(self, trialList):
         """
@@ -649,9 +701,6 @@ class Experiment(TrialHandler):
         Setup and go!
         """
         self.setup()
-        if self.runParams['autorun']:
-            trialList = self.set_autorun(self.trialList)
-            self.create_TrialHandler(trialList)  # remake TrialHandler
         self.show_instructions(**self.instructions)
         self.loop_trials(
             datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
@@ -679,7 +728,7 @@ class Experiment(TrialHandler):
             - wait (int, default: 0)
                 Seconds to wait after removing the text from the screen after
                 hitting a spacebar (or a `computer.trigger`)
-            - wait_stim (a list of psychopy stimuli objects, default: None)
+            - wait_stim (a psychopy stimuli object or their list, default: None)
                 Stimuli to show while waiting after the trigger. This is used
                 for showing a fixation spot for people to get used to it.
         """
@@ -704,6 +753,8 @@ class Experiment(TrialHandler):
         self.win.flip()
 
         if wait_stim is not None:
+            if not isinstance(wait_stim, tuple) and not isinstance(wait_stim, list):
+                wait_stim = [wait_stim]
             for stim in wait_stim:  # for some reason I have to draw it twice
                 stim.draw()
             self.win.flip()
@@ -755,7 +806,7 @@ class Experiment(TrialHandler):
             allKeys = []
             for j, thisEvent in enumerate(self.trial):
                 eventClock.reset()
-                eventKeys = thisEvent['defaultFun'](globClock=globClock,
+                eventKeys = thisEvent['func'](globClock=globClock,
                     trialClock=trialClock, eventClock=eventClock,
                     thisTrial=thisTrial, thisEvent=thisEvent, j=j, allKeys=allKeys)
                 if eventKeys is not None:
@@ -765,7 +816,7 @@ class Experiment(TrialHandler):
                     keyList = self.computer.validResponses.keys(),
                     timeStamped = trialClock)
 
-            thisTrial = self.postTrial(thisTrial, allKeys)
+            thisTrial = self.post_trial(thisTrial, allKeys)
             if self.runParams['autorun'] > 0:  # correct the timing
                 try:
                     thisTrial['autoRT'] *= self.runParams['autorun']
@@ -882,7 +933,7 @@ class Experiment(TrialHandler):
             self.last_keypress()
         return allKeys
 
-    def postTrial(self, thisTrial, allKeys):
+    def post_trial(self, thisTrial, allKeys):
         """A default function what to do after a trial is over.
 
         It records the participant's response as the last key pressed,
@@ -1051,6 +1102,8 @@ class Experiment(TrialHandler):
         #return acc
 
     def weighted_sample(self, probs):
+        if not np.allclose(np.sum(probs), 1):
+            raise Exception('Probabilities must add up to one.')
         which = np.random.random()
         ind = 0
         while which>0:
@@ -1092,115 +1145,6 @@ class Experiment(TrialHandler):
         df = pandas.concat(dfs, ignore_index=True)
 
         return df
-
-
-    def genPara(expPlan):
-        """
-        Makes a .m file for generating the SPM para file
-        """
-        global numTrialsInBlock, trialDur, TR
-        def sortJoin(x):
-            global TR
-            x.sort()
-            s = [str(int(round(item * 1000. / TR))) for item in x]
-            return ' '.join(s)
-        def sumDur(x):
-            global TR
-            #x.sort()
-            #import pdb; pdb.set_trace()
-            s = str(int(sum(x * 1000. / TR)))
-            return ' '.join(s)
-
-        # block = np.ones(expPlan.shape[0], dtype = np.int)
-        # if expPlan[0]['paraType'] == 'blocked':
-            # SPMblockLen = str(int(numTrialsInBlock * trialDur * 1000. / TR))
-            # # lastCond = None
-            # # for i, cond in enumerate(expPlan['cond']):
-                # # if cond != lastCond:
-                    # # block[i] = 1
-                    # # lastCond = cond
-                # # else:
-                    # # block[i] = 0
-        # else:
-            # SPMblockLen = '0'
-
-        #allData = expPlan.addcols(block, names=['block'])
-        dataNames = list(expPlan.dtype.names)
-        descr = dataNames[dataNames.index('dur') + 1:dataNames.index('corrResp')]
-        #descr = dataNames[dataNames.index('dur') + 1]
-        allData = expPlan[['blockNo','startBlock', 'cond', 'onset', 'dur'] + descr]\
-            [expPlan[descr[0]] != 'Buffer']
-
-
-        aggDur = allData.aggregate(
-            On = ['cond','blockNo'], AggFunc = lambda x: x[0],
-            AggFuncDict = {'dur': lambda x: str(int(round(sum(x * 1000. / TR))))})
-        conds = aggDur.aggregate(On = 'cond')['cond']
-        aggExtractDur = []
-        for cond in conds:
-            thisCond = aggDur[aggDur['cond'] == cond]
-            thisCond.sort(order = ['blockNo'])
-            aggExtractDur.append(' '.join(map(str,thisCond['dur'])))
-        #import pdb; pdb.set_trace()
-
-        # aggDur = aggDur.aggregate(
-            # On = 'cond', AggFunc = lambda x: x[0],
-            # AggFuncDict = {'dur': lambda x: ' '.join(x)})
-        aggOnset = allData[allData['startBlock']==1].aggregate(
-            On = 'cond', AggFunc = lambda x: x[0],
-            AggFuncDict = {'onset': lambda x: sortJoin(x)})
-        #aggExtractDur = aggDur[['dur']].extract()
-
-        aggExtractOnset = aggOnset[['onset']].extract()
-        aggExtractDescr = aggOnset[q.listify(descr)].extract()
-
-        out = {'names': [], 'onsets': [], 'durations': []}
-        for dur, onset, names in zip(aggExtractDur, aggExtractOnset, aggExtractDescr):
-            out['durations'].append("[" + dur + "]")
-            out['onsets'].append("[" + onset + "]")
-            out['names'].append(' | '.join(q.listify(names)))
-
-        lenName = 0
-        for name in out['names']:
-            if len(name) > lenName:
-                lenName = len(name)
-        out['names'] = ["'" + it.ljust(lenName) + "'" for it in out['names']]
-
-        if not os.path.isdir(cinit.paths['paraDir']):
-            os.makedirs(cinit.paths['paraDir'])
-        fileName = '_'.join(['para','%02d' %(int(expPlan[0]['runNo'])),
-            expPlan[0]['runType']])
-        paraFile = open(cinit.paths['paraDir'] + '/' + fileName + '.m', 'w')
-        for (key, item) in out.items():
-            paraFile.write(key + " = {" + ", ".join(item) + "};\n")
-        paraFile.write("save('" + fileName + '.mat' +
-            "', 'names', 'onsets', 'durations');")
-        paraFile.close()
-
-    def getParaNo(self,file_pattern,n = 6):
-        """Looks up used para numbers and returns a new one for this run
-        """
-        allData = glob.glob(file_pattern)
-        if allData == []: paraNo = random.choice(range(n))
-        else:
-            paraNos = []
-            for thisData in allData:
-                lines = csv.reader( open(thisData) )
-                try:
-                    header = lines.next()
-                    ind = header.index('paraNo')
-                    thisParaNo = lines.next()[ind]
-                    paraNos.append(int(thisParaNo))
-                except: pass
-
-            if paraNos != []:
-                countUsed = np.bincount(paraNos)
-                countUsed = np.hstack((countUsed,np.zeros(n-len(countUsed))))
-                possParaNos = np.arange(n)
-                paraNo = random.choice(possParaNos[countUsed == np.min(countUsed)].tolist())
-            else: paraNo = random.choice(range(n))
-
-        return paraNo
 
 
 class ThickShapeStim(visual.ShapeStim):
@@ -1258,10 +1202,19 @@ class ThickShapeStim(visual.ShapeStim):
         self.ori = np.array(ori,float)
         self.size = np.array([0.0,0.0])
         self.setSize(size)
-        # self.setVertices(vertices)
-        # self._calcVerticesRendered()
         self.setVertices(vertices)
+        # self._calcVerticesRendered()
         # if len(self.stimulus) == 1: self.stimulus = self.stimulus[0]
+
+    #def __init__(self, *args, **kwargs):
+        #try:
+            #orig_vertices = kwargs['vertices']
+            #kwargs['vertices'] = [(-0.5,0),(0,+0.5)]#,(+0.5,0)),
+        #except:
+            #pass
+        ##import pdb; pdb.set_trace()
+        #visual.ShapeStim.__init__(self, *args, **kwargs)
+        #self.vertices = orig_vertices
 
     def draw(self):
         for stim in self.stimulus:
@@ -1280,11 +1233,12 @@ class ThickShapeStim(visual.ShapeStim):
         self.setVertices(self.vertices)
 
     def setPos(self, newPos):
-        for stim in self.stimulus:
-            stim.setPos(newPos)
+        #for stim in self.stimulus:
+            #stim.setPos(newPos)
         self.pos = newPos
+        self.setVertices(self.vertices)
 
-    def setVertices(self, value = None):
+    def setVertices(self, value=None):
         if isinstance(value[0][0], int) or isinstance(value[0][0], float):
             self.vertices = [value]
         else:
@@ -1323,6 +1277,33 @@ class ThickShapeStim(visual.ShapeStim):
                 )
                 #line.setOri(self.ori-np.arctan2(edges[1],edges[0])*180/np.pi)
                 self.stimulus.append(line)
+
+class GroupStim(object):
+
+    def __init__(self, stimuli=None, name=None):
+        if not isinstance(stimuli, tuple) and not isinstance(stimuli, list):
+            self.stimuli = [stimuli]
+        else:
+            self.stimuli = stimuli
+        if name is None:
+            self.name = self.stimuli[0].name
+        else:
+            self.name = name
+
+    def __getattr__(self, name):
+        """Do whatever asked but per stimulus
+        """
+        def method(*args, **kwargs):
+            outputs =[getattr(stim, name)(*args, **kwargs) for stim in self.stimuli]
+            # see if only None returned, meaning that probably the function
+            # doesn't return anything
+            notnone = [o for o in outputs if o is not None]
+            if len(notnone) != 0:
+                return outputs
+        try:
+            return method
+        except TypeError:
+            return getattr(self, name)
 
 
 class OrderedDict(dict, DictMixin):
