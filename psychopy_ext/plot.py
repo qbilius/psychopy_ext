@@ -149,7 +149,11 @@ class Plot(object):
         """
         def method(*args, **kwargs):
             return getattr(plt, name)(*args, **kwargs)
-        return method
+
+        try:
+            return method  # is it a function?
+        except TypeError:  # so maybe it's just a self variable
+            return getattr(self, name)
 
     def __getitem__(self, key):
         """Allow to get axes as Plot()[key]
@@ -329,11 +333,16 @@ class Plot(object):
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
 
-        # make columns which will turn into legend entries
-        for name in agg.columns.names:
-            if name.startswith('cols.'):
-                mean = mean.unstack(level=name)
-                p_yerr = p_yerr.unstack(level=name)
+        if isinstance(mean, pandas.Series):
+            mean = pandas.DataFrame(mean).T
+            p_yerr = pandas.DataFrame(p_yerr).T
+        else:
+
+            # make columns which will turn into legend entries
+            for name in agg.columns.names:
+                if name.startswith('cols.'):
+                    mean = mean.unstack(level=name)
+                    p_yerr = p_yerr.unstack(level=name)
 
         if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
