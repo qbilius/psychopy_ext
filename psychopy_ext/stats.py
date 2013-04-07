@@ -50,9 +50,9 @@ def aggregate(df, rows=None, cols=None, values=None,
         `yerr`: a simple `df.mean()` will do the trick.
     """
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
-    if isinstance(rows, str):
+    if isinstance(rows, str) or rows is None:
         rows = [rows]
-    if isinstance(cols, str):
+    if isinstance(cols, str) or cols is None:
         cols = [cols]
     allconds = [subplots] + rows + cols + [yerr]
     allconds = [c for c in allconds if c is not None]
@@ -79,8 +79,9 @@ def aggregate(df, rows=None, cols=None, values=None,
               ('yerr',[yerr])]
     for group in groups:
         for item in group[1]:
-            agg.index.names[g] = group[0] + '.' + item
-            g += 1
+            if item is not None:
+                agg.index.names[g] = group[0] + '.' + item
+                g += 1
 
     if yerr is not None:
         agg = agg.unstack()
