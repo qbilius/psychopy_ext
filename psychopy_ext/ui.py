@@ -413,14 +413,27 @@ class Page(wx.Panel):
         actions = _get_methods(class_init)
         # buttons will sit on a grid of 3 columns and as many rows as necessary
         buttons = wx.GridSizer(rows=0, cols=3)
+        #add = False
         for i, (label, action) in enumerate(actions):
-            run = wx.Button(self, label=label, size=(150, 30))
-            buttons.Add(run, 1)
-            run.extraInfo = class_init.extraInfo  # when clicked, what to do
-            run.runParams = class_init.runParams
-            run.action = label
-            run.Bind(wx.EVT_BUTTON, self.OnButtonClick)
-            if i==0: run.SetFocus()
+            #if hasattr(class_init, 'actions'):
+                #if class_init.actions is not None:
+                    #if isinstance(class_init.actions, str):
+                        #class_init.actions = [class_init.actions]
+                    #try:
+                        #if label in class_init.actions:
+                            #add = True
+                    #except:
+                        #import pdb; pdb.set_trace()
+            #else:
+                #add = True
+            #if add:
+                run = wx.Button(self, label=label, size=(150, 30))
+                buttons.Add(run, 1)
+                run.extraInfo = class_init.extraInfo  # when clicked, what to do
+                run.runParams = class_init.runParams
+                run.action = label
+                run.Bind(wx.EVT_BUTTON, self.OnButtonClick)
+                if i==0: run.SetFocus()
 
         pagesizer = wx.BoxSizer(wx.VERTICAL)
         # place the two boxes for entering information

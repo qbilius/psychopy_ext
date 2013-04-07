@@ -48,17 +48,18 @@ class Analysis(object):
     :Args:
         paths (dict of str:str pairs)
             A dictionary of paths where data is stored. Expected to have at
-            least the following keys: 'analysis' (for storing analysis outputs),
-            'data_behav' (behavioral data with condition labels), 'data_fmri',
-            'rec' (for ROIs from surface reconstruction in Caret or so),
-            'data_rois' (for storing the extracted signals in these ROIs),
+            least the following keys:
+                - 'analysis' (for storing analysis outputs),
+                - 'data_behav' (behavioral data with condition labels), 'data_fmri',
+                - 'rec' (for ROIs from surface reconstruction in Caret or so),
+                - 'data_rois' (for storing the extracted signals in these ROIs),
 
     :Kwargs:
         - extraInfo (dict, default: None)
-            All parameters related to
+            All parameters related to participant information
         - runParams (dict, default: None)
             All runtime parameters that you want to be able to access from GUI
-            or CLI. Expected to have at least
+            or CLI. Expected to have at least:
                 - noOutput
                 - verbose
                 - force
@@ -114,9 +115,9 @@ class Analysis(object):
         Steps:
             - Try to load a saved analysis, unless a `force` flag is given
             - Otherwise, either generate synthetic data (values = `sim`) or
-            extract it from the real data using :func:`run_method`.
+              extract it from the real data using :func:`run_method`.
             - Save a `pandas.DataFrame` in the analysis folder with the
-            filename like `df_<method>_<values>.pkl`
+              filename like `df_<method>_<values>.pkl`
 
         :Returns:
             A DataFrame with the output of a particular analysis in the
@@ -188,11 +189,12 @@ class Analysis(object):
 
         Process:
             1. Attempt to load stored results from the analysis that was done
-            before. (stored in teh analysis folder in a file
-            `<method>_<values>_<subjID>.pkl`
+               before. (stored in teh analysis folder in a file
+               `<method>_<values>_<subjID>.pkl`
             2. If that fails, it's probably because the analysis has
-            not been performed yet or, in rare cases, because the data
-            file is corrupt or missing. So a new analysis is initiated.
+               not been performed yet or, in rare cases, because the data
+               file is corrupt or missing. So a new analysis is initiated.
+
                 1. First, Regions of Interest (ROIs) are loaded from ``PATHS['data_rois']``
                 2. If that is not possible, then ROIs are extracted from
                    anatomical data using functional localizer data from SPM.
@@ -217,10 +219,8 @@ class Analysis(object):
                 that in the value parameter like ``values='raw_3'`` which will
                 be useful in order not to confuse output files (they get
                 prefixes based on the value name).
-
-
                 e.g.:
-                    ``offset = {'V1': 4, 'V2': 4, 'V3': 4, 'LO': 3, 'pFs': 3}
+                    offset = {'V1': 4, 'V2': 4, 'V3': 4, 'LO': 3, 'pFs': 3}
                     dur = 1
         """
 
@@ -782,15 +782,15 @@ class Analysis(object):
         Runs a support vector machine pairwise.
 
         .. note: Might be not the most efficient implementation of SVM, but
-        it is at least intuitive.
+                 it is at least intuitive.
 
         Process:
             - Split data into a training set (about 75% of all values) and a testing
-            set (about 25% of values).
+              set (about 25% of values).
             - For each pair of conditions, train the classifier.
             - Then test on the average of the testing set, i.e., only on two
-            samples. This trick usually boosts the performance (credit:
-            Hans P. Op de Beeck)
+              samples. This trick usually boosts the performance (credit:
+              Hans P. Op de Beeck)
 
         :Args:
             evds (event-related mvpa dataset)
@@ -1336,12 +1336,13 @@ class Preproc(object):
             A dictionary of paths where data is stored. Expected to have at
             least the following keys:
                 - 'fmri_root' for moving the original realignment parameter
-                (prefix `rp`) file
+                  (prefix `rp`) file
                 - 'data_behav' - where to find behavioral data with condition
-                labels (passed`condcol` variable), onsets, and durations
+                  labels (passed`condcol` variable), onsets, and durations
                 - 'data_fmri' - where to find fMRI functional data
-            'rec' (for ROIs from surface reconstruction in Caret or so),
-            'data_rois' (for storing the extracted signals in these ROIs),
+                - 'rec' (for ROIs from surface reconstruction in Caret or so)
+                - 'data_rois' (for storing the extracted signals in these ROIs)
+
     """
     def __init__(self, paths):
         self.paths = paths
@@ -1355,10 +1356,10 @@ class Preproc(object):
 
         Assumptions:
             - Realignment parameters are supposed to be called like
-            `rp_afunc_<runNo>.txt`
+              `rp_afunc_<runNo>.txt`
             - Functional data is expected to be in the `paths['data_fmri']` folder
-            - `paths['fmri_root'] should also be specified so that the original
-            rp file would be backuped there.
+            - `paths['fmri_root']` should also be specified so that the original
+              rp file would be backuped there.
 
         :Args:
             subjID (str)

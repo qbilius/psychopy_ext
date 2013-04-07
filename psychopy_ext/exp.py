@@ -469,8 +469,9 @@ class Experiment(TrialHandler):
             n (int, default: 6)
                 Size of Latin square. Should be equal to the number of
                 conditions you have.
-                :note: n must be even. For an odd n, I am not aware of a
-                          general method to produce a Latin square.
+
+        .. :note: n must be even. For an odd n, I am not aware of a
+                  general method to produce a Latin square.
 
         :Returns:
             A `numpy.array` with each row representing one possible ordering
