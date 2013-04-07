@@ -5,23 +5,30 @@ Quick start
 ===========
 
 Check out a demo:
+
     - For people who use a keyboard:
+
         - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
         - Type `python main.py exp run`. Do the experiment!
         - Type `python main.py analysis behav --plot` to see how well you did.
+
     - For people who use `PsychoPy` app:
+
         - Open `run.py` file from the demos folder ('psychopy_ext/demos')
         - Click the green running man to run it.
         - Click on the run button. Do the experiment!
         - When done, click on the green running man again, choose the analysis
         tab, select `plot` option, and click on `behav` to see how well you did.
+
     - For people who use a mouse:
+
         - In a file browser, navigate to the demos folder ('psychopy_ext/demos')
         - Right click on `run.py` and run it with `pythonw.py` if available. If
         not, find it in the python folder (Windows: `C:\Python27\`)
         - Click on the run button. Do the experiment!
         - When done, click on the green running man again, choose the analysis
         tab, select `plot` option, and click on `behav` to see how well you did.
+
     - Inspect main.py file to see how it works.
 
 
@@ -44,8 +51,8 @@ the needs of the neuroscience community that ties together project organization,
 experiments, behavioral and functional magnetic resonance imaging (fMRI) data analyses,
 and publication quality (i.e., pretty) plotting using a unified and relatively rigid interface.
 Unlike PsychoPy, MVPA or matplotlib that are very flexible and support multiple options to
-suit everyone’s needs, the underlying philosophy of psychopy_ext (https://github.com/qbilius/
-psychopy_ext) is to act as the glue at a higher level of operation by choosing reasonable defaults
+suit everyone’s needs, the underlying philosophy of psychopy_ext
+is to act as the glue at a higher level of operation by choosing reasonable defaults
 for these packages and providing patterns for common tasks with a minimal user intervention.
 
 For example, each experiment is expected to be a module with classes in it representing
