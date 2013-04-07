@@ -6,30 +6,30 @@ Quick start
 
 Check out a demo:
 
-    - For people who use a keyboard:
+- For people who use a keyboard:
 
-        - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
-        - Type `python main.py exp run`. Do the experiment!
-        - Type `python main.py analysis behav --plot` to see how well you did.
+    - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
+    - Type `python main.py exp run`. Do the experiment!
+    - Type `python main.py analysis behav --plot` to see how well you did.
 
-    - For people who use `PsychoPy` app:
+- For people who use `PsychoPy` app:
 
-        - Open `run.py` file from the demos folder ('psychopy_ext/demos')
-        - Click the green running man to run it.
-        - Click on the run button. Do the experiment!
-        - When done, click on the green running man again, choose the analysis
-        tab, select `plot` option, and click on `behav` to see how well you did.
+    - Open `run.py` file from the demos folder ('psychopy_ext/demos')
+    - Click the green running man to run it.
+    - Click on the run button. Do the experiment!
+    - When done, click on the green running man again, choose the analysis
+    tab, select `plot` option, and click on `behav` to see how well you did.
 
-    - For people who use a mouse:
+- For people who use a mouse:
 
-        - In a file browser, navigate to the demos folder ('psychopy_ext/demos')
-        - Right click on `run.py` and run it with `pythonw.py` if available. If
-        not, find it in the python folder (Windows: `C:\Python27\`)
-        - Click on the run button. Do the experiment!
-        - When done, click on the green running man again, choose the analysis
-        tab, select `plot` option, and click on `behav` to see how well you did.
+    - In a file browser, navigate to the demos folder ('psychopy_ext/demos')
+    - Right click on `run.py` and run it with `pythonw.py` if available. If
+    not, find it in the python folder (Windows: `C:\Python27\`)
+    - Click on the run button. Do the experiment!
+    - When done, click on the green running man again, choose the analysis
+    tab, select `plot` option, and click on `behav` to see how well you did.
 
-    - Inspect main.py file to see how it works.
+- Inspect main.py file to see how it works.
 
 
 Introduction
