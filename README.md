@@ -1,14 +1,68 @@
 *Please refer to the [online documentation](https://psychopy_ext.readthedocs.org) for a more in depth explanation how to use the package.*
 
 
+Quick start
+===========
+
+Check out a demo:
+    - For people who use a keyboard:
+        - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
+        - Type `python main.py exp run`. Do the experiment!
+        - Type `python main.py analysis behav --plot` to see how well you did.
+    - For people who use `PsychoPy` app:
+        - Open `run.py` file from the demos folder ('psychopy_ext/demos')
+        - Click the green running man to run it.
+        - Click on the run button. Do the experiment!
+        - When done, click on the green running man again, choose the analysis
+        tab, select `plot` option, and click on `behav` to see how well you did.
+    - For people who use a mouse:
+        - In a file browser, navigate to the demos folder ('psychopy_ext/demos')
+        - Right click on `run.py` and run it with `pythonw.py` if available. If
+        not, find it in the python folder (Windows: `C:\Python27\`)
+        - Click on the run button. Do the experiment!
+        - When done, click on the green running man again, choose the analysis
+        tab, select `plot` option, and click on `behav` to see how well you did.
+    - Inspect main.py file to see how it works.
+
+
 Introduction
 ============
 
-To guarantee highest possible standards, all stages of scientific conduct must be made transparent. Not only the final paper, but also raw data, experimental and analysis scripts and their change history must be freely available as well. I believe that full disclosure leads to more collaborative and more reliable science. (See also [Nick Barnes. Publish your computer code: it is good enough.](http://dx.doi.org/10.1038/467753a))
+Successful accumulation of knowledge is criticaly dependent on the ability to verify and
+replicate every part of a scientific conduct. Python and its scientific packages have greatly
+fostered the ability to share and build upon experimental and analysis code. However, while
+open access to publications is immediately perceived as desired, open sourcing experiment and
+analysis code is often ignored or met with a grain of scepticism in the neuroscience community,
+and for a good reason: many publications would be difficult to reproduce from start to end
+given typically poor coding skills, lack of version control habits, and the prevalence of manual
+implementation of many tasks (such as statistical analyses or plotting), leading to a reproducible
+research in theory but not in practice.
 
-This collection of scripts is aimed at providing a unified framework
+I argue that the primary reason of such unreproducible research is the lack of tools that would
+seemlessly enact good coding and sharing standards. Here I propose a framework tailored to
+the needs of the neuroscience community that ties together project organization, creation of
+experiments, behavioral and functional magnetic resonance imaging (fMRI) data analyses,
+and publication quality (i.e., pretty) plotting using a unified and relatively rigid interface.
+Unlike PsychoPy, MVPA or matplotlib that are very flexible and support multiple options to
+suit everyone’s needs, the underlying philosophy of psychopy_ext (https://github.com/qbilius/
+psychopy_ext) is to act as the glue at a higher level of operation by choosing reasonable defaults
+for these packages and providing patterns for common tasks with a minimal user intervention.
 
-I purposefully did not wrap these scripts into an installable package in order to encourage people to adjust them to their own liking and purposes.
+For example, each experiment is expected to be a module with classes in it representing
+different parts of scientific conduct (e.g., stimulus presentation or data analysis), and methods
+representing an atomic task at hand (e.g., showing experimental instructions or running a
+support vector machine analysis). Such organization is not only natural and easy to follow in
+an object-oriented environment but also allows an automatic generation of a command line
+and graphic user interfaces for customizing and executing these tasks conveniently. Due to a
+rigid structure, psychopy_ext can more successfully than typical packages address realistic user
+cases. For instance, running a support vector machine on fMRI data involves multiple steps of
+preprocessing, aggregating over relevant axes, combining results over participants, and, ideally,
+unit testing. Since it is impossible to guess the particular configuration at hand, typically the user
+has to implement these steps manually. However, thanks to a common design pattern in analyses
+deriving from psychopy_ext, these operations can be performed seemlesly out of the box.
+
+While these choices might be limiting in certain cases, the aim of psychopy_ext is to provide an
+intuitive basic framework for building transparent and shareable research projects.
 
 
 Recommended Usage
@@ -60,16 +114,6 @@ Dependencies
 * NiBabel (optional)
 
 
-Getting started
-===============
-
-You have at least three options:
-
-* Double-click on `run.py`. A window will open with a number of choices for running experiments.
-* Open a terminal window (known as command line on Windows, search for cmd.exe), navigate to the folder with these scripts, and type `python run.py`
-* Open `run.py` in PsychoPy and hit the greed running man icon to run
-
-
 License
 =======
 
@@ -86,8 +130,9 @@ combinations, combinations_with_replacement, OrderedDict, HMAX, GaborJet
 Acknowledgements
 ================
 
+I would like to thank Jonathan Peirce, Jeremy Gray and all
+[PsychoPy](http://www.psychopy.org/) developers for the well maintained code
+from which I learned a lot about development, and Scott Torborg for a guide to
+packaging (http://www.scotttorborg.com/python-packaging).
+
 Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
-
-Jonathan Peirce, Jeremy Gray and all [PsychoPy](http://www.psychopy.org/) developers for the well maintained code from which I learned a lot about development.
-
-Scott Torborg for a guide to packaging (http://www.scotttorborg.com/python-packaging)
