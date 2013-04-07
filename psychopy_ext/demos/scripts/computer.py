@@ -31,6 +31,7 @@ distance = 80
 width = 37.5
 # window defaults
 screen = 0  # default screen is 0
+viewScale = (1, 1)
 
 # Get computer properties
 # Computer is recognized by its mac address
@@ -53,7 +54,7 @@ elif mac == 145320949993177:  # fMRI computer
     validResponses = {'9': 0, '8': 1, '7': 2, '6': 3}
 
 elif mac == 269295399767497 and name == 'qDesktop':
-    distance = 120
+    distance = 57
     width = 47.7
     root = '/home/qbilius/Dropbox/data/'
 
