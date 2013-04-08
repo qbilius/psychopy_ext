@@ -113,6 +113,7 @@ class Plot(object):
         :Returns:
             `matplotlib.pyplot.figure` and a grid of axes.
         """
+
         if 'nrows_ncols' not in kwargs:
             nrows_ncols = (nrows, ncols)
         else:
@@ -120,6 +121,7 @@ class Plot(object):
             del kwargs['nrows_ncols']
         try:
             num = self.fig.number
+            self.fig.clf()
         except:
             num = None
         if kind == 'matrix':
@@ -299,27 +301,43 @@ class Plot(object):
         agg = pandas.DataFrame(agg)
         axes = []
 
-        if subplots is not None:
-            s_idx = [0]
-        else:
+        if subplots is None:  # subplots implicit in agg
             s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
+            if len(s_idx) != 0:
+                sbp = agg.columns.levels[s_idx[0]]
+            else:
+                sbp = None
+        elif subplots:  # get subplots from the top level column
+            sbp = agg.columns.levels[0]
+        else:
+            sbp = None
 
-        if len(s_idx) == 0:
+        if sbp is None:
             axes = [self._plot_ax(agg, **kwargs)]
         else:
             # if haven't made any plots yet...
             if self.subplotno == -1:
-                num_subplots = len(agg.columns.levels[s_idx[0]])
+                num_subplots = len(sbp)
                 # ...can still adjust the number of subplots
                 if num_subplots > len(self.axes):
                     self._create_subplots(ncols=num_subplots)
-            for subname in agg.columns.levels[s_idx[0]]:
-                    axes.append(self._plot_ax(agg[subname], title=subname,
-                                **kwargs))
+
+            for no, subname in enumerate(sbp):
+                # all plots are the same, onle legend will suffice
+                if subplots is None or subplots:
+                    if no == 0:
+                        legend = True
+                    else:
+                        legend = False
+                else:  # plots vary; each should get a legend
+                    legend = True
+                ax = self._plot_ax(agg[subname], title=subname, legend=legend,
+                                **kwargs)
+                axes.append(ax)
         return axes
 
     def _plot_ax(self, agg, ax=None,
-                   title='', kind='bar',
+                   title='', kind='bar', legend=True,
                    xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, order=None,
                    **kwargs):
@@ -333,11 +351,10 @@ class Plot(object):
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
 
-        if isinstance(mean, pandas.Series):
+        if mean.index.nlevels == 1:  # oops, nothing to unstack
             mean = pandas.DataFrame(mean).T
             p_yerr = pandas.DataFrame(p_yerr).T
         else:
-
             # make columns which will turn into legend entries
             for name in agg.columns.names:
                 if name.startswith('cols.'):
@@ -416,25 +433,23 @@ class Plot(object):
         #     ax.set_ylabel(grouped.name)
 
         ax.set_title(title, size='x-large')
-        self.draw_legend(ax, **kwargs)
+        self.draw_legend(ax, legend, **kwargs)
         if numb == True:
             self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
 
         return ax
 
-    def draw_legend(self, ax, **kwargs):
+    def draw_legend(self, ax, legend, **kwargs):
         l = ax.legend()
         l.legendPatch.set_alpha(0.5)
         if 'legend_visible' in kwargs:
             l.set_visible(kwargs['legend_visible'])
         elif len(l.texts) == 1:  # showing a single legend entry is useless
             l.set_visible(False)
+        elif legend:
+            l.set_visible(True)
         else:
-            if self.subplotno == 0:
-                l.set_visible(True)
-            else:
-                l.set_visible(False)
-
+            l.set_visible(False)
 
     def hide_plots(self, nums):
         """
@@ -476,13 +491,17 @@ class Plot(object):
         width = .75 / n
         rects = []
         for i, (label, column) in enumerate(data.iteritems()):
-            rect = ax.bar(idx+i*width, column, width, label=str(label),
-                yerr = yerr[label], color = colors[i], ecolor='black')
+            rect = ax.bar(idx+i*width+width/2, column, width, label=str(label),
+                yerr=yerr[label].tolist(), color = colors[i], ecolor='black')
             # TODO: yerr indexing might need fixing
             rects.append(rect)
-        ax.set_xticks(idx + width*n/2)
+        ax.set_xticks(idx + width*n/2 + width/2)
+        #import pdb; pdb.set_trace()
         #FIX: data.index returns float even if it is int because dtype=object
-        ax.set_xticklabels(data.index.tolist())
+        if len(data.index) == 1:  # no need to put a label for a single bar group
+            ax.set_xticklabels([''])
+        else:
+            ax.set_xticklabels(data.index.tolist())
         ax.legend(rects, data.columns.tolist())
 
         return ax
@@ -513,7 +532,7 @@ class Plot(object):
         for i, (label, column) in enumerate(data.iteritems()):
             line = ax.plot(x, column, label=str(label))
             lines.append(line)
-            ax.errorbar(x, column, yerr=yerr[label], fmt=None,
+            ax.errorbar(x, column, yerr=yerr[label].tolist(), fmt=None,
                 ecolor='black')
         #ticks = ax.get_xticks().astype(int)
         #if ticks[-1] >= len(data.index):
