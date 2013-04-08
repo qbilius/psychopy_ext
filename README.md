@@ -124,7 +124,7 @@ Dependencies
 License
 =======
 
-Copyright 2010-2013 Jonas Kubilius (https://bitbucket.org/qbilius)
+Copyright 2010-2013 Jonas Kubilius (http://klab.lt)
 
 Laboratories of Biological and Experimental Psychology, KU Leuven (Belgium)
 
@@ -143,3 +143,6 @@ from which I learned a lot about development, and Scott Torborg for a guide to
 packaging (http://www.scotttorborg.com/python-packaging).
 
 Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
+
+
+[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/16e03b45ccd8094b7ce857763e2b8225 "githalytics.com")](http://githalytics.com/qbilius/psychopy_ext)
