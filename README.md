@@ -145,4 +145,4 @@ packaging (http://www.scotttorborg.com/python-packaging).
 Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
 
 
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/16e03b45ccd8094b7ce857763e2b8225 "githalytics.com")](http://githalytics.com/qbilius/psychopy_ext)
+[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/133e5e4a0b70e2f0a95cbb0a5e84a17c "githalytics.com")](http://githalytics.com/qbilius/psychopy_ext)
