@@ -38,15 +38,17 @@ class Confsup(exp.Experiment):
             runParams=OrderedDict([  # these control how the experiment is run
                 ('noOutput', False),  # do you want output? or just playing around?
                 ('debug', False),  # not fullscreen presentation etc
-                ('autorun', 0)  # if >0, will autorun at the specified speed
+                ('autorun', 0),  # if >0, will autorun at the specified speed
+                ('push', False),  # commit and push to a hg repo?
                 ]),
-            actions=['run'],  # which functions can be called from GUI/CLI
+            actions=['run', 'autorun'],  # which functions can be called from GUI/CLI
         ):
         # initialize the default Experiment class with our parameters
         super(Confsup, self).__init__(
             name=name,
             extraInfo=extraInfo,
             runParams=runParams,
+            actions=actions,
             instructions={'text':
                 "Task:\n"
                 "Indicate which shape is different. Use the numeric pad to respond:\n"
@@ -70,7 +72,7 @@ class Confsup(exp.Experiment):
         self.stim_width = .3  # px; the weight of the line
         self.stim_dist = 4.  # from the fixation in x or y dir
         self.stim_color = 'black'
-        self.nreps = 20  # number of trials per condition per position
+        self.nreps = 5  # number of trials per condition per position
 
         self.paratable = OrderedDict([
             # condition 0 is reserved for fixation
@@ -166,7 +168,7 @@ class Confsup(exp.Experiment):
                     ('accuracy', ''),
                     ('rt', ''),
                     ]))
-        return expPlan
+        self.trialList = expPlan
 
     def set_autorun(self, trialList):
         def rt(mean):
