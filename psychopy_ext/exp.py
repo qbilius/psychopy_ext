@@ -672,6 +672,7 @@ class Experiment(TrialHandler):
             trial['autoRT'] = rt(.5)
         return trialList
 
+
     def set_TrialHandler(self):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
@@ -952,7 +953,8 @@ class Experiment(TrialHandler):
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
             thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
-            thisTrial['accuracy'] = self.signalDet[thisTrial['corrResp']==thisTrial['subjResp']]
+            acc = thisTrial['corrResp']==thisTrial['subjResp']
+            thisTrial['accuracy'] = self.signalDet[acc]
             thisTrial['RT'] = thisResp[1]
         else:
             thisTrial['subjResp'] = ''
@@ -1300,6 +1302,9 @@ class GroupStim(object):
             return method
         except TypeError:
             return getattr(self, name)
+
+    def __iter__(self):
+        return self.stimuli.__iter__()
 
 
 class OrderedDict(dict, DictMixin):
