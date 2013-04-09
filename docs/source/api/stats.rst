@@ -1,5 +1,5 @@
 :mod:`stats` Module
-----------------
+-------------------
 
 .. automodule:: psychopy_ext.stats
     :members:

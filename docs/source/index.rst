@@ -12,6 +12,6 @@ Contents:
 .. toctree::
    :maxdepth: 3
    
-   overview
+   quickstart
    library/index
    api/index
