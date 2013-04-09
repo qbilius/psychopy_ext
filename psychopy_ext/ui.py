@@ -158,15 +158,15 @@ class Control(object):
                         sys.exit('Expected a value after %s but got nothing'
                              % input_key)
 
-                    #try:
+                    try:
                         ## not safe but fine in this context
-                        #params[key] = eval(input_value)
-                    #except:
-                    if input_value[0] == '-':
-                        sys.exit('Expected a value after %s but got '
-                                    'another argument' % input_key)
-                    else:
-                        params[key] = input_value
+                        params[key] = eval(input_value)
+                    except:
+                        if input_value[0] == '-':
+                            sys.exit('Expected a value after %s but got '
+                                        'another argument' % input_key)
+                        else:
+                            params[key] = input_value
                     i += 1
                 i += 1
         class_init.extraInfo.update(extraInfo)
