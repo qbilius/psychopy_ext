@@ -241,6 +241,7 @@ class Analysis(object):
                  extraInfo=OrderedDict([('subjID', 'confsup_')]),
                  runParams=OrderedDict([('noOutput', False),
                                         ('plot', False),
+                                        ('saveplot', False),
                                         ('subj', 'one'),
                                         ])
                  ):
@@ -263,12 +264,14 @@ class Analysis(object):
         agg_rt = stats.aggregate(df[df.accuracy=='Correct'], cols='context',
                                  values='rt', yerr='subjID')
 
-        if self.runParams['plot']:
+        if self.runParams['plot'] or self.runParams['saveplot']:
             plt = plot.Plot(ncols=2)
             plt.plot(agg_acc, kind='bar')
             plt.plot(agg_rt, kind='bar')
-            plt.show()
 
+            if self.runParams['plot']: plt.show()
+            if self.runParams['saveplot']:
+                plt.savefig(PATHS['analysis'] + 'behav.svg')
 
 
 if __name__ == '__main__':
