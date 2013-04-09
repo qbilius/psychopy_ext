@@ -193,11 +193,8 @@ class Experiment(TrialHandler):
             self.create_win(debug=self.runParams['debug'])
         self.create_stimuli()
         self.create_trial()
-        trialList = self.create_trialList()
-        if self.runParams['autorun']:
-            trialList = self.set_autorun(trialList)
-            #self.create_TrialHandler(trialList)  # remake TrialHandler
-        self.create_TrialHandler(trialList)
+        self.create_trialList()
+        self.set_TrialHandler()
         #dataFileName=self.paths['data']%self.extraInfo['subjID'])
 
         ## guess participant ID based on the already completed sessions
@@ -525,9 +522,12 @@ class Experiment(TrialHandler):
         Example::
 
             self.create_fixation(color='white')
+            line1 = visual.Line(self.win, name='line1')
+            line2 = visual.Line(self.win, fillColor='DarkRed')
             self.s = {
                 'fix': self.fixation,
                 'stim1': [visual.ImageStim(self.win, name='stim1')],
+                'stim2': GroupStim(stimuli=[line1, line2], name='lines')
                 }
         """
         raise NotImplementedError
@@ -672,20 +672,20 @@ class Experiment(TrialHandler):
             trial['autoRT'] = rt(.5)
         return trialList
 
-    def create_TrialHandler(self, trialList):
+    def set_TrialHandler(self):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
 
-        :Args:
-            trialList (a list of dict)
-                A list of trials. Each trial is a dict with stimulus properties.
-                It is recommended to use `~colllections.OrderedDict` instead of
-                a dict for defining properties because then these properties are
-                written to a file in the same (logical) order.
+        Creates ``self.trialDur`` if not present yet.
+        Appends information for autorun.
         """
+        if not hasattr(self, 'trialDur'):
+            self.trialDur = sum(ev['dur'] for ev in self.trial)
+        if self.runParams['autorun']:
+            self.trialList = self.set_autorun(self.trialList)
         TrialHandler.__init__(self,
-            trialList,
+            self.trialList,
             nReps=self.nReps,
             method=self.method,
             dataTypes=self.dataTypes,
@@ -693,7 +693,6 @@ class Experiment(TrialHandler):
             seed=self.seed,
             originPath=self.originPath,
             name=self.name)
-        self.trialList = trialList
 
     def run(self):
         """
