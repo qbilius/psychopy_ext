@@ -1,10 +1,13 @@
 #! /usr/bin/env python
 import sys
-
 try:
     import psychopy_ext
 except:  # if psychopy_ext not in python path, e.g., you cloned the repo
-    sys.path.insert(0, '../../')
+    try:  # you want to start a new project based on demos
+        sys.path.insert(0, '../psychopy_ext')
+        import psychopy_ext
+    except:  # you're just running demos
+        sys.path.insert(0, '../../')
 from psychopy_ext.ui import Control
 
 __author__ = "Jonas Kubilius"
