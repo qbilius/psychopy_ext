@@ -193,11 +193,7 @@ class Experiment(TrialHandler):
             self.create_win(debug=self.runParams['debug'])
         self.create_stimuli()
         self.create_trial()
-        trialList = self.create_trialList()
-        if self.runParams['autorun']:
-            trialList = self.set_autorun(trialList)
-            #self.create_TrialHandler(trialList)  # remake TrialHandler
-        self.create_TrialHandler(trialList)
+        self.create_trialList()
         #dataFileName=self.paths['data']%self.extraInfo['subjID'])
 
         ## guess participant ID based on the already completed sessions
@@ -674,7 +670,7 @@ class Experiment(TrialHandler):
             trial['autoRT'] = rt(.5)
         return trialList
 
-    def create_TrialHandler(self, trialList):
+    def set_TrialHandler(self, trialList):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
@@ -685,7 +681,9 @@ class Experiment(TrialHandler):
                 It is recommended to use `~colllections.OrderedDict` instead of
                 a dict for defining properties because then these properties are
                 written to a file in the same (logical) order.
-        """
+        """        
+        if self.runParams['autorun']:
+            trialList = self.set_autorun(trialList)
         TrialHandler.__init__(self,
             trialList,
             nReps=self.nReps,
@@ -1305,6 +1303,9 @@ class GroupStim(object):
             return method
         except TypeError:
             return getattr(self, name)
+            
+    def __iter__(self):
+        return self.stimuli.__iter__()
 
 
 class OrderedDict(dict, DictMixin):
