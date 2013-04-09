@@ -36,13 +36,15 @@ viewScale = (1, 1)
 # Get computer properties
 # Computer is recognized by its mac address
 mac = uuid.getnode()
+system = platform.uname()[0]
 name = platform.uname()[1]
-if mac == 153254424819 and name == 'qLEPu':
+
+if mac == 153254424819 and system == 'Linux':  # Lab computer, Ubuntu booted
     distance = 80
     width = 37.5
     root = '/media/qbilius/Data/data/'
 
-elif mac == 153254424819 and name == 'qLEP':
+elif mac == 153254424819 and system == 'Windows':  # Lab computer, Windows booted
     root = 'D:/data/'
 
 elif mac == 145320949993177:  # fMRI computer
@@ -52,19 +54,6 @@ elif mac == 145320949993177:  # fMRI computer
     trigger = 5
     defaultKeys = ['escape', trigger]
     validResponses = {'9': 0, '8': 1, '7': 2, '6': 3}
-
-elif mac == 269295399767497 and name == 'qDesktop':
-    distance = 57
-    width = 47.7
-    root = '/home/qbilius/Dropbox/data/'
-
-elif mac == 159387622736430:  # Hendrik's desktop
-    distance = 65
-    width = 41
-
-elif mac == 61959089469690:  # Hendrik's netbook
-    distance = 45
-    width = 22
 
 else:
     recognized = False
