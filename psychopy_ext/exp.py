@@ -74,7 +74,7 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'root': computer.root,
         'exp_root': exp_root,
         'fmri_root': fmri_root,
-        'analysis': exp_root,  # where analysis files are stored
+        'analysis': os.path.join(exp_root, 'analysis/'),  # where analysis files are stored
         'logs': os.path.join(exp_root, 'logs/'),
         'data': os.path.join(exp_root, 'data/'),
         'data_behav': os.path.join(fmri_root, 'data_behav/'),  # for fMRI behav data
@@ -401,37 +401,35 @@ class Experiment(TrialHandler):
 
         """
         if shape == 'complex':
-            d1 = .6  # diameter of outer circle (degrees)
-            d2 = .2  # diameter of inner circle (degrees)
-            oval = visual.PatchStim(
+            r1 = .3  # radius of outer circle (degrees)
+            r2 = .1  # radius of inner circle (degrees)
+            oval = visual.Circle(
                 self.win,
                 name   = 'oval',
-                color  = color,
-                tex    = None,
-                mask   = 'circle',
-                size   = d1,
+                fillColor  = color,
+                lineColor = None,
+                radius   = r1,
             )
-            center = visual.PatchStim(
+            center = visual.Circle(
                 self.win,
                 name   = 'center',
-                color  = color,
-                tex    = None,
-                mask   = 'circle',
-                size   = d2,
+                fillColor  = color,
+                lineColor = None,
+                radius   = r2,
             )
             cross0 = ThickShapeStim(
                 self.win,
                 name='cross1',
                 lineColor=self.win.color,
-                lineWidth=d2,
-                vertices=[(-d1/2,0),(d1/2,0)]
+                lineWidth=2*r2,
+                vertices=[(-r1, 0), (r1, 0)]
                 )
             cross90 = ThickShapeStim(
                 self.win,
                 name='cross1',
                 lineColor=self.win.color,
-                lineWidth=d2,
-                vertices=[(-d1/2,0),(d1/2,0)],
+                lineWidth=2*r2,
+                vertices=[(-r1, 0), (r1, 0)],
                 ori=90
                 )
             fixation = GroupStim(stimuli=[oval, cross0, cross90, center],
@@ -736,7 +734,6 @@ class Experiment(TrialHandler):
         # for some graphics drivers (e.g., mine:)
         # draw() command needs to be invoked once
         # before it can draw properly
-        self.win.flip()
         visual.TextStim(self.win, text='').draw()
         self.win.flip()
 
@@ -750,15 +747,13 @@ class Experiment(TrialHandler):
             thisKey = None
             while thisKey != self.computer.trigger:
                 thisKey = self.last_keypress()
-            if self.runParams['autorun']: wait /= self.runParams['autorun']
+            if self.runParams['autorun']:
+                wait /= self.runParams['autorun']
         self.win.flip()
 
         if wait_stim is not None:
             if not isinstance(wait_stim, tuple) and not isinstance(wait_stim, list):
                 wait_stim = [wait_stim]
-            for stim in wait_stim:  # for some reason I have to draw it twice
-                stim.draw()
-            self.win.flip()
             for stim in wait_stim:
                 stim.draw()
             self.win.flip()
@@ -1278,6 +1273,7 @@ class ThickShapeStim(visual.ShapeStim):
                 )
                 #line.setOri(self.ori-np.arctan2(edges[1],edges[0])*180/np.pi)
                 self.stimulus.append(line)
+
 
 class GroupStim(object):
 
