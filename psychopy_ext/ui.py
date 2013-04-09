@@ -38,7 +38,8 @@ class Control(object):
             title
             size
         """
-        if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):  # direct path to the experiment
+        # direct path to the experiment
+        if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):
             exp_choices = [('Experiment', exp_choices, 'main')]
         elif len(exp_choices) == 0:
             sys.exit('exp_choices is not supposed to be empty')
@@ -157,15 +158,15 @@ class Control(object):
                         sys.exit('Expected a value after %s but got nothing'
                              % input_key)
 
-                    try:
-                        # not safe but fine in this context
-                        params[key] = eval(input_value)
-                    except:
-                        if input_value[0] == '-':
-                            sys.exit('Expected a value after %s but got '
-                                        'another argument' % input_key)
-                        else:
-                            params[key] = input_value
+                    #try:
+                        ## not safe but fine in this context
+                        #params[key] = eval(input_value)
+                    #except:
+                    if input_value[0] == '-':
+                        sys.exit('Expected a value after %s but got '
+                                    'another argument' % input_key)
+                    else:
+                        params[key] = input_value
                     i += 1
                 i += 1
         class_init.extraInfo.update(extraInfo)
@@ -374,7 +375,8 @@ class StaticBox(wx.StaticBox):
                 inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
                 inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
             else:
-                inputBox = wx.Choice(parent, -1, choices=[str(option) for option in list(choices)])
+                inputBox = wx.Choice(parent, -1,
+                            choices=[str(option) for option in list(choices)])
                 # Somewhat dirty hack that allows us to treat the choice just like
                 # an input box when retrieving the data
                 inputBox.GetValue = inputBox.GetStringSelection
@@ -413,20 +415,17 @@ class Page(wx.Panel):
         actions = _get_methods(class_init)
         # buttons will sit on a grid of 3 columns and as many rows as necessary
         buttons = wx.GridSizer(rows=0, cols=3)
-        #add = False
+        add = False
         for i, (label, action) in enumerate(actions):
-            #if hasattr(class_init, 'actions'):
-                #if class_init.actions is not None:
-                    #if isinstance(class_init.actions, str):
-                        #class_init.actions = [class_init.actions]
-                    #try:
-                        #if label in class_init.actions:
-                            #add = True
-                    #except:
-                        #import pdb; pdb.set_trace()
-            #else:
-                #add = True
-            #if add:
+            if hasattr(class_init, 'actions'):
+                if class_init.actions is not None:
+                    if isinstance(class_init.actions, str):
+                        class_init.actions = [class_init.actions]
+                    if label in class_init.actions:
+                        add = True
+            else:
+                add = True
+            if add:
                 run = wx.Button(self, label=label, size=(150, 30))
                 buttons.Add(run, 1)
                 run.extraInfo = class_init.extraInfo  # when clicked, what to do
