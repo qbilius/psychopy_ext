@@ -436,9 +436,9 @@ class Experiment(TrialHandler):
             def _set_complex_fix_col(newColor):
                 for stim in fixation.stimuli:
                     if stim.name in ['oval', 'center']:
-                        stim.setColor(newColor)
+                        stim.setFillColor(newColor)
             fixation.color = color
-            fixation.setColor = _set_complex_fix_col
+            fixation.setFillColor = _set_complex_fix_col
             self.fixation = fixation
 
         elif shape == 'dot':
@@ -563,7 +563,7 @@ class Experiment(TrialHandler):
                 ('corrResp', corrResp),
                 ('subjResp', ''),
                 ('accuracy', ''),
-                ('RT', ''),
+                ('rt', ''),
                 ])
         """
         raise NotImplementedError
@@ -624,9 +624,9 @@ class Experiment(TrialHandler):
         for stim in display:
             if stim.name == 'fixation':
                 if thisTrial['corrResp'] == subjResp:
-                    stim.setColor('DarkGreen')  # correct response
+                    stim.setFillColor('DarkGreen')  # correct response
                 else:
-                    stim.setColor('DarkRed')  # incorrect response
+                    stim.setFillColor('DarkRed')  # incorrect response
             stim.draw()
         self.win.flip()
 
@@ -636,7 +636,7 @@ class Experiment(TrialHandler):
 
         for stim in display:  # reset fixation color
             if stim.name == 'fixation':
-                stim.setColor(orig_color)
+                stim.setFillColor(orig_color)
 
     def set_autorun(self, trialList):
         """
@@ -816,7 +816,7 @@ class Experiment(TrialHandler):
             if self.runParams['autorun'] > 0:  # correct the timing
                 try:
                     thisTrial['autoRT'] *= self.runParams['autorun']
-                    thisTrial['RT'] *= self.runParams['autorun']
+                    thisTrial['rt'] *= self.runParams['autorun']
                     thisTrial['onset'] *= self.runParams['autorun']
                 except:  # maybe not all keys are present
                     pass
@@ -947,7 +947,7 @@ class Experiment(TrialHandler):
                 of the key press.
 
         :Returns:
-            thisTrial with ``subjResp``, ``accuracy``, and ``RT`` filled in.
+            thisTrial with ``subjResp``, ``accuracy``, and ``rt`` filled in.
 
         """
         if len(allKeys) > 0:
@@ -955,11 +955,11 @@ class Experiment(TrialHandler):
             thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
             acc = thisTrial['corrResp']==thisTrial['subjResp']
             thisTrial['accuracy'] = self.signalDet[acc]
-            thisTrial['RT'] = thisResp[1]
+            thisTrial['rt'] = thisResp[1]
         else:
             thisTrial['subjResp'] = ''
             thisTrial['accuracy'] = ''
-            thisTrial['RT'] = ''
+            thisTrial['rt'] = ''
 
         return thisTrial
 
