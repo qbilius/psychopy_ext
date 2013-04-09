@@ -177,6 +177,7 @@ class Plot(object):
             subplotno (int, default: None)
                 Give subplot number explicitly if you want to get not the
                 current axis
+
         :Returns:
             ax
         """
@@ -588,10 +589,10 @@ class Plot(object):
         """
         Plots a matrix.
 
-        :warning: Not tested yet
+        .. warning:: Not tested yet
 
         :Args:
-            matrix ()
+            matrix
 
         :Kwargs:
             - ax (default: None)

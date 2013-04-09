@@ -50,7 +50,8 @@ class Analysis(object):
             A dictionary of paths where data is stored. Expected to have at
             least the following keys:
                 - 'analysis' (for storing analysis outputs),
-                - 'data_behav' (behavioral data with condition labels), 'data_fmri',
+                - 'data_behav' (behavioral data with condition labels),
+                - 'data_fmri',
                 - 'rec' (for ROIs from surface reconstruction in Caret or so),
                 - 'data_rois' (for storing the extracted signals in these ROIs),
 
