@@ -17,7 +17,7 @@ import pandas
 
 
 def aggregate(df, rows=None, cols=None, values=None,
-    value_filter=None, subplots=None, yerr=None, func='mean'):
+    value_filter=None, subplots=None, yerr=None, func='mean', unstack=False):
     """
     Aggregates data over specified columns.
 
@@ -84,9 +84,16 @@ def aggregate(df, rows=None, cols=None, values=None,
                 g += 1
 
     if yerr is not None:
-        agg = agg.unstack()
+        agg = agg.unstack().T
+    else:  # then rows should become rows, and cols should be cols :)
+        if unstack:
+            for name in agg.index.names:
+                if name.startswith('cols.'):
+                    agg = agg.unstack(level=name)
+        else:
+            agg = pandas.DataFrame(agg).T
 
-    return agg.T
+    return agg
 
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
