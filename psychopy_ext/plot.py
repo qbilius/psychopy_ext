@@ -334,6 +334,10 @@ class Plot(object):
                     legend = True
                 ax = self._plot_ax(agg[subname], title=subname, legend=legend,
                                 **kwargs)
+                if 'title' in kwargs:
+                    axes[0].set_title(kwargs['title'])
+                else:
+                    axes[0].set_title(subname)
                 axes.append(ax)
         return axes
 
@@ -345,7 +349,6 @@ class Plot(object):
         if ax is None:
             self.subplotno += 1
             ax = self.get_ax()
-
         if isinstance(agg, pandas.DataFrame):
             mean, p_yerr = self.errorbars(agg)
         else:
@@ -372,11 +375,11 @@ class Plot(object):
             self.lineplot(mean, yerr=p_yerr, ax=ax)
         elif kind == 'bean':
             autoscale = False  # FIX: autoscaling is incorrect on beanplots
-            if len(mean.columns) <= 2:
-                ax, l = self.beanplot(agg, ax=ax, order=order, **kwargs)#, pos=range(len(mean.index)))
-            else:
-                raise Exception('Beanplot is not available for more than two '
-                                'classes.')
+            #if len(mean.columns) <= 2:
+            ax = self.beanplot(agg, ax=ax, order=order, **kwargs)#, pos=range(len(mean.index)))
+            #else:
+                #raise Exception('Beanplot is not available for more than two '
+                                #'classes.')
         else:
             raise Exception('%s plot not recognized. Choose from '
                             '{bar, line, bean}.' %kind)
@@ -425,32 +428,57 @@ class Plot(object):
             else:
                 ymax = np.max(np.asarray(mean) + 3*ebars)
             ax.set_ylim([ymin, ymax])
-        #if 'xlabel' in kwargs:
-            #ax.set_xlabel(kwargs['xlabel'], size='x-large')
-        if 'ylabel' in kwargs:
-            ax.set_ylabel(kwargs['ylabel'], size='x-large')
-        # else:
-        #     import pdb; pdb.set_trace()
-        #     ax.set_ylabel(grouped.name)
 
-        ax.set_title(title, size='x-large')
-        self.draw_legend(ax, legend, **kwargs)
+        # set x and y labels
+        if 'xlabel' in kwargs:
+            ax.set_xlabel(kwargs['xlabel'])
+        else:
+            ax.set_xlabel(self._get_title(mean, 'rows'))
+        if 'ylabel' in kwargs:
+            ax.set_ylabel(kwargs['ylabel'])
+        else:
+            ax.set_ylabel(self._get_title(mean, 'cols'))
+
+        # set x tick labels
+        #FIX: data.index returns float even if it is int because dtype=object
+        #if len(mean.index) == 1:  # no need to put a label for a single bar group
+            #ax.set_xticklabels([''])
+        #else:
+        ax.set_xticklabels(mean.index.tolist())
+
+        ax.set_title(title)
+        self._draw_legend(ax, visible=legend, data=mean, **kwargs)
         if numb == True:
             self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
 
         return ax
 
-    def draw_legend(self, ax, legend, **kwargs):
-        l = ax.legend()
+    def _get_title(self, data, pref):
+        if pref == 'cols':
+            dnames = data.columns.names
+        else:
+            dnames = data.index.names
+        title = [n.lstrip(pref+'.') for n in dnames if n.startswith(pref+'.')]
+        title = ', '.join(title)
+        return title
+
+    def _draw_legend(self, ax, visible=True, data=None, **kwargs):
+        l = ax.get_legend()  # get an existing legend
+        if l is None:  # create a new legend
+            l = ax.legend()
         l.legendPatch.set_alpha(0.5)
+
+        l.set_title(self._get_title(data, 'cols'))
+
         if 'legend_visible' in kwargs:
             l.set_visible(kwargs['legend_visible'])
-        elif len(l.texts) == 1:  # showing a single legend entry is useless
-            l.set_visible(False)
-        elif legend:
-            l.set_visible(True)
-        else:
-            l.set_visible(False)
+        elif visible is not None:
+            l.set_visible(visible)
+        else:  #decide automatically
+            if len(l.texts) == 1:  # showing a single legend entry is useless
+                l.set_visible(False)
+            else:
+                l.set_visible(True)
 
     def hide_plots(self, nums):
         """
@@ -497,12 +525,6 @@ class Plot(object):
             # TODO: yerr indexing might need fixing
             rects.append(rect)
         ax.set_xticks(idx + width*n/2 + width/2)
-        #import pdb; pdb.set_trace()
-        #FIX: data.index returns float even if it is int because dtype=object
-        if len(data.index) == 1:  # no need to put a label for a single bar group
-            ax.set_xticklabels([''])
-        else:
-            ax.set_xticklabels(data.index.tolist())
         ax.legend(rects, data.columns.tolist())
 
         return ax
@@ -757,13 +779,14 @@ class Plot(object):
             print 'Cannot plot more than 2 dims'
 
 
-    # Based on code by Teemu Ikonen <tpikonen@gmail.com>,
-    # http://matplotlib.1069221.n5.nabble.com/Violin-and-bean-plots-tt27791.html
-    # which was based on code by Flavio Codeco Coelho,
-    # http://pyinsci.blogspot.com/2009/09/violin-plot-with-matplotlib.html
+    def _violinplot(self, data, pos, rlabels, ax=None, bp=False, cut=None, **kwargs):
+        """
+        Make a violin plot of each dataset in the `data` sequence.
 
-    def violinplot(self, data, ax=None, pos=None, bp=False, cut=None):
-        """Make a violin plot of each dataset in the `data` sequence.
+        Based on `code by Teemu Ikonen
+        <http://matplotlib.1069221.n5.nabble.com/Violin-and-bean-plots-tt27791.html>`_
+        which was based on `code by Flavio Codeco Coelho
+        <http://pyinsci.blogspot.com/2009/09/violin-plot-with-matplotlib.html>`)
         """
         def draw_density(p, low, high, k1, k2, ncols=2):
             m = low #lower bound of violin
@@ -786,15 +809,16 @@ class Plot(object):
         dist = np.max(pos)-np.min(pos)
         w = min(0.15*max(dist,1.0),0.5) * .5
 
-        for major_xs in range(data.shape[1]):
-            p = pos[major_xs]
-            d1 = data.ix[:,major_xs,0]
+        #for major_xs in range(data.shape[1]):
+        for num, rlabel in enumerate(rlabels):
+            p = pos[num]
+            d1 = data.ix[rlabel, 0]
             k1 = scipy.stats.gaussian_kde(d1) #calculates the kernel density
-            if data.shape[2] == 1:
+            if data.shape[1] == 1:
                 d2 = d1
                 k2 = k1
             else:
-                d2 = data.ix[:,major_xs,1]
+                d2 = data.ix[rlabel, 1]
                 k2 = scipy.stats.gaussian_kde(d2) #calculates the kernel density
             cutoff = .001
             if cut is None:
@@ -819,23 +843,24 @@ class Plot(object):
             else:
                 low, high = cut
 
-            draw_density(p, low, high, k1, k2, ncols=data.shape[2])
+            draw_density(p, low, high, k1, k2, ncols=data.shape[1])
 
 
         # a work-around for generating a legend for the PolyCollection
         # from http://matplotlib.org/users/legend_guide.html#using-proxy-artist
         left = Rectangle((0, 0), 1, 1, fc="black", ec='black')
         right = Rectangle((0, 0), 1, 1, fc="gray", ec='gray')
-        l = ax.legend((left, right), data.minor_axis.tolist(), frameon=False)
+
+        ax.legend((left, right), data.columns.tolist())
         #import pdb; pdb.set_trace()
         #ax.set_xlim(pos[0]-3*w, pos[-1]+3*w)
         #if bp:
             #ax.boxplot(data,notch=1,positions=pos,vert=1)
-        return ax, l
+        return ax
 
 
-    def stripchart(self, data, ax=None, pos=None, mean=False, median=False,
-        width=None, discrete=True, bins=50):
+    def _stripchart(self, data, pos, rlabels, ax=None, mean=False, median=False,
+        width=None, discrete=True, bins=30):
         """Plot samples given in `data` as horizontal lines.
 
         :Kwargs:
@@ -843,16 +868,6 @@ class Plot(object):
             median: plot median of each dataset as a dot if True.
             width: Horizontal width of a single dataset plot.
         """
-        def get_hist(d, bins):
-            hists = []
-            bin_edges_all = []
-            for rowno, row in d.iterrows():
-                hist, bin_edges = np.histogram(row, bins=bins)
-                hists.append(hist)
-                bin_edges_all.append(bin_edges)
-            maxcount = np.max(hists)
-            return maxcount, hists, bin_edges_all
-
         def draw_lines(d, maxcount, hist, bin_edges, sides=None):
             if discrete:
                 bin_edges = bin_edges[:-1]  # upper edges not needed
@@ -868,56 +883,100 @@ class Plot(object):
             if median:  # puts a white dot
                 ax.plot(p, np.median(d), 'o', color='white', markeredgewidth=0)
 
+        #data, pos = self._beanlike_setup(data, ax)
+
         if width:
             w = width
         else:
-            if pos is None:
-                pos = [0,1]
+            #if pos is None:
+                #pos = [0,1]
             dist = np.max(pos)-np.min(pos)
             w = min(0.15*max(dist,1.0),0.5) * .5
-        for major_xs in range(data.shape[1]):  # go over 'rows'
-            p = pos[major_xs]
-            maxcount, hists, bin_edges_all = get_hist(data.ix[:,major_xs], bins)
-            if data.shape[2] == 1:
-                draw_lines(data.ix[:, major_xs, 0], maxcount, hists[0],
-                    bin_edges_all[0], sides=[-1,1])
+
+        #colnames = [d for d in data.columns.names if d.startswith('cols.') ]
+        #if len(colnames) == 0:  # nothing specified explicitly as a columns
+            #try:
+                #colnames = data.columns.levels[-1]
+            #except:
+                #colnames = data.columns
+
+        #func1d = lambda x: np.histogram(x, bins=bins)
+        # apply along cols
+        hist, bin_edges = np.apply_along_axis(np.histogram, 0, data, bins)
+        # it return arrays of object type, so we got to correct that
+        hist = np.array(hist.tolist())
+        bin_edges = np.array(bin_edges.tolist())
+        maxcount = np.max(hist)
+
+        for n, rlabel in enumerate(rlabels):
+            p = pos[n]
+            d = data.ix[:,rlabel]
+            if len(d.columns) == 1:
+                draw_lines(d.ix[:,0], maxcount, hist[0], bin_edges[0], sides=[-1,1])
             else:
-                draw_lines(data.ix[:, major_xs, 0], maxcount, hists[0],
-                    bin_edges_all[0], sides=[-1,0])
-                draw_lines(data.ix[:, major_xs, 1], maxcount, hists[1],
-                    bin_edges_all[1], sides=[0, 1])
+                draw_lines(d.ix[:,0], maxcount, hist[0], bin_edges[0], sides=[-1,0])
+                draw_lines(d.ix[:,1], maxcount, hist[1], bin_edges[1], sides=[ 0,1])
 
         ax.set_xlim(min(pos)-3*w, max(pos)+3*w)
         #ax.set_xticks([-1]+pos+[1])
         ax.set_xticks(pos)
         #import pdb; pdb.set_trace()
         #ax.set_xticklabels(['-1']+np.array(data.major_axis).tolist()+['1'])
-        ax.set_xticklabels(data.major_axis)
+        if len(rlabels) > 1:
+            ax.set_xticklabels(rlabels)
+        else:
+            ax.set_xticklabels('')
 
-        #return ax
+        return ax
 
 
-    def beanplot(self, data, ax, pos=None, mean=True, median=True, cut=None,
+    def beanplot(self, data, ax=None, pos=None, mean=True, median=True, cut=None,
         order=None, discrete=True, **kwargs):
         """Make a bean plot of each dataset in the `data` sequence.
 
         Reference: http://www.jstatsoft.org/v28/c01/paper
         """
 
-        #if pos is None:
-            #pos = range(len(data.major_axis))
-        if order is None:
-            pos = range(len(data.major_axis))
-        else:
-            pos = np.lexsort((np.array(data.major_axis).tolist(),order))
+        data_tr, pos, rlabels = self._beanlike_setup(data, ax, order)
 
-        dist = np.max(pos)-np.min(pos)
+        dist = np.max(pos) - np.min(pos)
         w = min(0.15*max(dist,1.0),0.5) * .5
-        self.stripchart(data=data, ax=ax, pos=pos, mean=mean, median=median,
+        ax = self._stripchart(data, pos, rlabels, ax=ax, mean=mean, median=median,
             width=0.8*w, discrete=discrete)
-        ax,l = self.violinplot(data=data, ax=ax, pos=pos, bp=False, cut=cut)
+        ax = self._violinplot(data_tr, pos, rlabels, ax=ax, bp=False, cut=cut)
 
-        return ax,l
+        return ax
+
+    def _beanlike_setup(self, data, ax, order=None):
+        data = pandas.DataFrame(data)  # Series will be forced into a DataFrame
+        data = data.unstack([n for n in data.index.names if n.startswith('yerr.')])
+        data = data.unstack([n for n in data.index.names if n.startswith('rows.')])
+        rlabels = data.columns
+        data = data.unstack([n for n in data.index.names if n.startswith('yerr.')])
+        data = data.T  # now rows and values are in rows, cols in cols
+
+        #if len(data.columns) > 2:
+            #raise Exception('Beanplot cannot handle more than two categories')
+        if len(data.index.levels[-1]) <= 1:
+            raise Exception('Cannot make a beanplot for a single observation')
+
+        ## put columns at the bottom so that it's easy to iterate in violinplot
+        #order = {'rows': [], 'cols': []}
+        #for i,n in enumerate(data.columns.names):
+            #if n.startswith('cols.'):
+                #order['cols'].append(i)
+            #else:
+                #order['rows'].append(i)
+        #data = data.reorder_levels(order['rows'] + order['cols'], axis=1)
+
+        if ax is None:
+            ax = self.next()
+        #if order is None:
+        pos = range(len(rlabels))
+        #else:
+            #pos = np.lexsort((np.array(data.index).tolist(), order))
+
+        return data, pos, rlabels
 
 
 if __name__ == '__main__':
