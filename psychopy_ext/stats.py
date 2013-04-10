@@ -17,7 +17,7 @@ import pandas
 
 
 def aggregate(df, rows=None, cols=None, values=None,
-    value_filter=None, subplots=None, yerr=None, func='mean', unstack=False):
+    value_filter=None, subplots=None, yerr=None, aggfunc='mean', unstack=False):
     """
     Aggregates data over specified columns.
 
@@ -28,13 +28,16 @@ def aggregate(df, rows=None, cols=None, values=None,
     :Kwargs:
         - rows (str or list of str, default: None)
             Name(s) of column(s) that will be aggregated and plotted on the x-axis
-        - cols (str, default: None)
+        - cols (str or list of str, default: None)
             Name(s) of column(s) that will be shown in the legend
-        - values (str, default: None)
-            Name of the column that is aggregated
+        - values (str or list of str, default: None)
+            Name(s) of the column(s) that is aggregated
         - yerr (str, default: None)
             Name of the column for the y-errorbar calculation. Typically,
             this is the column with participant IDs.
+        - aggfunc (str or a 1d function)
+            A function to use for aggregation. If a string, it is interpreted
+            as a `numpy` function.
 
     :Returns:
         A `pandas.DataFrame` where data has been aggregated in the following
@@ -54,7 +57,11 @@ def aggregate(df, rows=None, cols=None, values=None,
         rows = [rows]
     if isinstance(cols, str) or cols is None:
         cols = [cols]
-    allconds = [subplots] + rows + cols + [yerr]
+    if isinstance(yerr, str) or yerr is None:
+        yerr = [yerr]
+    if values is None:
+        raise Exception('You must provide the name(s) of the column(s) that is aggregated.')
+    allconds = [subplots] + rows + cols + yerr
     allconds = [c for c in allconds if c is not None]
 
     if df[values].dtype in (str, object):  # calculate accuracy
@@ -67,27 +74,28 @@ def aggregate(df, rows=None, cols=None, values=None,
         size_filter = dff.groupby(allconds)[values].size()
         agg = size_filter / size.astype(float)
     else:
-        if isinstance(func, str):
+        if isinstance(aggfunc, str):
             try:
-                func = getattr(np, func)
+                aggfunc = getattr(np, aggfunc)
             except:
                 raise
-        agg = df.groupby(allconds)[values].aggregate(func)
+        agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
     g = 0
-    groups = [('subplots',[subplots]), ('rows',rows), ('cols', cols),
-              ('yerr',[yerr])]
+    groups = [('subplots', [subplots]), ('rows', rows), ('cols', cols),
+              ('yerr', yerr)]
     for group in groups:
         for item in group[1]:
             if item is not None:
                 agg.index.names[g] = group[0] + '.' + item
                 g += 1
 
-    if yerr is not None:
+    if yerr[0] is not None:
         for yr in yerr:
             agg = agg.unstack(level='yerr.'+yr)
         # seems like a pandas bug here for not naming levels properly
         agg.columns.names = ['yerr.'+yr for yr in yerr]
+        agg = agg.T
     else:  # then rows should become rows, and cols should be cols :)
         if unstack:
             for name in agg.index.names:
@@ -96,7 +104,7 @@ def aggregate(df, rows=None, cols=None, values=None,
         else:
             agg = pandas.DataFrame(agg).T
 
-    return agg.T
+    return agg
 
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,

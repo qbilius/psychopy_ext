@@ -301,9 +301,11 @@ class Plot(object):
         """
         agg = pandas.DataFrame(agg)
         axes = []
-
-        if subplots is None:  # subplots implicit in agg
+        try:
             s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
+        except:
+            s_idx = None
+        if s_idx is not None:  # subplots implicit in agg
             if len(s_idx) != 0:
                 sbp = agg.columns.levels[s_idx[0]]
             else:
@@ -335,9 +337,9 @@ class Plot(object):
                 ax = self._plot_ax(agg[subname], title=subname, legend=legend,
                                 **kwargs)
                 if 'title' in kwargs:
-                    axes[0].set_title(kwargs['title'])
+                    ax.set_title(kwargs['title'])
                 else:
-                    axes[0].set_title(subname)
+                    ax.set_title(subname)
                 axes.append(ax)
         return axes
 
@@ -458,7 +460,8 @@ class Plot(object):
             dnames = data.columns.names
         else:
             dnames = data.index.names
-        title = [n.lstrip(pref+'.') for n in dnames if n.startswith(pref+'.')]
+        title = [n.split('.',1)[1] for n in dnames if n.startswith(pref+'.')]
+
         title = ', '.join(title)
         return title
 
@@ -467,7 +470,6 @@ class Plot(object):
         if l is None:  # create a new legend
             l = ax.legend()
         l.legendPatch.set_alpha(0.5)
-
         l.set_title(self._get_title(data, 'cols'))
 
         if 'legend_visible' in kwargs:
