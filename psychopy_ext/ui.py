@@ -101,6 +101,7 @@ class Control(object):
                     (input_class_alias, ', '.join(class_order)))
 
         if isinstance(module, str):
+            print 'initializing...'
             try:
                 __import__(module)
             except:
@@ -188,7 +189,6 @@ class Control(object):
                      (input_func, class_obj.__name__))
         else:
             if hasattr(func, '__call__'):
-                print 'initializing...'
                 func()
             else:
                 sys.exit('Object %s not callable; is it really a function?' %
