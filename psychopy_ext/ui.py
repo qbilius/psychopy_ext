@@ -87,6 +87,14 @@ class Control(object):
                 sys.exit("module '%s' not recognized" % input_mod_alias)
             module = exp_choices[idx][1]
 
+        if input_mod_alias is not None:
+            if input_mod_alias.startswith('-'):
+                sys.exit('You have to specify the name of the experiment after %s'
+                         % sys.argv[0])
+        if input_class_alias.startswith('-') or input_func.startswith('-'):
+            sys.exit('You have to specify properly what you want to run. '
+                     "Got '%s %s' instead." % (input_class_alias, input_func))
+
         if class_order is not None:
             if input_class_alias not in class_order:
                 sys.exit('Class %s not available. Choose from:\n%s' %
@@ -102,7 +110,7 @@ class Control(object):
         class_aliases, class_obj = _get_classes(module,
             input_class_alias=input_class_alias, class_order=class_order)
         if class_obj is None:
-            sys.exit('Class %s not found. Choose from:\n%s' %
+            sys.exit('Class %s not found. Choose from: %s' %
                 (input_class_alias, ', '.join([c[0] for c in class_aliases])))
 
         try:
@@ -180,6 +188,7 @@ class Control(object):
                      (input_func, class_obj.__name__))
         else:
             if hasattr(func, '__call__'):
+                print 'initializing...'
                 func()
             else:
                 sys.exit('Object %s not callable; is it really a function?' %
