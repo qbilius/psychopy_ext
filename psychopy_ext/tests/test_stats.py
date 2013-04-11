@@ -25,7 +25,7 @@ class TestAgg(unittest.TestCase):
         #df = df.reindex_axis(['subplots','cond','name','levels','subjID','RT',
             #'accuracy'], axis=1)
         agg = stats.aggregate(df, subplots='subplots', rows=['cond', 'name'],
-            col='levels', yerr='subjID', values='RT')
+            cols='levels', yerr='subjID', values='RT')
 
         col = [4.5, 14.5, 24.5, 34.5, 44.5, 54.5, 64.5, 74.5]
         tuples = zip(*[
