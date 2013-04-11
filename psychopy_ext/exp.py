@@ -252,6 +252,8 @@ class Experiment(TrialHandler):
 
             # Write system information first
             if writesys: self.logFile.write('%s\n' % sysinfo)
+            self.logFile.write('\n\n' + '#'*40 + '\n\n')
+            self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
 
         # output to the screen
         logging.console.setLevel(level)
@@ -975,11 +977,13 @@ class Experiment(TrialHandler):
         if rev == 'hg':
             cmd = 'hg commit -A -m "%s"' % message
             hg, err = core.shellCall(cmd, stderr=True)
+            cmd = '$ ' + cmd
             self.logFile.write('\n'.join((cmd, hg, err)))
             sys.stdout.write('\n'.join((cmd, hg, err)))
             if err == '':
                 cmd = 'hg push'
                 hg, err = core.shellCall(cmd, stderr=True)
+                cmd = '$ ' + cmd
                 self.logFile.write('\n'.join((cmd, hg, err)))
                 sys.stdout.write('\n'.join((cmd, hg, err)))
         else:
