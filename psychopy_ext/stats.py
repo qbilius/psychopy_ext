@@ -32,12 +32,21 @@ def aggregate(df, rows=None, cols=None, values=None,
             Name(s) of column(s) that will be shown in the legend
         - values (str or list of str, default: None)
             Name(s) of the column(s) that is aggregated
+        - value_filter (str, default=None)
+            Which values to report. For example, if you have labels 'Correct'
+            and 'Inccorrect' in the ``values`` column, you may want to set
+            ``value_filter='Correct``
+            so that only Correct values were reported.
         - yerr (str, default: None)
             Name of the column for the y-errorbar calculation. Typically,
             this is the column with participant IDs.
         - aggfunc (str or a 1d function)
             A function to use for aggregation. If a string, it is interpreted
             as a `numpy` function.
+        - unstack (bool, default: False)
+            If True, returns an unstacked version of aggregated data (i.e.,
+            rows in rows and columns in columns)). Useful for printing and
+            other non-plotting tasks.
 
     :Returns:
         A `pandas.DataFrame` where data has been aggregated in the following
@@ -71,6 +80,7 @@ def aggregate(df, rows=None, cols=None, values=None,
         else:
             raise Exception('value_filter must be defined when aggregating '
                 'over str or object types')
+
         size_filter = dff.groupby(allconds)[values].size()
         agg = size_filter / size.astype(float)
     else:
