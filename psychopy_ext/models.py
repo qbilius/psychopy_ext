@@ -134,10 +134,16 @@ class Model(object):
             pass
 
         if type(names) == str:
-            array = scipy.misc.imread(names)
+            array = scipy.misc.imread(names, flatten=True)
+            array = scipy.misc.imresize(array, 256./np.max(array.shape))
         elif type(names) in [list, tuple]:
             if type(names[0]) == str:
-                array = np.array([scipy.misc.imread(n) for n in names])
+                arr = []
+                for n in names:
+                    im = scipy.misc.imread(n, flatten=True)
+                    im = scipy.misc.imresize(im, 256./np.max(im.shape))
+                    arr.append(im)
+                array = np.array(arr)
             else:
                 array = np.array(names)
         elif type(names) == np.ndarray:
