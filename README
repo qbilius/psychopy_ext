@@ -40,7 +40,8 @@ but there are some limitations:
 
 - The experiments building module (`exp`) is pretty much stable.
 - fMRI analyses (`fmri` module) have not been thoroughly tested yet.
-- `stats` and `plots` work well for but might be unable to handle missing values etc.
+- `stats` and `plots` work well but might still require fine tuning and may be
+  unable to handle missing values etc.
 - Unit testing is only implemented for `models` (HMAX and GaborJet)
 
 
