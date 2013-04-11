@@ -18,7 +18,7 @@ Usage:
 
 """
 
-import sys
+import fractions
 
 import numpy as np
 import scipy.stats
@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import MultipleLocator
 
 
 # parameters for pretty plots in the ggplot style
@@ -344,7 +345,7 @@ class Plot(object):
         return axes
 
     def _plot_ax(self, agg, ax=None,
-                   title='', kind='bar', legend=True,
+                   title='', kind='bar', legend=None,
                    xtickson=True, ytickson=True,
                    no_yerr=False, numb=False, autoscale=True, order=None,
                    **kwargs):
@@ -362,11 +363,8 @@ class Plot(object):
             p_yerr = pandas.DataFrame(p_yerr).T
         else:
             # make columns which will turn into legend entries
-            for name in agg.columns.names:
-                if name.startswith('cols.'):
-                    mean = mean.unstack(level=name)
-                    p_yerr = p_yerr.unstack(level=name)
-
+            mean = self._unstack_levels(mean, 'cols')
+            p_yerr = self._unstack_levels(p_yerr, 'cols')
         if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
             print 'WARNING: Beanplot not available for a single measurement'
@@ -377,20 +375,19 @@ class Plot(object):
             self.lineplot(mean, yerr=p_yerr, ax=ax)
         elif kind == 'bean':
             autoscale = False  # FIX: autoscaling is incorrect on beanplots
-            #if len(mean.columns) <= 2:
-            ax = self.beanplot(agg, ax=ax, order=order, **kwargs)#, pos=range(len(mean.index)))
-            #else:
-                #raise Exception('Beanplot is not available for more than two '
-                                #'classes.')
+            ax, mean = self.beanplot(agg, ax=ax, order=order, **kwargs)
         else:
             raise Exception('%s plot not recognized. Choose from '
                             '{bar, line, bean}.' %kind)
 
         # TODO: xticklabel rotation business is too messy
-        if 'xticklabels' in kwargs:
-            ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
-        if not xtickson:
-            ax.set_xticklabels(['']*len(ax.get_xticklabels()))
+        #if 'xticklabels' in kwargs:
+            #ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
+        #if not xtickson:
+            #ax.set_xticklabels(['']*len(ax.get_xticklabels()))
+
+
+        ax.set_xticklabels(self._format_labels(labels=mean.index))
 
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
@@ -441,13 +438,6 @@ class Plot(object):
         else:
             ax.set_ylabel(self._get_title(mean, 'cols'))
 
-        # set x tick labels
-        #FIX: data.index returns float even if it is int because dtype=object
-        #if len(mean.index) == 1:  # no need to put a label for a single bar group
-            #ax.set_xticklabels([''])
-        #else:
-        ax.set_xticklabels(mean.index.tolist())
-
         ax.set_title(title)
         self._draw_legend(ax, visible=legend, data=mean, **kwargs)
         if numb == True:
@@ -458,9 +448,19 @@ class Plot(object):
     def _get_title(self, data, pref):
         if pref == 'cols':
             dnames = data.columns.names
+            try:
+                dlevs = data.columns.levels
+            except:
+                dlevs = [data.columns]
         else:
             dnames = data.index.names
+            try:
+                dlevs = data.index.levels
+            except:
+                dlevs = [data.index]
         title = [n.split('.',1)[1] for n in dnames if n.startswith(pref+'.')]
+        levels = [l for l,n in zip(dlevs,dnames) if n.startswith(pref+'.')]
+        title = [n for n,l in zip(title,levels) if len(l) > 1]
 
         title = ', '.join(title)
         return title
@@ -470,7 +470,18 @@ class Plot(object):
         if l is None:  # create a new legend
             l = ax.legend()
         l.legendPatch.set_alpha(0.5)
-        l.set_title(self._get_title(data, 'cols'))
+
+        try:  # may or may not have any columns
+            l.set_title(self._get_title(data, 'cols'))
+        except:
+            pass
+        new_texts = self._format_labels(data.columns)
+        texts = l.get_texts()
+        for text, new_text in zip(texts, new_texts):
+            text.set_text(new_text)
+
+        #loc='center left', bbox_to_anchor=(1.3, 0.5)
+        #loc='upper right', frameon=False
 
         if 'legend_visible' in kwargs:
             l.set_visible(kwargs['legend_visible'])
@@ -481,6 +492,26 @@ class Plot(object):
                 l.set_visible(False)
             else:
                 l.set_visible(True)
+
+    def _format_labels(self, labels='', names=''):
+        """Formats labels to avoid uninformative (singular) entries
+        """
+        if len(labels) > 1:
+            try:
+                labels.levels
+            except:
+                new_labs = [str(l) for l in labels]
+            else:
+                sel = [i for i,l in enumerate(labels.levels) if len(l) > 1]
+                new_labs = []
+                for r in labels:
+                    label = [l for i,l in enumerate(r) if i in sel]
+                    if len(label) == 1:
+                        label = label[0]
+                    new_labs.append(str(label))
+        else:
+            new_labs = ''
+        return new_labs
 
     def hide_plots(self, nums):
         """
@@ -522,11 +553,11 @@ class Plot(object):
         width = .75 / n
         rects = []
         for i, (label, column) in enumerate(data.iteritems()):
-            rect = ax.bar(idx+i*width+width/2, column, width, label=str(label),
+            rect = ax.bar(idx + i*width - .75/2, column, width, label=str(label),
                 yerr=yerr[label].tolist(), color = colors[i], ecolor='black')
             # TODO: yerr indexing might need fixing
             rects.append(rect)
-        ax.set_xticks(idx + width*n/2 + width/2)
+        ax.set_xticks(idx)# + width*n/2 + width/2)
         ax.legend(rects, data.columns.tolist())
 
         return ax
@@ -559,15 +590,19 @@ class Plot(object):
             lines.append(line)
             ax.errorbar(x, column, yerr=yerr[label].tolist(), fmt=None,
                 ecolor='black')
-        #ticks = ax.get_xticks().astype(int)
-        #if ticks[-1] >= len(data.index):
-            #labels = data.index[ticks[:-1]]
-        #else:
-            #labels = data.index[ticks]
-        #ax.set_xticklabels(labels)
-        #ax.legend()
-        #loc='center left', bbox_to_anchor=(1.3, 0.5)
-        #loc='upper right', frameon=False
+        step = np.ptp(x) / (len(x) - 1.)
+        xlim = ax.get_xlim()
+        ax.set_xlim((xlim[0] - step/2, xlim[1] + step/2))
+        ax.set_xticks(x)
+
+        # nicely space tick labels
+        if len(x) <= 5:
+            largest = len(x)
+        else:
+            largest = [fractions.gcd(len(x),i+1) for i in range(5)]
+            largest = np.argsort(largest)[-1] + 1
+        majorLocator = MultipleLocator(largest)
+        ax.xaxis.set_major_locator(majorLocator)
         return ax
 
     def scatter(self, x, y, ax=None, labels=None, title='', **kwargs):
@@ -781,7 +816,7 @@ class Plot(object):
             print 'Cannot plot more than 2 dims'
 
 
-    def _violinplot(self, data, pos, rlabels, ax=None, bp=False, cut=None, **kwargs):
+    def _violinplot(self, data, pos, rlabels, sel, ax=None, bp=False, cut=None, **kwargs):
         """
         Make a violin plot of each dataset in the `data` sequence.
 
@@ -794,17 +829,22 @@ class Plot(object):
             m = low #lower bound of violin
             M = high #upper bound of violin
             x = np.linspace(m, M, 100) # support for violin
-            v1 = k1.evaluate(x) # violin profile (density curve)
-            v1 = w*v1/v1.max() # scaling the violin to the available space
-            v2 = k2.evaluate(x) # violin profile (density curve)
-            v2 = w*v2/v2.max() # scaling the violin to the available space
+            if k1 is not None:
+                v1 = k1.evaluate(x) # violin profile (density curve)
+                v1 = w*v1/v1.max() # scaling the violin to the available space
+            if k2 is not None:
+                v2 = k2.evaluate(x) # violin profile (density curve)
+                v2 = w*v2/v2.max() # scaling the violin to the available space
 
             if ncols == 2:
-                ax.fill_betweenx(x, -v1 + p, p, facecolor='black', edgecolor='black')
-                ax.fill_betweenx(x, p, p + v2, facecolor='grey', edgecolor='gray')
+                if k1 is not None:
+                    ax.fill_betweenx(x, -v1 + p, p, facecolor='black', edgecolor='black')
+                if k2 is not None:
+                    ax.fill_betweenx(x, p, p + v2, facecolor='grey', edgecolor='gray')
             else:
-                ax.fill_betweenx(x, -v1 + p, p + v2, facecolor='black', edgecolor='black')
-
+                #if k1 is not None and k2 is not None:
+                ax.fill_betweenx(x, -v1 + p, p + v2, facecolor='black',
+                                     edgecolor='black')
 
         if pos is None:
             pos = [0,1]
@@ -814,39 +854,54 @@ class Plot(object):
         #for major_xs in range(data.shape[1]):
         for num, rlabel in enumerate(rlabels):
             p = pos[num]
-            d1 = data.ix[rlabel, 0]
-            k1 = scipy.stats.gaussian_kde(d1) #calculates the kernel density
+            d1 = data.ix[rlabel].icol(0)  # FIXME: from pandas 0.11 change to iloc
+            s1 = sel.ix[rlabel].icol(0)
+            if s1:
+                k1 = scipy.stats.gaussian_kde(d1)  # calculates kernel density
+            else:
+                k1 = None
+
             if data.shape[1] == 1:
                 d2 = d1
+                s2 = s1
                 k2 = k1
             else:
-                d2 = data.ix[rlabel, 1]
-                k2 = scipy.stats.gaussian_kde(d2) #calculates the kernel density
-            cutoff = .001
-            if cut is None:
-                upper = max(d1.max(),d2.max())
-                lower = min(d1.min(),d2.min())
-                stepsize = (upper - lower) / 100
-                area_low1 = 1  # max cdf value
-                area_low2 = 1  # max cdf value
-                low = min(d1.min(), d2.min())
-                while area_low1 > cutoff or area_low2 > cutoff:
-                    area_low1 = k1.integrate_box_1d(-np.inf, low)
-                    area_low2 = k2.integrate_box_1d(-np.inf, low)
-                    low -= stepsize
-                    #print area_low, low, '.'
-                area_high1 = 1  # max cdf value
-                area_high2 = 1  # max cdf value
-                high = max(d1.max(), d2.max())
-                while area_high1 > cutoff or area_high2 > cutoff:
-                    area_high1 = k1.integrate_box_1d(high, np.inf)
-                    area_high2 = k2.integrate_box_1d(high, np.inf)
-                    high += stepsize
-            else:
-                low, high = cut
+                d2 = data.ix[rlabel].icol(1)
+                s2 = sel.ix[rlabel].icol(1)
+                if s2:
+                    k2 = scipy.stats.gaussian_kde(d2)  # calculates kernel density
+                else:
+                    k2 = None
 
-            draw_density(p, low, high, k1, k2, ncols=data.shape[1])
+            if k1 is not None and k2 is not None:
+                cutoff = .001
+                if cut is None:
+                    if s1 and s2:
+                        high = max(d1.max(),d2.max())
+                        low = min(d1.min(),d2.min())
+                    elif s1:
+                        high = d1.max()
+                        low = d1.min()
+                    elif s2:
+                        high = d2.max()
+                        low = d2.min()
+                    stepsize = (high - low) / 100
+                    area_low1 = 1  # max cdf value
+                    area_low2 = 1  # max cdf value
+                    while area_low1 > cutoff or area_low2 > cutoff:
+                        area_low1 = k1.integrate_box_1d(-np.inf, low)
+                        area_low2 = k2.integrate_box_1d(-np.inf, low)
+                        low -= stepsize
+                    area_high1 = 1  # max cdf value
+                    area_high2 = 1  # max cdf value
+                    while area_high1 > cutoff or area_high2 > cutoff:
+                        area_high1 = k1.integrate_box_1d(high, np.inf)
+                        area_high2 = k2.integrate_box_1d(high, np.inf)
+                        high += stepsize
+                else:
+                    low, high = cut
 
+                draw_density(p, low, high, k1, k2, ncols=data.shape[1])
 
         # a work-around for generating a legend for the PolyCollection
         # from http://matplotlib.org/users/legend_guide.html#using-proxy-artist
@@ -854,15 +909,13 @@ class Plot(object):
         right = Rectangle((0, 0), 1, 1, fc="gray", ec='gray')
 
         ax.legend((left, right), data.columns.tolist())
-        #import pdb; pdb.set_trace()
         #ax.set_xlim(pos[0]-3*w, pos[-1]+3*w)
         #if bp:
             #ax.boxplot(data,notch=1,positions=pos,vert=1)
         return ax
 
-
-    def _stripchart(self, data, pos, rlabels, ax=None, mean=False, median=False,
-        width=None, discrete=True, bins=30):
+    def _stripchart(self, data, pos, rlabels, sel, ax=None,
+        mean=False, median=False, width=None, discrete=True, bins=30):
         """Plot samples given in `data` as horizontal lines.
 
         :Kwargs:
@@ -870,39 +923,32 @@ class Plot(object):
             median: plot median of each dataset as a dot if True.
             width: Horizontal width of a single dataset plot.
         """
-        def draw_lines(d, maxcount, hist, bin_edges, sides=None):
+        def draw_lines(d, sel, maxcount, hist, bin_edges, sides=None):
             if discrete:
                 bin_edges = bin_edges[:-1]  # upper edges not needed
                 hw = hist * w / (2.*maxcount)
             else:
                 bin_edges = d
                 hw = w / 2.
-
-            ax.hlines(bin_edges, sides[0]*hw + p, sides[1]*hw + p, color='white')
             if mean:  # draws a longer black line
                 ax.hlines(np.mean(d), sides[0]*2*w + p, sides[1]*2*w + p,
                     lw=2, color='black')
+            if sel:
+                ax.hlines(bin_edges, sides[0]*hw + p, sides[1]*hw + p, color='white')
             if median:  # puts a white dot
-                ax.plot(p, np.median(d), 'o', color='white', markeredgewidth=0)
-
-        #data, pos = self._beanlike_setup(data, ax)
+                ax.plot(p, np.median(d), 'x', color='white', mew=2)
 
         if width:
             w = width
         else:
-            #if pos is None:
-                #pos = [0,1]
             dist = np.max(pos)-np.min(pos)
             w = min(0.15*max(dist,1.0),0.5) * .5
 
-        #colnames = [d for d in data.columns.names if d.startswith('cols.') ]
-        #if len(colnames) == 0:  # nothing specified explicitly as a columns
-            #try:
-                #colnames = data.columns.levels[-1]
-            #except:
-                #colnames = data.columns
-
-        #func1d = lambda x: np.histogram(x, bins=bins)
+        # put rows and cols in cols, yerr in rows (original format)
+        data = self._stack_levels(data, 'cols')
+        data = self._unstack_levels(data, 'yerr').T
+        sel = self._stack_levels(sel, 'cols')
+        sel = self._unstack_levels(sel, 'yerr').T
         # apply along cols
         hist, bin_edges = np.apply_along_axis(np.histogram, 0, data, bins)
         # it return arrays of object type, so we got to correct that
@@ -912,73 +958,116 @@ class Plot(object):
 
         for n, rlabel in enumerate(rlabels):
             p = pos[n]
-            d = data.ix[:,rlabel]
-            if len(d.columns) == 1:
-                draw_lines(d.ix[:,0], maxcount, hist[0], bin_edges[0], sides=[-1,1])
+            d = data.ix[:, rlabel]
+            s = sel.ix[:, rlabel]
+
+            if len(d.columns) == 2:
+                draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[0],
+                    bin_edges[0], sides=[-1,0])
+                draw_lines(d.ix[:,1], s.ix[:,0], maxcount, hist[1],
+                    bin_edges[1], sides=[ 0,1])
             else:
-                draw_lines(d.ix[:,0], maxcount, hist[0], bin_edges[0], sides=[-1,0])
-                draw_lines(d.ix[:,1], maxcount, hist[1], bin_edges[1], sides=[ 0,1])
+                draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[n],
+                            bin_edges[n], sides=[-1,1])
 
         ax.set_xlim(min(pos)-3*w, max(pos)+3*w)
-        #ax.set_xticks([-1]+pos+[1])
         ax.set_xticks(pos)
-        #import pdb; pdb.set_trace()
-        #ax.set_xticklabels(['-1']+np.array(data.major_axis).tolist()+['1'])
-        if len(rlabels) > 1:
-            ax.set_xticklabels(rlabels)
-        else:
-            ax.set_xticklabels('')
-
         return ax
-
 
     def beanplot(self, data, ax=None, pos=None, mean=True, median=True, cut=None,
         order=None, discrete=True, **kwargs):
         """Make a bean plot of each dataset in the `data` sequence.
 
-        Reference: http://www.jstatsoft.org/v28/c01/paper
+        Reference: `http://www.jstatsoft.org/v28/c01/paper`_
         """
-
-        data_tr, pos, rlabels = self._beanlike_setup(data, ax, order)
+        data_tr, pos, rlabels, sel = self._beanlike_setup(data, ax, order)
+        data_mean = self._stack_levels(data_tr, 'cols')
+        data_mean = self._unstack_levels(data_mean, 'yerr')
+        data_mean = data_mean.mean(1)
 
         dist = np.max(pos) - np.min(pos)
         w = min(0.15*max(dist,1.0),0.5) * .5
-        ax = self._stripchart(data, pos, rlabels, ax=ax, mean=mean, median=median,
+        ax = self._stripchart(data_tr, pos, rlabels, sel, ax=ax, mean=mean, median=median,
             width=0.8*w, discrete=discrete)
-        ax = self._violinplot(data_tr, pos, rlabels, ax=ax, bp=False, cut=cut)
+        ax = self._violinplot(data_tr, pos, rlabels, sel, ax=ax, bp=False, cut=cut)
 
-        return ax
+        return ax, data_mean
+
+    def _unstack_levels(self, data, pref):
+        try:
+            levels = [n for n in data.index.names if n.startswith(pref+'.')]
+        except:
+            unstacked = data
+        else:
+            try:
+                levs = data.columns.names + levels
+            except:
+                levs = levels
+            if len(levels) == 1:
+                levels = levels[0]
+            unstacked = data.unstack(levels)
+            unstacked.columns.names = levs
+        return unstacked
+
+    def _stack_levels(self, data, pref):
+        try:
+            levels = [n for n in data.columns.names if n.startswith(pref+'.')]
+        except:
+            stacked = data
+        else:
+            if len(levels) == 1:
+                levels = levels[0]
+            stacked = data.stack(levels)
+        return stacked
 
     def _beanlike_setup(self, data, ax, order=None):
-        data = pandas.DataFrame(data)  # Series will be forced into a DataFrame
-        data = data.unstack([n for n in data.index.names if n.startswith('yerr.')])
-        data = data.unstack([n for n in data.index.names if n.startswith('rows.')])
-        rlabels = data.columns
-        data = data.unstack([n for n in data.index.names if n.startswith('yerr.')])
-        data = data.T  # now rows and values are in rows, cols in cols
+        if self._stack_levels(data, 'rows').shape[1] > 2:  # more than 2 columns
+            new_levs = []
+            for n in data.columns.names:
+                if n.startswith('cols.'):
+                    new_lev = 'rows.' + n.split('cols.')[1]
+                else:
+                    new_lev = n
+                new_levs.append(new_lev)
+            data.columns.names = new_levs
 
-        #if len(data.columns) > 2:
-            #raise Exception('Beanplot cannot handle more than two categories')
+            idx = [d + (0,) for d in data.columns]
+            data_new = pandas.DataFrame(data, columns=idx)
+            data_new.columns.names = data.columns.names + ['cols.fakecol']
+            data_new.ix[:] = np.array(data)
+            data = data_new
+
+
+        def mask(data):
+            ptp = np.ptp(np.array(data), axis=0)
+            sel = np.logical_or(ptp == 0, np.isnan(ptp))
+            sel = np.logical_not(sel)
+            return sel
+
+        sel = data.apply(mask)
+        sel = pandas.DataFrame(sel).T
+        sel.index.names = ['yerr.mask']
+        sel = self._unstack_levels(sel, 'yerr')
+        sel = self._unstack_levels(sel, 'rows')
+        sel = self._unstack_levels(sel, 'yerr')
+        sel = sel.T  # now rows and yerr are in rows, cols in cols
+
+        data = pandas.DataFrame(data)  # Series will be forced into a DataFrame
+        data = self._unstack_levels(data, 'yerr')
+        data = self._unstack_levels(data, 'rows')
+        rlabels = data.columns
+        data = self._unstack_levels(data, 'yerr')
+        data = data.T  # now rows and yerr are in rows, cols in cols
+
         if len(data.index.levels[-1]) <= 1:
             raise Exception('Cannot make a beanplot for a single observation')
-
-        ## put columns at the bottom so that it's easy to iterate in violinplot
-        #order = {'rows': [], 'cols': []}
-        #for i,n in enumerate(data.columns.names):
-            #if n.startswith('cols.'):
-                #order['cols'].append(i)
-            #else:
-                #order['rows'].append(i)
-        #data = data.reorder_levels(order['rows'] + order['cols'], axis=1)
 
         if ax is None:
             ax = self.next()
         #if order is None:
         pos = range(len(rlabels))
-        #else:
-            #pos = np.lexsort((np.array(data.index).tolist(), order))
 
-        return data, pos, rlabels
+        return data, pos, rlabels, sel
 
 
 if __name__ == '__main__':
