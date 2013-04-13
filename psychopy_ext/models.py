@@ -135,13 +135,13 @@ class Model(object):
 
         if type(names) == str:
             array = scipy.misc.imread(names, flatten=True)
-            array = scipy.misc.imresize(array, 256./np.max(array.shape))
+            array = self._prepare_im(array)
         elif type(names) in [list, tuple]:
             if type(names[0]) == str:
                 arr = []
                 for n in names:
                     im = scipy.misc.imread(n, flatten=True)
-                    im = scipy.misc.imresize(im, 256./np.max(im.shape))
+                    im = self._prepare_im(im)
                     arr.append(im)
                 array = np.array(arr)
             else:
@@ -153,6 +153,12 @@ class Model(object):
 
         array = array.astype(float)
         return array
+
+    def _prepare_im(self, im):
+        large = np.max(im.shape)
+        if large > 256:
+            im = scipy.misc.imresize(im, 256./large)
+        return im
 
 
     def compare(self, ims):
@@ -301,8 +307,7 @@ class GaborJet(Model):
     Original implementation copyright 2004 Xiaomin Yue
     """
     def run(self, ims=None):
-        if ims is None:
-            ims = [self.get_testim()]
+        ims = self.input2array(ims)
         JetsMagnitudes = []
         JetsPhases = []
         for im in ims:
