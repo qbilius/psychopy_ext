@@ -1,6 +1,28 @@
 *Please refer to the [online documentation](https://psychopy_ext.readthedocs.org) for a more in depth explanation how to use the package.*
 
 
+What is it?
+===========
+
+`psychopy_ext` is a unified framework for designing, building, and analyzing neuroscience experiments.
+Unlike *PsychoPy*, *PyMVPA* or *matplotlib* that are very flexible and support multiple options to
+suit everyone’s needs, the underlying philosophy of `psychopy_ext`
+is to act as the glue at a higher level of operation by choosing reasonable defaults
+for these packages and providing patterns for common tasks with a minimal user intervention.
+An established framework saves time and helps to avoid mistakes.
+Surely "one size fits all" approach can never suit everybody's needs but this
+library should at least greatly simplify creation of your custom scripts.
+
+Features:
+
+- Neat project organization
+- Templates for building experiments
+- Automatic modes for running experiments
+- Automatic GUI and command-line interpreter
+- Simplified descriptive statistics
+- Pretty plotting
+
+
 Quick start
 ===========
 
