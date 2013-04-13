@@ -45,6 +45,19 @@ but there are some limitations:
 - Unit testing is only implemented for `models` (HMAX and GaborJet)
 
 
+Future roadmap:
+
+- Generate full papers via '[Open Science Paper](https://github.com/cpfaff/Open-Science-Paper)'
+and '[PythonTeX](https://github.com/gpoore/pythontex)'
+- README generation with the most common commands
+- Threaded GUI app so that it would stay open after running the experiment
+- Better command-line operation
+- Browser-based project management tool
+- extraInfo and runParams should become classes with tips, lists etc
+- Full fMRI preprocessing support (maybe)
+- Force metadata by turning `trialList` into a class
+
+
 Introduction
 ============
 
