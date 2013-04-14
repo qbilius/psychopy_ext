@@ -1,4 +1,5 @@
-*Please refer to the [online documentation](https://psychopy_ext.readthedocs.org) for a more in depth explanation how to use the package.*
+*Please refer to the [online documentation](https://psychopy_ext.readthedocs.org/en/latest/)
+for a more in depth explanation how to use the package.*
 
 
 What is it?
@@ -13,7 +14,10 @@ An established framework saves time and helps to avoid mistakes.
 Surely "one size fits all" approach can never suit everybody's needs but this
 library should at least greatly simplify creation of your custom scripts.
 
-Features:
+*(Read more [in the documentation](https://psychopy_ext.readthedocs.org/en/latest/whyuse.html))*
+
+Features
+--------
 
 - Neat project organization
 - Templates for building experiments
