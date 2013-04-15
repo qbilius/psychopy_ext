@@ -9,6 +9,9 @@
 
 import wx, sys, inspect
 from types import ModuleType
+
+from psychopy import core
+
 # some modules are only available in Python 2.6
 try:
     from collections import OrderedDict
@@ -38,6 +41,31 @@ class Control(object):
             title
             size
         """
+        # Some basic built-in functions
+        try:
+            action = sys.argv[1]
+        except: # otherwise do standard stuff
+            pass
+        else:
+            if sys.argv[1] in ['--commit','--register','--push']:
+                if sys.argv[1] == '--commit':
+                    try:
+                        message = sys.argv[2]
+                    except:
+                        sys.exit('Please provide a message for committing changes')
+                    else:
+                        _repo_action(action[2:], message)
+                elif action == '--register':
+                    try:
+                        tag = sys.argv[2]
+                    except:
+                        sys.exit('Please provide a tag to register')
+                    else:
+                        _repo_action(action[2:], tag)
+                elif action == '--push':
+                    _repo_action(action[2:])
+                sys.exit()
+
         # direct path to the experiment
         if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):
             exp_choices = [('Experiment', exp_choices, 'main')]
@@ -520,3 +548,64 @@ def setup_page(choice, pagepanel):
     panelsizer = wx.BoxSizer()
     panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)
     pagepanel.SetSizer(panelsizer)
+
+def _detect_rev():
+    """
+    Detects revision control system.
+
+    Recognizes: git, hg
+    """
+    revs = ['git', 'hg']
+    for rev in revs:
+        try:
+            out, err = core.shellCall(rev + ' status', stderr=True)
+        except:  # revision control is not installed
+            pass
+        else:
+            if err[:5] not in ['abort', 'fatal']:
+                return rev
+
+def _repo_action(cmd, **kwargs):
+    """
+    Detects revision control system and performs a specified action.
+
+    Currently supported: committing changes, tagging the current version of the
+    repository (registration), and pushing.
+
+    'Registration' is inspired by the `Open Science Framework
+    <http://openscienceframework.org/>`_. Useful when you start running
+    participants so that you can always go back to that version.
+    """
+    rev = _detect_rev()
+    if rev == 'hg':
+        if cmd == 'push':
+            cmd = 'hg push'
+        elif cmd == 'commit':
+            'hg commit -A -m "%s"' % kwargs['message']
+        elif cmd == 'register':
+            cmd = 'hg tag %s' % kwargs['tag']
+        else:
+            raise Exception("%s is not supported for %s yet" % (rev, cmd))
+
+    elif rev == 'git':
+        if cmd == 'push':
+            cmd = 'git push'
+        elif cmd == 'commit':
+            'git commit -am "%s"' % kwargs['message']
+        else:
+            raise Exception("%s is not supported for %s yet" % (rev, cmd))
+
+    elif rev is None:
+        raise Exception("no revision control detected")
+    else:
+        raise Exception("%s is not supported for %s yet" % (rev, cmd))
+
+    out, err = core.shellCall(cmd, stderr=True)
+    cmd = '$ ' + cmd
+    write = [cmd]
+    if out != '':
+        write.append(out)
+    if err != '':
+        write.append(err)
+    sys.stdout.write('\n'.join(write) + '\n')
+    return cmd, out, err

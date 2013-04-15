@@ -104,7 +104,7 @@ Trials are composed of events, which we define in a dictionary with three keys:
 - ``func`` -- function controling what to do with those stimuli. There are several predefined ones for you:
     - :func:`exp.Experiment.idle_event` which simply sits and waits until its time is up while catching key presses
     - :func:`exp.Experiment.feedback` for providing feedback after the trial with a fixation color change (correct response -- green, incorrect - red)
-    
+
 Example::
 
     self.trial = [{'dur': 0.300,  # in seconds
@@ -129,6 +129,21 @@ Create a trial list
 
 This is the place to define properties of each trial. It is advisable to start by defining the total trial duration (though if you don't, :func:`set_TrialHandler` will do that for you).
 
+Each dictionary entry will be recorded in a separate column in the output file
+so think about good data sharing practices (`White et al. (2013) <http://dx.doi.org/10.7287/peerj.preprints.7>`_):
+- One column - one value (i.e., a number, a string, or a boolean). No lists,
+dictionaries etc. You don't really need them for stimulus construction during
+the runtime -- instead, implement stimulus construction in the trial's `func`
+function. Trust me, you can do it!
+- Dates are formatted as YYYY-MM-DD per `ISO 8601 <http://www.iso.org/iso/support/faqs/faqs_widely_used_standards/widely_used_standards_other/iso8601>`_ and XKCD's `Public service announcement <http://xkcd.com/1179/>`_
+- Avoid special characters and commas (as the output is a plain comma-separated
+file).
+- Blank values are supposed to be ''. No None, no NA or `numpy.nan`.
+
+*What should go into a data file?* Your data file is
+supposed to describe *completely* what you did so that it was perfectly
+reproducible by somebody else. That should be your guiding principle.
+
 Example::
 
     expPlan = []
@@ -148,7 +163,7 @@ Example::
                 ('rt', ''),
                 ]))
 
-----------------------                
+----------------------
 Running the experiment
 ----------------------
 
@@ -159,12 +174,46 @@ The experimental loop is controlled by the ``loop_trials`` function which:
 - goes though each trial and each event in each trial
 - catches key presses and records them using the `post_trial`` function (where the mapping between key input and ``self.computer.validResponses`` is done, and accuracy and response time are computed)
 
-----------------------------
-Pushing data to a repository
-----------------------------
+-------------------------------------------
+Committing and pushing data to a repository
+-------------------------------------------
 
-If you provide the ``push`` flag, new data (and log files) are automatically committed and pushed to their remote Mercurial repository.
+Motivation
+^^^^^^^^^^
 
+In the ideal world, how should data be treated? It should be registered at the
+point of its acquiry meaning that one should be able to go back and see it as
+it came out. Data files are not immutable. Sometimes there is a spelling mistake that
+you want to fix, or an extra column that you realized only two participants later you should have included. So you want to overwrite your data which poses a problem that
+it may go wrong but you notice it too late. This is where the confidence of
+having the original version help.
+
+Of course, you could keep all versions of your data files but this is both
+inefficient (a year later, will you remember whether 'data_corr' or 'data_final'
+was the correct one?) and unncessary. It is much easier to track (and record)
+changes. Welcome revision control systems (`learn more <http://gestaltrevision.be/wiki/python/vc>`_).
+
+This approach provides a more stringent data and source code handling.
+Bonus: simple plot sharing as can be seen in the utl repo.
+
+What's available
+^^^^^^^^^^^^^^^^
+
+``register`` when you want to put a tag at some important point of your
+experiment development, for example, when you're about to test the first
+participant or when you do a pilot, so that you can always go back to that
+point in time and see how your code looked exactly. 'Registration' is
+inspired by the `Open Science Framework <http://openscienceframework.org/>`_
+``commit`` after data collection so that data files are added to the
+revision control system right away
+``push`` to put your data on the remote repository immediately. This is
+recommended over ``commit`` unless you run experiments without the internet connection.
+
+You can either add these flags when you run the experiment (except ``register``),
+for example, so
+that data is pushed right away, or, if you forgot to do so intially, just run
+``python run.py --push`` (or another flag) and the operation will be completed.
+(Note: for ``register`` and ``commit``, a tag or a message has to be included.)
 
 --------------
 Other features

@@ -39,7 +39,8 @@ class Confsup(exp.Experiment):
                 ('noOutput', False),  # do you want output? or just playing around?
                 ('debug', False),  # not fullscreen presentation etc
                 ('autorun', 0),  # if >0, will autorun at the specified speed
-                ('push', False),  # commit and push to a hg repo?
+                ('commit', False),  # add and commit changes, like new data files?
+                ('push', False),  # add, commit and push to a hg repo?
                 ]),
             actions=['run', 'autorun'],  # which functions can be called from GUI/CLI
         ):

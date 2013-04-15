@@ -19,6 +19,8 @@ import wx
 from psychopy import visual, core, event, info, logging, misc, monitors
 from psychopy.data import TrialHandler
 
+import ui
+
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
 try:
@@ -160,6 +162,7 @@ class Experiment(TrialHandler):
         self.runParams = OrderedDict([('noOutput', False),
                 ('debug', False),
                 ('autorun', 0),  # if >0, will autorun at the specified speed
+                ('commit', False),  # commit data the moment it comes out
                 ('push', False),
                 ])
         if extraInfo is not None:
@@ -706,7 +709,9 @@ class Experiment(TrialHandler):
         self.loop_trials(
             datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
             noOutput=self.runParams['noOutput'])
-        if self.runParams['push']:
+        if self.runParams['register']:
+            self.register()
+        elif self.runParams['push']:
             self.commitpush()
 
     def autorun(self):
@@ -965,43 +970,32 @@ class Experiment(TrialHandler):
 
         return thisTrial
 
-    def commitpush(self, message=None):
+    def commit(self, message=None):
         """
-        Add, commit, and push changes to a remote repository.
+        Add and commit changes in a repository.
 
         TODO: How to set this up.
         """
         if message is None:
             message = 'data for participant %s' % self.extraInfo['subjID']
-        rev = self._detect_rev()
-        if rev == 'hg':
-            cmd = 'hg commit -A -m "%s"' % message
-            hg, err = core.shellCall(cmd, stderr=True)
-            cmd = '$ ' + cmd
-            self.logFile.write('\n'.join((cmd, hg, err)))
-            sys.stdout.write('\n'.join((cmd, hg, err)))
-            if err == '':
-                cmd = 'hg push'
-                hg, err = core.shellCall(cmd, stderr=True)
-                cmd = '$ ' + cmd
-                self.logFile.write('\n'.join((cmd, hg, err)))
-                sys.stdout.write('\n'.join((cmd, hg, err)))
-        else:
-            logging.error('%s revision control is not supported for commiting' %
-                           rev)
+        cmd, out, err = ui._repo_action('commit', message=message)
+        self.logFile.write('\n'.join(cmd, out, err))
 
-    def _detect_rev(self):
-        """
-        Detects revision control system.
+        return err
 
-        Recognizes: git, hg, svn
+    def commitpush(self, message=None):
         """
-        caller = sys.argv[0]
-        revs = ['git', 'hg', 'svn']
-        for rev in revs:
-            revdir = os.path.join(os.path.dirname(caller), '.' + rev)
-            if os.path.exists(caller) and os.path.isdir(revdir):
-                return rev
+        Add, commit, and push changes to a remote repository.
+
+        Currently, only Mercurial repositories are supported.
+
+        TODO: How to set this up.
+        TODO: `git` support
+        """
+        err = self.commit(messsage=message)
+        if err == '':
+            out = ui._repo_action('push')
+            self.logFile.write('\n'.join(out))
 
     def quit(self):
         """What to do when exit is requested.
