@@ -16,6 +16,8 @@ Features
 - Automatic GUI and command-line interpreter
 - Simplified descriptive statistics
 - Pretty plotting
+- Built-in simple models of vision (Pixel-wise difference, GaborJet, and
+HMAX'99)
 
 Contents
 --------
@@ -26,4 +28,7 @@ Contents
    quickstart
    whyuse
    library/index
+
+API reference
+-------------
    api/index

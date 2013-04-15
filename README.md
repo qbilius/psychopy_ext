@@ -25,6 +25,8 @@ Features
 - Automatic GUI and command-line interpreter
 - Simplified descriptive statistics
 - Pretty plotting
+- Built-in simple models of vision (Pixel-wise difference, GaborJet, and
+HMAX'99)
 
 
 Quick start
@@ -71,7 +73,7 @@ but there are some limitations:
 - Unit testing is only implemented for `models` (HMAX and GaborJet)
 
 
-Future roadmap:
+Future roadmap (a wishlist):
 
 - Generate full papers via '[Open Science Paper](https://github.com/cpfaff/Open-Science-Paper)'
 and '[PythonTeX](https://github.com/gpoore/pythontex)'
@@ -82,6 +84,7 @@ and '[PythonTeX](https://github.com/gpoore/pythontex)'
 - extraInfo and runParams should become classes with tips, lists etc
 - Full fMRI preprocessing support (maybe)
 - Force metadata by turning `trialList` into a class
+- Integrated Bayesian statistics
 
 
 Introduction
