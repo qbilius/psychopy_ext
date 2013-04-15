@@ -17,7 +17,7 @@ Features
 - Simplified descriptive statistics
 - Pretty plotting
 - Built-in simple models of vision (Pixel-wise difference, GaborJet, and
-HMAX'99)
+  HMAX'99)
 
 Contents
 --------
