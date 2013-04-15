@@ -34,12 +34,15 @@ class Mock(object):
             mockType = type(name, (), {})
             mockType.__module__ = __name__
             return mockType
+        elif name == 'pi':
+            return 3.14
         else:
             return Mock()
 
 MOCK_MODULES = ['wx', 'numpy',
     'psychopy', 'psychopy.data', 'pandas', 'matplotlib',
-    'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'matplotlib.patches',
+    'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1',
+    'matplotlib.patches', 'matplotlib.ticker',
     'scipy', 'scipy.stats', 'scipy.misc', 'scipy.ndimage',
     'mvpa2', 'mvpa2.suite', 'nibabel']
 

@@ -12,7 +12,7 @@ Paths should be customized: ``PATHS = exp.set_paths('.', computer)``. This sets 
 
 All "callable" classes should accept at least the following variables (of type :class:`exp.OrderedDict`):
 
-- ``extraInfo`` -- all relevant information about the participant, the session she is doing etc. This information is recorded in the output data file (together with the collected data; see :ref:`create-trialList` for more). For example::
+- ``extraInfo`` -- all relevant information about the participant, the session she is doing etc. This information is recorded in the output data file (together with the collected data; see :ref:`create-trlist` for more). For example::
 
     extraInfo = OrderedDict([
         ('subjID', 'confsup_')
@@ -99,11 +99,15 @@ Create trial structure
 ----------------------
 
 Trials are composed of events, which we define in a dictionary with three keys:
+
 - ``dur`` -- duration of an event in seconds
-- ``display`` -- which stimuli are shown during an event. This might be limiting in certain cases, but you are free to directly use ``self.s`` to manipulate stimuli directly.
+- ``display`` -- which stimuli are shown during an event. This might be
+  limiting in certain cases, but you are free to directly use ``self.s`` to manipulate stimuli directly.
 - ``func`` -- function controling what to do with those stimuli. There are several predefined ones for you:
+
     - :func:`exp.Experiment.idle_event` which simply sits and waits until its time is up while catching key presses
-    - :func:`exp.Experiment.feedback` for providing feedback after the trial with a fixation color change (correct response -- green, incorrect - red)
+    - :func:`exp.Experiment.feedback` for providing feedback after the trial
+      with a fixation color change (correct response -- green, incorrect - red)
 
 Example::
 
@@ -122,7 +126,8 @@ Example::
                    'func': self.feedback}
                  ]
 
-.. _create-trialList:
+
+.. _create-trlist:
 -------------------
 Create a trial list
 -------------------

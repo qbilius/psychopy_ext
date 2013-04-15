@@ -145,6 +145,7 @@ class Plot(object):
         self.kind = kind
         self.subplotno = -1  # will get +1 after the plot command
         self.nrows_ncols = nrows_ncols
+        self.rcParams = plt.rcParams
         return (self.fig, self.axes)
 
     def __getattr__(self, name):
@@ -171,8 +172,8 @@ class Plot(object):
         """
         Returns the current or the requested axis from the current figure.
 
-        :note: The :class:`Plot()` is indexable so you should access axes as
-        `Plot()[key]` unless you want to pass a list like (row, col).
+        .. note: The :class:`Plot()` is indexable so you should access axes as
+                 `Plot()[key]` unless you want to pass a list like (row, col).
 
         :Kwargs:
             subplotno (int, default: None)
@@ -294,7 +295,7 @@ class Plot(object):
                 automatically based on `agg.columns.names` -- the first entry
                 to start with `subplots.` will be used. This is the default
                 output from `stats.aggregate` and is recommended.
-            - **kwargs
+            - kwargs
                 Keyword arguments for plotting
 
         :Returns:
@@ -392,7 +393,7 @@ class Plot(object):
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
         for label in labels:
-            if max_len > 20:
+            if max_len > 10:  #FIX to this: http://stackoverflow.com/q/5320205
                 label.set_rotation(90)
             else:
                 label.set_rotation(0)
@@ -626,7 +627,7 @@ class Plot(object):
                 A list of labels for each plotted point
             - title (str, default: '')
                 Plot title
-            - ** kwargs
+            - kwargs
                 Additional keyword arguments for `matplotlib.pyplot.scatter`
 
         :Return:
@@ -658,8 +659,8 @@ class Plot(object):
                 An axis to plot on.
             - title (str, default: '')
                 Plot title
-            - **kwargs
-                Keyword arguments to pass to `matplotlib.pyplot.imshow`
+            - kwargs
+                Keyword arguments to pass to :func:`matplotlib.pyplot.imshow`
 
         """
         if ax is None:
@@ -978,7 +979,7 @@ class Plot(object):
         order=None, discrete=True, **kwargs):
         """Make a bean plot of each dataset in the `data` sequence.
 
-        Reference: `http://www.jstatsoft.org/v28/c01/paper`_
+        Reference: `<http://www.jstatsoft.org/v28/c01/paper>`_
         """
         data_tr, pos, rlabels, sel = self._beanlike_setup(data, ax, order)
         data_mean = self._stack_levels(data_tr, 'cols')
