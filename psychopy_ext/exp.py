@@ -254,9 +254,10 @@ class Experiment(TrialHandler):
             self.logFile = logging.LogFile(logname, filemode='a', level=level)
 
             # Write system information first
-            if writesys: self.logFile.write('%s\n' % sysinfo)
-            self.logFile.write('\n\n' + '#'*40 + '\n\n')
-            self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
+            if writesys:
+                self.logFile.write('%s\n' % sysinfo)
+                self.logFile.write('\n\n' + '#'*40 + '\n\n')
+                self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
 
         # output to the screen
         logging.console.setLevel(level)
