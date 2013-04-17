@@ -992,7 +992,7 @@ class Experiment(TrialHandler):
         TODO: How to set this up.
         TODO: `git` support
         """
-        err = self.commit(messsage=message)
+        err = self.commit(message=message)
         if err == '':
             out = ui._repo_action('push')
             self.logFile.write('\n'.join(out))
