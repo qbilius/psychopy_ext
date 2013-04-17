@@ -54,14 +54,14 @@ class Control(object):
                     except:
                         sys.exit('Please provide a message for committing changes')
                     else:
-                        _repo_action(action[2:], message)
+                        _repo_action(action[2:], message=message)
                 elif action == '--register':
                     try:
                         tag = sys.argv[2]
                     except:
                         sys.exit('Please provide a tag to register')
                     else:
-                        _repo_action(action[2:], tag)
+                        _repo_action(action[2:], tag=tag)
                 elif action == '--push':
                     _repo_action(action[2:])
                 sys.exit()
@@ -579,19 +579,28 @@ def _repo_action(cmd, **kwargs):
     rev = _detect_rev()
     if rev == 'hg':
         if cmd == 'push':
-            cmd = 'hg push'
+            call = 'hg push'
         elif cmd == 'commit':
-            'hg commit -A -m "%s"' % kwargs['message']
+            if 'messsage' in kwargs:
+                call = 'hg commit -A -m "%s"' % kwargs['message']
+            else:
+                raise Exception('Please provide a message for committing changes')
         elif cmd == 'register':
-            cmd = 'hg tag %s' % kwargs['tag']
+            if 'tag' in kwargs:
+                call = 'hg tag %s' % kwargs['tag']
+            else:
+                raise Exception('Please provide a tag to register')
         else:
             raise Exception("%s is not supported for %s yet" % (rev, cmd))
 
     elif rev == 'git':
         if cmd == 'push':
-            cmd = 'git push'
+            call = 'git push'
         elif cmd == 'commit':
-            'git commit -am "%s"' % kwargs['message']
+            if 'messsage' in kwargs:
+                call = 'git commit -am "%s"' % kwargs['message']
+            else:
+                raise Exception('Please provide a message for committing changes')
         else:
             raise Exception("%s is not supported for %s yet" % (rev, cmd))
 
@@ -599,13 +608,13 @@ def _repo_action(cmd, **kwargs):
         raise Exception("no revision control detected")
     else:
         raise Exception("%s is not supported for %s yet" % (rev, cmd))
-
-    out, err = core.shellCall(cmd, stderr=True)
-    cmd = '$ ' + cmd
-    write = [cmd]
+    
+    out, err = core.shellCall(call, stderr=True)
+    call = '$ ' + call
+    write = [call]
     if out != '':
         write.append(out)
     if err != '':
         write.append(err)
     sys.stdout.write('\n'.join(write) + '\n')
-    return cmd, out, err
+    return call, out, err
