@@ -11,7 +11,7 @@ A library of helper functions for creating and running experiments.
 All experiment-related methods are kept here.
 """
 
-import sys, os, csv, glob, random
+import sys, os, csv, glob, random, warnings
 from UserDict import DictMixin
 
 import numpy as np
@@ -169,6 +169,11 @@ class Experiment(TrialHandler):
             self.extraInfo.update(extraInfo)
         if runParams is not None:
             self.runParams.update(runParams)
+
+        try:
+            self.validResponses = self.computer.validResponses
+        except:
+            self.validResponses = {'0': 0, '1': 1}
 
     def setup(self, create_win=True):
         """
@@ -386,7 +391,7 @@ class Experiment(TrialHandler):
             viewScale = self.computer.viewScale
         )
 
-    def create_fixation(self, shape='complex', color='black'):
+    def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
 
         :Kwargs:
@@ -404,8 +409,8 @@ class Experiment(TrialHandler):
 
         """
         if shape == 'complex':
-            r1 = .3  # radius of outer circle (degrees)
-            r2 = .1  # radius of inner circle (degrees)
+            r1 = size  # radius of outer circle (degrees)
+            r2 = size/3.  # radius of inner circle (degrees)
             oval = visual.Circle(
                 self.win,
                 name   = 'oval',
@@ -455,7 +460,7 @@ class Experiment(TrialHandler):
                     color  = 'red',
                     tex    = None,
                     mask   = 'circle',
-                    size   = .2,
+                    size   = size,
                 ),
                 name='fixation')
 
@@ -618,7 +623,7 @@ class Experiment(TrialHandler):
             - wrong: fixation change to red
         """
         thisResp = allKeys[-1]
-        subjResp = self.computer.validResponses[thisResp[0]]
+        subjResp = self.validResponses[thisResp[0]]
         if not isinstance(thisEvent['display'], tuple) and \
             not isinstance(thisEvent['display'], list):
                 display = [thisEvent['display']]
@@ -663,7 +668,7 @@ class Experiment(TrialHandler):
             add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
             return self.trial[0]['dur'] + add
 
-        invValidResp = dict([[v,k] for k,v in self.computer.validResponses.items()])
+        invValidResp = dict([[v,k] for k,v in self.validResponses.items()])
         sortKeys = sorted(invValidResp.keys())
         invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
         # speed up the experiment
@@ -817,7 +822,7 @@ class Experiment(TrialHandler):
                     allKeys += eventKeys
                 # this is to get keys if we did not do that during trial
                 allKeys += event.getKeys(
-                    keyList = self.computer.validResponses.keys(),
+                    keyList = self.validResponses.keys(),
                     timeStamped = trialClock)
 
             thisTrial = self.post_trial(thisTrial, allKeys)
@@ -932,7 +937,7 @@ class Experiment(TrialHandler):
                     allKeys = [fakeKey]
             else:
                 allKeys = event.getKeys(
-                    keyList = self.computer.validResponses.keys(),
+                    keyList = self.validResponses.keys(),
                     timeStamped = RT_clock)
             self.last_keypress()
         return allKeys
@@ -960,7 +965,7 @@ class Experiment(TrialHandler):
         """
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
-            thisTrial['subjResp'] = self.computer.validResponses[thisResp[0]]
+            thisTrial['subjResp'] = self.validResponses[thisResp[0]]
             acc = thisTrial['corrResp']==thisTrial['subjResp']
             thisTrial['accuracy'] = self.signalDet[acc]
             thisTrial['rt'] = thisResp[1]
@@ -1096,14 +1101,36 @@ class Experiment(TrialHandler):
                 #accuracy += 1
         #acc = accuracy * 100 / len(df)
         #return acc
-
     def weighted_sample(self, probs):
-        if not np.allclose(np.sum(probs), 1):
-            raise Exception('Probabilities must add up to one.')
+        warnings.warn("weighted_sample is deprecated")
+        return self.weighted_choice(self, weights=probs)
+
+    def weighted_choice(self, choices=None, weights=None):
+        """
+        Chooses an element from a list based on it's weight.
+
+        :Kwargs:
+            - choices (list, default: None)
+                If None, an index between 0 and ``len(weights)`` is returned.
+            - weights (list, default: None)
+                If None, all choices get equal weights.
+
+        :Returns:
+            An element from ``choices``
+        """
+        if choices is None:
+            if weights is None:
+                raise Exception('Please specify either choices or weights.')
+            else:
+                choices = range(len(weights))
+        elif weights is None:
+            weights = np.ones(len(choices)) / float(len(choices))
+        if not np.allclose(np.sum(weights), 1):
+            raise Exception('Weights must add up to one.')
         which = np.random.random()
         ind = 0
         while which>0:
-            which -= probs[ind]
+            which -= weights[ind]
             ind +=1
         ind -= 1
         return ind
