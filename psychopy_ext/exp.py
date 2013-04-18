@@ -155,7 +155,7 @@ class Experiment(TrialHandler):
         self.dataTypes = dataTypes
         self.originPath = originPath
 
-        self.signalDet = {False: 'Incorrect', True: 'Correct'}
+        #self.signalDet = {False: 'Incorrect', True: 'Correct'}
 
         # minimal parameters that Experiment expects in extraInfo and runParams
         self.extraInfo = OrderedDict([('subjID', 'subj')])
@@ -966,15 +966,52 @@ class Experiment(TrialHandler):
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
             thisTrial['subjResp'] = self.validResponses[thisResp[0]]
-            acc = thisTrial['corrResp']==thisTrial['subjResp']
+            acc = self.signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
             thisTrial['accuracy'] = self.signalDet[acc]
             thisTrial['rt'] = thisResp[1]
         else:
             thisTrial['subjResp'] = ''
-            thisTrial['accuracy'] = ''
+            acc = self.signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
+            thisTrial['accuracy'] = acc
             thisTrial['rt'] = ''
 
         return thisTrial
+
+    def signal_det(self, corr_resp, subj_resp):
+        """
+        Returns an accuracy label according the (modified) Signal Detection Theory.
+
+        ================  ===================  =================
+                          Response present     Response absent
+        ================  ===================  =================
+        Stimulus present  correct / incorrect  miss
+        Stimulus absent   false alarm          (empty string)
+        ================  ===================  =================
+
+        :Args:
+            corr_resp
+                What one should have responded. If no response expected
+                (e.g., no stimulus present), then it should be an empty string
+                ('')
+            subj_resp
+                What the observer responsed. If no response, it should be
+                an empty string ('').
+        :Returns:
+            A string indicating the type of response.
+        """
+        if corr_resp == '':  # stimulus absent
+            if subj_resp == '':  # response absent
+                resp = ''
+            else:  # response present
+                resp = 'false alarm'
+        else:  # stimulus present
+            if subj_resp == '':  # response absent
+                resp = 'miss'
+            elif corr_resp == subj_resp:  # correct response present
+                resp = 'correct'
+            else:  # incorrect response present
+                resp = 'incorrect'
+        return resp
 
     def commit(self, message=None):
         """
