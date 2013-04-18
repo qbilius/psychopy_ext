@@ -181,8 +181,13 @@ class Control(object):
                 if isinstance(value, bool):
                     try:
                         if sys.argv[i+1][0] != '-':
-                            sys.exit('Expected no value after %s because it '
-                                            'is bool' % input_key)
+                            input_value = eval(sys.argv[i+1])
+                            if not isinstance(input_value, bool):
+                                sys.exit('Expected True/False after %s' %
+                                         input_key)
+                            else:
+                                params[key] = input_value
+                            i += 1
                         else:
                             params[key] = True
                     except IndexError:  # this was the last argument
@@ -206,6 +211,7 @@ class Control(object):
                             params[key] = input_value
                     i += 1
                 i += 1
+
         class_init.extraInfo.update(extraInfo)
         class_init.runParams.update(runParams)
         class_init = class_obj(extraInfo=class_init.extraInfo,
@@ -323,6 +329,11 @@ class Control(object):
 def _get_classes(module, input_class_alias=None, class_order=None):
     """
     Finds all useable classes in a given module.
+
+    'Usable' means the ones that are not private
+    (class name does not start with '_').
+
+    TODO: maybe alse check if upon initialization has extraInfo and runParams
     """
     if class_order is None:
         class_aliases = []
@@ -332,24 +343,24 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     found_classes = inspect.getmembers(module, inspect.isclass)
     for name, obj in found_classes:
         init_vars = inspect.getargspec(obj.__init__)
-        try:
-            init_vars.args.index('extraInfo')
-            init_vars.args.index('runParams')
-        except:
-            pass
-        else:
-            if name[0] != '_':  # avoid private classes
-                class_alias = _get_class_alias(module, obj)
-                if class_alias == input_class_alias:
-                    class_obj = obj
-                if class_order is not None:
-                    try:
-                        idx = class_order.index(class_alias)
-                        class_aliases[idx] = (class_alias, obj)
-                    except:
-                        pass
-                else:
-                    class_aliases.append((class_alias, obj))
+        #try:
+            #init_vars.args.index('extraInfo')
+            #init_vars.args.index('runParams')
+        #except:
+            #pass
+        #else:
+        if name[0] != '_':  # avoid private classes
+            class_alias = _get_class_alias(module, obj)
+            if class_alias == input_class_alias:
+                class_obj = obj
+            if class_order is not None:
+                try:
+                    idx = class_order.index(class_alias)
+                    class_aliases[idx] = (class_alias, obj)
+                except:
+                    pass
+            else:
+                class_aliases.append((class_alias, obj))
     # if some class not found; get rid of it
     class_aliases = [c for c in class_aliases if c is not None]
     return class_aliases, class_obj
@@ -608,7 +619,7 @@ def _repo_action(cmd, **kwargs):
         raise Exception("no revision control detected")
     else:
         raise Exception("%s is not supported for %s yet" % (rev, cmd))
-    
+
     out, err = core.shellCall(call, stderr=True)
     call = '$ ' + call
     write = [call]
