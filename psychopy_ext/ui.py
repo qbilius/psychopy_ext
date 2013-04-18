@@ -592,7 +592,7 @@ def _repo_action(cmd, **kwargs):
         if cmd == 'push':
             call = 'hg push'
         elif cmd == 'commit':
-            if 'messsage' in kwargs:
+            if 'message' in kwargs:
                 call = 'hg commit -A -m "%s"' % kwargs['message']
             else:
                 raise Exception('Please provide a message for committing changes')
