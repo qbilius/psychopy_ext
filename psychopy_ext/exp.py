@@ -1022,7 +1022,7 @@ class Experiment(TrialHandler):
         if message is None:
             message = 'data for participant %s' % self.extraInfo['subjID']
         cmd, out, err = ui._repo_action('commit', message=message)
-        self.logFile.write('\n'.join(cmd, out, err))
+        self.logFile.write('\n'.join([cmd, out, err]))
 
         return err
 
