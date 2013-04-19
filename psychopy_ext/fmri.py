@@ -97,7 +97,8 @@ class Analysis(object):
             ('verbose', True),
             ('visualize', False),
             ('force', False),
-            ('dry', False)
+            ('dry', False),
+            ('reuserois', True),
             ])
         if extraInfo is not None:
             self.extraInfo.update(extraInfo)
@@ -171,7 +172,7 @@ class Analysis(object):
             plot_timecourse(df, plt=plt,
                 cols=['stim1.cond', 'name'])
         else:
-            agg = self.get_data(df)
+            agg = self.get_mri_data(df)
             order = [r[1] for r in self.rois]
             plt.plot(agg, subplots='ROI', subplots_order=order, kind='bar')
         plt.tight_layout()
@@ -275,12 +276,13 @@ class Analysis(object):
                             off = offset[ROI_list[1]]
                         else:
                             off = offset
-                        ds = self.nan_to_num(ds, value=0)
+                        #ds = np.nan_to_num(ds, value=0)
                         evds = self.ds2evds(ds, offset=off, dur=dur)
                     elif values in ['t', 'beta', 'sim']:
                         # SPM sets certain voxels to NaNs
                         # we just gonna convert them to 0
-                        evds = self.nan_to_num(ds)
+                        ds.samples = np.nan_to_num(ds.samples)
+                        evds = ds
 
                     if method == 'timecourse':
                         header, result = self.get_timecourse(evds)
@@ -304,7 +306,7 @@ class Analysis(object):
                 results.extend(temp_res)
 
                 # import pdb; pdb.set_trace()
-                if not self.noOutput and method in ['corr', 'svm']:
+                if not self.runParams['noOutput'] and method in ['corr', 'svm']:
                     # mvpa2.suite.h5save(rp.o, results)
                     try:
                         os.makedirs(self.paths['analysis'])
@@ -353,7 +355,7 @@ class Analysis(object):
     #     evds = evds[evds.sa.targets != 0]
     #     return self.svm(evds)
 
-    def get_data(self, filename):
+    def get_mri_data(self, filename):
         """
         Get MRI data with the affine transformation (world coordinates) applied.
 
@@ -398,15 +400,13 @@ class Analysis(object):
             ds (Dataset)
 
         """
-
-        reuse = True
         if values.startswith('raw'):
             add = ''
         else:
             add = '_' + values
         suffix = ROIs[1] + add + '.gz.hdf5'
         roiname = self.paths['data_rois'] %subjID + suffix
-        if reuse and os.path.isfile(roiname):
+        if self.runParams['reuserois'] and os.path.isfile(roiname):
             ds = mvpa2.suite.h5load(roiname)
             print '(loaded)',
             return ds
@@ -418,7 +418,7 @@ class Analysis(object):
             theseROIs = glob.glob((self.paths['rec'] + ROI + '.nii') %subjID)
             allROIs.extend(theseROIs)
         # add together all ROIs -- and they should not overlap too much
-        thisMask = sum([self.get_data(roi) for roi in allROIs])
+        thisMask = sum([self.get_mri_data(roi) for roi in allROIs])
 
         if values.startswith('raw'):
             # find all functional runs of a given runType
@@ -685,31 +685,46 @@ class Analysis(object):
             fMRI signal for each condition (against the fixation condition)
         """
         header = ['cond', 'subjResp']
-        results = []
+        #results = []
 
         # calculate the mean per target per chunk (across trials)
         run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
         evds_avg = evds.get_mapped(run_averager)
 
-        # calculate mean across conditions per chunk per voxel
-        target_averager = mvpa2.suite.mean_group_sample(['chunks'])
-        mean = evds_avg.get_mapped(target_averager)
-        mean = np.mean(mean, 1)  # mean across voxels
-
         if values.startswith('raw') or values == 'beta':
-            baseline = mean[mean.sa.targets == 0].samples
-            #baseline = np.mean(baseline)
-        for cond in mean.UT:
-            if cond != 0:
-                sel = np.array([t == cond for t in mean.sa.targets])
-                mean_cond = mean[sel].samples
-                #evdsMean = np.mean(evds_cond)
-                if values.startswith('raw'):
-                    mean_cond = (mean_cond - baseline) / baseline * 100
-                elif values == 'beta':
-                    mean_cond = mean_cond - baseline
-                evdsMean = np.mean(mean_cond)
-                results.append([cond, evdsMean])
+            # take fixation trials only
+            baseline = evds_avg[evds_avg.sa.targets == 0].samples
+            baseline = np.mean(baseline, 1)  # mean across voxels
+            # replicate across chunks
+            baseline = np.tile(baseline, len(evds_avg.UT))
+            # replicate across voxels
+            baseline = np.tile(baseline, (evds_avg.shape[1], 1)).T
+            if values.startswith('raw'):
+                evds_avg.samples = (evds_avg.samples - baseline) / baseline * 100
+            else:
+                evds_avg.samples = evds_avg.samples - baseline
+
+        # calculate mean across conditions per target per voxel
+        #target_averager = mvpa2.suite.mean_group_sample(['chunks'])
+        #mean = evds_avg.get_mapped(target_averager)
+        chunk_averager = mvpa2.suite.mean_group_sample(['targets'])
+        mean = evds_avg.get_mapped(chunk_averager)
+        results = [[i,j] for i,j in zip(mean.sa.targets, np.mean(mean, 1))]
+
+        #if values.startswith('raw') or values == 'beta':
+            #baseline = mean[mean.sa.targets == 0].samples
+            #baseline = np.mean(baseline, 1)
+        #for cond in mean.UT:
+            #if cond != 0:
+                #sel = np.array([t == cond for t in mean.sa.targets])
+                #mean_cond = mean[sel].samples
+                #mean_cond = np.mean(evds_cond, 1)
+                #if values.startswith('raw'):
+                    #mean_cond = (mean_cond - baseline) / baseline * 100
+                #elif values == 'beta':
+                    #mean_cond = mean_cond - baseline
+                #evdsMean = np.mean(mean_cond)
+                #results.append([cond, evdsMean])
         return header, results
 
     def get_univariate(self, evds, values):
@@ -1085,7 +1100,7 @@ class Analysis(object):
             raise Exception('Volume not found at %s' % volume_path)
 
         for vol in allvols:
-            data = self.get_data(vol)
+            data = self.get_mri_data(vol)
             if coords is None or len(coords) <= 2:
                 coords = [m/2 for m in data.shape]  # middle
             if data.ndim == 4:  # time volume
@@ -1107,7 +1122,7 @@ class Analysis(object):
                 ax.set_title('%s at %s' % (labels[i], coords[i]))
 
                 if rois is not None:
-                    mask = sum([self.get_data(roi[1]) for roi in rois])
+                    mask = sum([self.get_mri_data(roi[1]) for roi in rois])
                     mean_mask = np.mean(mask, i).T
                     # make it uniform color
                     mean_mask[np.nonzero(mean_mask)] = 1.  # ROI voxels are 1
@@ -1250,7 +1265,7 @@ class Analysis(object):
                     # if subjID == 'twolines_06': import pdb; pdb.set_trace()
                     print [os.path.basename(subROI) for subROI in allROIs]
                     #
-                    mask = sum([np.squeeze(nb.load(subROI).get_data()) for subROI in allROIs])
+                    mask = sum([np.squeeze(nb.load(subROI).get_mri_data()) for subROI in allROIs])
                     if not suppressText:
                         overlap = mask > 2
                         if np.sum(overlap) > 0:
@@ -1264,7 +1279,7 @@ class Analysis(object):
                         if subROIs: subROIname = os.path.basename(os.path.abspath(subROI)).split('.')[0]
                         else: subROIname = ROI_list[1]
                         #import pdb; pdb.set_trace()
-                        if subROIs: thisROI = nb.load(subROI).get_data()
+                        if subROIs: thisROI = nb.load(subROI).get_mri_data()
                         else: thisROI = subROI
                         transROI = np.transpose(thisROI.nonzero())
 
@@ -1389,7 +1404,7 @@ class Preproc(object):
             last = 0
             for func in funcImg:
                 runNo = func.split('.')[0].split('_')[-2]
-                dynScans = self.get_data(func).shape[3] # get number of acquisitions
+                dynScans = self.get_mri_data(func).shape[3] # get number of acquisitions
 
                 runType = func.split('.')[0].split('_')[-1]
                 outName = self.paths['data_fmri']%subjID + 'rp_%s_%s.txt' %(runNo,runType)
