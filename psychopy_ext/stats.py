@@ -17,7 +17,7 @@ import pandas
 
 
 def aggregate(df, rows=None, cols=None, values=None,
-    value_filter=None, subplots=None, yerr=None, aggfunc='mean', unstack=False):
+    subplots=None, yerr=None, aggfunc='mean', unstack=False):
     """
     Aggregates data over specified columns.
 
@@ -32,11 +32,6 @@ def aggregate(df, rows=None, cols=None, values=None,
             Name(s) of column(s) that will be shown in the legend
         - values (str or list of str, default: None)
             Name(s) of the column(s) that is aggregated
-        - value_filter (str, default=None)
-            Which values to report. For example, if you have labels 'Correct'
-            and 'Inccorrect' in the ``values`` column, you may want to set
-            ``value_filter='Correct``
-            so that only Correct values were reported.
         - yerr (str, default: None)
             Name of the column for the y-errorbar calculation. Typically,
             this is the column with participant IDs.
@@ -60,6 +55,9 @@ def aggregate(df, rows=None, cols=None, values=None,
 
         This format makes it easy to do further computations such as mean over
         `yerr`: a simple `df.mean()` will do the trick.
+
+    :See also:
+        :func:`accuracy`
     """
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
     if isinstance(rows, str) or rows is None:
@@ -73,23 +71,12 @@ def aggregate(df, rows=None, cols=None, values=None,
     allconds = [subplots] + rows + cols + yerr
     allconds = [c for c in allconds if c is not None]
 
-    if df[values].dtype in (str, object):  # calculate accuracy
-        size = df.groupby(allconds)[values].size()
-        if value_filter is not None:
-            dff = df[df[values] == value_filter]
-        else:
-            raise Exception('value_filter must be defined when aggregating '
-                'over str or object types')
-
-        size_filter = dff.groupby(allconds)[values].size()
-        agg = size_filter / size.astype(float)
-    else:
-        if isinstance(aggfunc, str):
-            try:
-                aggfunc = getattr(np, aggfunc)
-            except:
-                raise
-        agg = df.groupby(allconds)[values].aggregate(aggfunc)
+    if isinstance(aggfunc, str):
+        try:
+            aggfunc = getattr(np, aggfunc)
+        except:
+            raise
+    agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
     g = 0
     groups = [('subplots', [subplots]), ('rows', rows), ('cols', cols),
@@ -116,6 +103,42 @@ def aggregate(df, rows=None, cols=None, values=None,
 
     return agg
 
+def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
+    """
+    Computes accuracy given correct and incorrect data labels.
+
+    :Args:
+        df (pandas.DataFrame)
+            Your data
+
+    :Kwargs:
+        - values (str or list of str, default: None)
+            Name(s) of the column(s) that is aggregated
+        - correct (str or list of str, default: None)
+            Labels that are treated as correct responses.
+        - incorrect (str or list of str, default: None)
+            Labels that are treated as incorrect responses.
+        - kwargs
+            Anything else you want to pass to :func:`aggregate`. Note that
+            ``aggfunc`` is set to ``np.size`` and you cannot change that.
+
+    :Returns:
+        A pandas.DataFrame in the format of :func:`accuracy` where the
+        reported values are a fraction correct / (correct+incorrect).
+
+    :See also:
+        :func:`accuracy`
+    """
+    if isinstance(correct, str):
+        correct = [correct]
+    if isinstance(incorrect, str):
+        incorrect = [incorrect]
+    corr = df[df[values].isin(correct)]
+    agg_corr = aggregate(corr, aggfunc=np.size, values=values, **kwargs)
+    df_all = df[df[values].isin(correct + incorrect)]
+    agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
+    agg = agg_corr.astype(float) / agg_all
+    return agg
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
     value_filter=None, yerr=None, func='mean'):
