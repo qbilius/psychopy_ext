@@ -342,7 +342,7 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     class_obj = None
     found_classes = inspect.getmembers(module, inspect.isclass)
     for name, obj in found_classes:
-        init_vars = inspect.getargspec(obj.__init__)
+        #init_vars = inspect.getargspec(obj.__init__)
         #try:
             #init_vars.args.index('extraInfo')
             #init_vars.args.index('runParams')
@@ -608,7 +608,7 @@ def _repo_action(cmd, **kwargs):
         if cmd == 'push':
             call = 'git push'
         elif cmd == 'commit':
-            if 'messsage' in kwargs:
+            if 'message' in kwargs:
                 call = 'git commit -am "%s"' % kwargs['message']
             else:
                 raise Exception('Please provide a message for committing changes')
