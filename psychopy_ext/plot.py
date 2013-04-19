@@ -318,7 +318,7 @@ class Plot(object):
             sbp = None
 
         if sbp is None:
-            axes = [self._plot_ax(agg, **kwargs)]
+            axes = self._plot_ax(agg, **kwargs)
         else:
             # if haven't made any plots yet...
             if self.subplotno == -1:
@@ -381,24 +381,15 @@ class Plot(object):
             raise Exception('%s plot not recognized. Choose from '
                             '{bar, line, bean}.' %kind)
 
-        # TODO: xticklabel rotation business is too messy
-        #if 'xticklabels' in kwargs:
-            #ax.set_xticklabels(kwargs['xticklabels'], rotation=0)
-        #if not xtickson:
-            #ax.set_xticklabels(['']*len(ax.get_xticklabels()))
-
-
         ax.set_xticklabels(self._format_labels(labels=mean.index))
 
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
-        for label in labels:
-            if max_len > 10:  #FIX to this: http://stackoverflow.com/q/5320205
-                label.set_rotation(90)
-            else:
+        if max_len > 10:  #FIX to this: http://stackoverflow.com/q/5320205
+                self.fig.autofmt_xdate()
+        else:
+            for label in labels:
                 label.set_rotation(0)
-            #label.set_size('x-large')
-        #ax.set_xticklabels(labels, rotation=0, size='x-large')
 
         if not ytickson:
             ax.set_yticklabels(['']*len(ax.get_yticklabels()))
@@ -459,6 +450,7 @@ class Plot(object):
                 dlevs = data.index.levels
             except:
                 dlevs = [data.index]
+        if len(dnames) == 0 or dnames[0] == None: dnames = ['']
         title = [n.split('.',1)[1] for n in dnames if n.startswith(pref+'.')]
         levels = [l for l,n in zip(dlevs,dnames) if n.startswith(pref+'.')]
         title = [n for n,l in zip(title,levels) if len(l) > 1]
@@ -480,7 +472,6 @@ class Plot(object):
         texts = l.get_texts()
         for text, new_text in zip(texts, new_texts):
             text.set_text(new_text)
-
         #loc='center left', bbox_to_anchor=(1.3, 0.5)
         #loc='upper right', frameon=False
 
@@ -509,7 +500,9 @@ class Plot(object):
                     label = [l for i,l in enumerate(r) if i in sel]
                     if len(label) == 1:
                         label = label[0]
-                    new_labs.append(str(label))
+                    else:
+                        label = ', '.join([str(lab) for lab in label])
+                    new_labs.append(label)
         else:
             new_labs = ''
         return new_labs
