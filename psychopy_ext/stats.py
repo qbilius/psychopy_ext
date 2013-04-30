@@ -95,12 +95,22 @@ def aggregate(df, rows=None, cols=None, values=None,
         agg = agg.T
     else:  # then rows should become rows, and cols should be cols :)
         if unstack:
+            names = []
             for name in agg.index.names:
                 if name.startswith('cols.'):
                     agg = agg.unstack(level=name)
+                    names.append(name)
+            agg.columns.names = names
         else:
             agg = pandas.DataFrame(agg).T
-
+    # rudimentary sorting abilities
+    if rows[0] is not None and not unstack and subplots is None:
+        try:
+            order = df[rows[0]].unique()
+            agg = pandas.concat([agg[col].T for col in order], keys=order,
+                    names=['rows.' + r for r in rows]).T
+        except:
+            pass
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
@@ -139,6 +149,21 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
     agg = agg_corr.astype(float) / agg_all
     return agg
+
+def confidence(df, kind='sem', nsamples=None):
+    mean = df.mean()  # mean across items
+    if kind == 'sem':
+        p_yerr = df.std() / np.sqrt(len(df))  # std already has ddof=1
+
+    # compute binomial distribution error bars if there is a single sample
+    # only (presumably the number of correct responses, i.e., successes)
+    # from http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval
+    elif kind == 'binomial':
+        alpha = .05
+        z = scipy.stats.norm.ppf(1-alpha/2.)
+        p_yerr = z * np.sqrt(mean * (1-mean) / nsamples)
+
+    return mean, p_yerr
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
     value_filter=None, yerr=None, func='mean'):
@@ -277,6 +302,85 @@ def nan_outliers(df, values=None, group=None):
     df[values] = np.select([tdf<-3, tdf>3],[np.nan, np.nan],
                            default=df[values])
     return df
+
+def stats_test(agg, test='ttest'):
+    #import pdb; pdb.set_trace()
+    array1 = agg.ix[:, 0:len(agg.columns):2]
+    array2 = agg.ix[:, 1:len(agg.columns):2]
+    t, p = scipy.stats.ttest_rel(array1, array2, axis=0)
+    #import pdb; pdb.set_trace()
+    print agg.columns.levels[0].values.tolist()
+    print 't = %.2f, p = %.5f, df = %d' % (t[0], p[0], len(agg)-1)
+    return
+
+    d = agg.shape[0]
+
+    if test == 'ttest':
+        # 2-tail T-Test
+        ttest = (np.zeros((agg.shape[1]*(agg.shape[1]-1)/2, agg.shape[2])),
+                 np.zeros((agg.shape[1]*(agg.shape[1]-1)/2, agg.shape[2])))
+        ii = 0
+        for c1 in range(agg.shape[1]):
+            for c2 in range(c1+1,agg.shape[1]):
+                thisTtest = stats.ttest_rel(agg[:,c1,:], agg[:,c2,:], axis = 0)
+                ttest[0][ii,:] = thisTtest[0]
+                ttest[1][ii,:] = thisTtest[1]
+                ii += 1
+        ttestPrint(title = '**** 2-tail T-Test of related samples ****',
+            values = ttest, plotOpt = plotOpt,
+            type = 2)
+
+    elif test == 'ttest_1samp':
+        # One-sample t-test
+        m = .5
+        oneSample = stats.ttest_1samp(agg, m, axis = 0)
+        ttestPrint(title = '**** One-sample t-test: difference from %.2f ****' %m,
+            values = oneSample, plotOpt = plotOpt, type = 1)
+
+    elif test == 'binomial':
+        # Binomial test
+        binom = np.apply_along_axis(stats.binom_test,0,agg)
+        print binom
+        return binom
+
+def ttestPrint(title = '****', values = None, xticklabels = None, legend = None, bon = None):
+
+    d = 8
+    # check if there are any negative t values (for formatting purposes)
+    if np.any([np.any(val < 0) for val in values]): neg = True
+    else: neg = False
+
+    print '\n' + title
+    for xi, xticklabel in enumerate(xticklabels):
+        print xticklabel
+
+        maxleg = max([len(leg) for leg in legend])
+#            if type == 1: legendnames = ['%*s' %(maxleg,p) for p in plotOpt['subplot']['legend.names']]
+#            elif type == 2:
+        pairs = q.combinations(legend,2)
+        legendnames = ['%*s' %(maxleg,p[0]) + ' vs ' + '%*s' %(maxleg,p[1]) for p in pairs]
+        #print legendnames
+        for yi, legendname in enumerate(legendnames):
+            if values[0].ndim == 1:
+                t = values[0][xi]
+                p = values[1][xi]
+            else:
+                t = values[0][yi,xi]
+                p = values[1][yi,xi]
+            if p < .001/bon: star = '***'
+            elif p < .01/bon: star = '**'
+            elif p < .05/bon: star = '*'
+            else: star = ''
+
+            if neg and t > 0:
+                outputStr = '    %(s)s: t(%(d)d) =  %(t).3f, p = %(p).3f %(star)s'
+            else:
+                outputStr = '    %(s)s: t(%(d)d) = %(t).3f, p = %(p).3f %(star)s'
+
+            print outputStr \
+                %{'s': legendname, 'd':(d-1), 't': t,
+                'p': p, 'star': star}
+
 
 def oneway_anova(data):
     """

@@ -30,6 +30,8 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
+import stats
+
 
 # parameters for pretty plots in the ggplot style
 # from https://gist.github.com/huyng/816622
@@ -189,7 +191,10 @@ class Plot(object):
             no = subplotno
 
         if isinstance(no, int):
-            ax = self.axes[no]
+            try:
+                ax = self.axes[no]
+            except:  # a single subplot
+                ax = self.axes
         else:
             if no[0] < 0: no += len(self.axes._nrows)
             if no[1] < 0: no += len(self.axes._ncols)
@@ -301,7 +306,14 @@ class Plot(object):
         :Returns:
             A list of axes of all plots.
         """
-        agg = pandas.DataFrame(agg)
+        #if isinstance(agg, (list, tuple)):
+            #agg = np.array(agg)
+        if not isinstance(agg, pandas.DataFrame):
+            agg = pandas.DataFrame(agg)
+            if agg.shape[1] == 1:  # Series
+                agg = pandas.DataFrame(agg).T
+        else:
+            agg = pandas.DataFrame(agg)
         axes = []
         try:
             s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
@@ -345,23 +357,23 @@ class Plot(object):
                 axes.append(ax)
         return axes
 
-    def _plot_ax(self, agg, ax=None,
-                   title='', kind='bar', legend=None,
-                   xtickson=True, ytickson=True,
-                   no_yerr=False, numb=False, autoscale=True, order=None,
+    def _plot_ax(self, agg, ax=None, title='', kind='bar', legend=None,
+                   xtickson=True, ytickson=True, rotate=True,
+                   no_yerr=False, numb=False, autoscale=False, order=None,
                    **kwargs):
         if ax is None:
             self.subplotno += 1
             ax = self.get_ax()
+
         if isinstance(agg, pandas.DataFrame):
-            mean, p_yerr = self.errorbars(agg)
+            mean, p_yerr = stats.confidence(agg)
         else:
+            #mean, p_yerr = self.errorbars(agg, kind='binomial')
             mean = agg
             p_yerr = np.zeros((len(agg), 1))
-
         if mean.index.nlevels == 1:  # oops, nothing to unstack
-            mean = pandas.DataFrame(mean).T
-            p_yerr = pandas.DataFrame(p_yerr).T
+            mean = pandas.DataFrame(mean)  # assume rows are rows
+            p_yerr = pandas.DataFrame(p_yerr)
         else:
             # make columns which will turn into legend entries
             mean = self._unstack_levels(mean, 'cols')
@@ -381,12 +393,13 @@ class Plot(object):
             raise Exception('%s plot not recognized. Choose from '
                             '{bar, line, bean}.' %kind)
 
-        ax.set_xticklabels(self._format_labels(labels=mean.index))
+        if kind != 'line':
+            ax.set_xticklabels(self._format_labels(labels=mean.index))
 
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
-        if max_len > 10:  #FIX to this: http://stackoverflow.com/q/5320205
-                self.fig.autofmt_xdate()
+        if max_len > 10 and rotate:  #FIX to this: http://stackoverflow.com/q/5320205
+            self.fig.autofmt_xdate()
         else:
             for label in labels:
                 label.set_rotation(0)
@@ -595,8 +608,12 @@ class Plot(object):
         else:
             largest = [fractions.gcd(len(x),i+1) for i in range(5)]
             largest = np.argsort(largest)[-1] + 1
-        majorLocator = MultipleLocator(largest)
+        tickpos = len(x) / largest
+        majorLocator = MultipleLocator(tickpos)
         ax.xaxis.set_major_locator(majorLocator)
+        ax.set_xticklabels(self._format_labels(labels=data.index)[0:len(x):tickpos])
+        #minorLocator = MultipleLocator(1)
+        #ax.xaxis.set_minor_locator(minorLocator)
         return ax
 
     def scatter(self, x, y, ax=None, labels=None, title='', **kwargs):
@@ -693,92 +710,6 @@ class Plot(object):
         ax.add_artist(at)
         at.txt._text.set_path_effects([withStroke(foreground="w", linewidth=3)])
         return at
-
-    def errorbars(self, df, yerr_type='sem'):
-        # Set up error bar information
-        if yerr_type == 'sem':
-            mean = df.mean()  # mean across items
-            # std already has ddof=1
-            sem = df.std() / np.sqrt(len(df))
-            #yerr = np.array(sem)#.reshape(mean.shape)  # force this shape
-        elif yerr_type == 'binomial':
-            pass
-            # alpha = .05
-            # z = stats.norm.ppf(1-alpha/2.)
-            # count = np.mean(persubj, axis=1, ddof=1)
-            # p_yerr = z*np.sqrt(mean*(1-mean)/persubj.shape[1])
-
-        return mean, sem
-
-    def stats_test(self, agg, test='ttest'):
-        d = agg.shape[0]
-
-        if test == 'ttest':
-            # 2-tail T-Test
-            ttest = (np.zeros((agg.shape[1]*(agg.shape[1]-1)/2, agg.shape[2])),
-                     np.zeros((agg.shape[1]*(agg.shape[1]-1)/2, agg.shape[2])))
-            ii = 0
-            for c1 in range(agg.shape[1]):
-                for c2 in range(c1+1,agg.shape[1]):
-                    thisTtest = stats.ttest_rel(agg[:,c1,:], agg[:,c2,:], axis = 0)
-                    ttest[0][ii,:] = thisTtest[0]
-                    ttest[1][ii,:] = thisTtest[1]
-                    ii += 1
-            ttestPrint(title = '**** 2-tail T-Test of related samples ****',
-                values = ttest, plotOpt = plotOpt,
-                type = 2)
-
-        elif test == 'ttest_1samp':
-            # One-sample t-test
-            m = .5
-            oneSample = stats.ttest_1samp(agg, m, axis = 0)
-            ttestPrint(title = '**** One-sample t-test: difference from %.2f ****' %m,
-                values = oneSample, plotOpt = plotOpt, type = 1)
-
-        elif test == 'binomial':
-            # Binomial test
-            binom = np.apply_along_axis(stats.binom_test,0,agg)
-            print binom
-            return binom
-
-
-    def ttestPrint(self, title = '****', values = None, xticklabels = None, legend = None, bon = None):
-
-        d = 8
-        # check if there are any negative t values (for formatting purposes)
-        if np.any([np.any(val < 0) for val in values]): neg = True
-        else: neg = False
-
-        print '\n' + title
-        for xi, xticklabel in enumerate(xticklabels):
-            print xticklabel
-
-            maxleg = max([len(leg) for leg in legend])
-#            if type == 1: legendnames = ['%*s' %(maxleg,p) for p in plotOpt['subplot']['legend.names']]
-#            elif type == 2:
-            pairs = q.combinations(legend,2)
-            legendnames = ['%*s' %(maxleg,p[0]) + ' vs ' + '%*s' %(maxleg,p[1]) for p in pairs]
-            #print legendnames
-            for yi, legendname in enumerate(legendnames):
-                if values[0].ndim == 1:
-                    t = values[0][xi]
-                    p = values[1][xi]
-                else:
-                    t = values[0][yi,xi]
-                    p = values[1][yi,xi]
-                if p < .001/bon: star = '***'
-                elif p < .01/bon: star = '**'
-                elif p < .05/bon: star = '*'
-                else: star = ''
-
-                if neg and t > 0:
-                    outputStr = '    %(s)s: t(%(d)d) =  %(t).3f, p = %(p).3f %(star)s'
-                else:
-                    outputStr = '    %(s)s: t(%(d)d) = %(t).3f, p = %(p).3f %(star)s'
-
-                print outputStr \
-                    %{'s': legendname, 'd':(d-1), 't': t,
-                    'p': p, 'star': star}
 
     def mds(self, results, labels, fonts='freesansbold.ttf', title='',
         ax = None):
