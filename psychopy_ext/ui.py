@@ -342,25 +342,26 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     class_obj = None
     found_classes = inspect.getmembers(module, inspect.isclass)
     for name, obj in found_classes:
-        #init_vars = inspect.getargspec(obj.__init__)
-        #try:
+        init_vars = inspect.getargspec(obj.__init__)
+        try:
             #init_vars.args.index('extraInfo')
             #init_vars.args.index('runParams')
-        #except:
-            #pass
-        #else:
-        if name[0] != '_':  # avoid private classes
-            class_alias = _get_class_alias(module, obj)
-            if class_alias == input_class_alias:
-                class_obj = obj
-            if class_order is not None:
-                try:
-                    idx = class_order.index(class_alias)
-                    class_aliases[idx] = (class_alias, obj)
-                except:
-                    pass
-            else:
-                class_aliases.append((class_alias, obj))
+            init_vars.args.index('name')
+        except:
+            pass
+        else:
+            if name[0] != '_':  # avoid private classes
+                class_alias = _get_class_alias(module, obj)
+                if class_alias == input_class_alias:
+                    class_obj = obj
+                if class_order is not None:
+                    try:
+                        idx = class_order.index(class_alias)
+                        class_aliases[idx] = (class_alias, obj)
+                    except:
+                        pass
+                else:
+                    class_aliases.append((class_alias, obj))
     # if some class not found; get rid of it
     class_aliases = [c for c in class_aliases if c is not None]
     return class_aliases, class_obj
