@@ -84,6 +84,7 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'data_struct': os.path.join(fmri_root,'data_struct/'),  # anatomical data
         'spm_analysis': os.path.join(fmri_root, 'analysis/'),
         'rec': os.path.join(fmri_root,'reconstruction/'), # CARET reconstructions
+        'rois': os.path.join(fmri_root,'rois/'),  # ROIs (no data, just masks)
         'data_rois': os.path.join(fmri_root,'data_rois/'), # preprocessed and masked data
         'sim': exp_root,  # path for storing simulations of models
         }
@@ -164,6 +165,7 @@ class Experiment(TrialHandler):
                 ('autorun', 0),  # if >0, will autorun at the specified speed
                 ('commit', False),  # commit data the moment it comes out
                 ('push', False),
+                #('nocheck', False)  # FIXME
                 ])
         if extraInfo is not None:
             self.extraInfo.update(extraInfo)
@@ -566,7 +568,7 @@ class Experiment(TrialHandler):
 
         Example::
 
-            OrderedDict([
+            trialList = OrderedDict([
                 ('cond', self.morphInd[mNo]),
                 ('name', self.paraTable[self.morphInd[mNo]]),
                 ('onset', ''),
@@ -576,10 +578,12 @@ class Experiment(TrialHandler):
                 ('accuracy', ''),
                 ('rt', ''),
                 ])
+
+            self.trialList = trialList
         """
         raise NotImplementedError
 
-    def idle_event(self, trialClock=None, eventClock=None,
+    def idle_event(self, globClock=None, trialClock=None, eventClock=None,
                   thisTrial=None, thisEvent=None, **kwargs):
         """
         Default idle function for the event.
@@ -587,6 +591,8 @@ class Experiment(TrialHandler):
         Sits idle catching key input of default keys (escape and trigger).
 
         :Kwargs:
+            - globClock (:class:`psychopy.core.Clock`, default: None)
+                A clock that started with the experiment (currently does nothing)
             - trialClock (:class:`psychopy.core.Clock`, default: None)
                 A clock that started with the trial
             - eventClock (:class:`psychopy.core.Clock`, default: None)
@@ -1192,7 +1198,9 @@ class Experiment(TrialHandler):
 
         df_fnames = []
         for subjID in subjID_list:
-            df_fnames += glob.glob(pattern % subjID)
+            fnames = glob.glob(pattern % subjID)
+            fnames.sort()
+            df_fnames += fnames
         dfs = []
         for dtf in df_fnames:
             data = pandas.read_csv(dtf)
