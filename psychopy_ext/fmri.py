@@ -123,6 +123,8 @@ class Analysis(object):
                 self.offset = 0
             else:
                 self.offset = offset
+        else:
+            self.offset = None
         self.dur = dur
 
     def run(self):
@@ -188,7 +190,7 @@ class Analysis(object):
         if self.runParams['method'] == 'timecourse':
             plt = plot_timecourse(df, plt=plt, cols=cols)
         else:
-            agg = self.get_mri_data(df)
+            agg = self.get_data(df)
             order = [r[1] for r in self.rois]
             if plt is None:
                 plt = plot.Plot()
@@ -201,6 +203,9 @@ class Analysis(object):
                  self.runParams['values'])
                  )
         plt.show()
+
+    def get_data(self, df):
+        raise NotImplementedError
 
     def run_method(self, subjIDs, runType, rois, method='svm', values='raw',
                 offset=None, dur=None, filename = 'RENAME.pkl', simds=None):
@@ -306,15 +311,15 @@ class Analysis(object):
                         evds = ds
 
                     if method == 'timecourse':
-                        header, result = self.get_timecourse(evds)
+                        header, result = self.timecourse(evds)
                     elif method in ['signal', 'univariate']:
-                        header, result = self.get_signal(evds, values)
+                        header, result = self.signal(evds, values)
                     elif method == 'corr':
                         evds = evds[evds.sa.targets != self.fix]
-                        header, result = self.get_correlation(evds, nIter=100)
+                        header, result = self.correlation(evds, nIter=100)
                     elif method == 'svm':
                         evds = evds[evds.sa.targets != self.fix]
-                        header, result = self.get_svm(evds, nIter=100)
+                        header, result = self.svm(evds, nIter=100)
                     else:
                         raise NotImplementedError('Analysis for %s values is not '
                                                   'implemented')
@@ -687,7 +692,7 @@ class Analysis(object):
         #plt.plot(meanPerChunk.T)
         plt.show()
 
-    def get_timecourse(self, evds):
+    def timecourse(self, evds):
         """
         For each condition, extracts all timepoints as specified in the evds
         window, and averages across voxels
@@ -722,7 +727,7 @@ class Analysis(object):
                 results.append([cond, pno*self.tr, p])
         return header, results
 
-    def get_signal(self, evds, values):
+    def signal(self, evds, values):
         """
         Extracts fMRI signal.
 
@@ -778,10 +783,10 @@ class Analysis(object):
                 #results.append([cond, evdsMean])
         return header, results
 
-    def get_univariate(self, evds, values):
-        """Alias for :func:`get_signal`
+    def univariate(self, evds, values):
+        """Alias for :func:`signal`
         """
-        return self.get_signal(evds, values)
+        return self.signal(evds, values)
 
     def correlation(self, evds, nIter=100):
         """
