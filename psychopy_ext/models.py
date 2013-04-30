@@ -439,19 +439,10 @@ class GaborJet(Model):
         # use magnitude for dissimilarity measures
         return (JetsMagnitude, JetsPhase, grid_position)
 
-    def dissimilarity(self, outputs):
-        """
-        Calculate similarity between magnitudes of gabor jet.
-
-        It may look complex but this is just a linear algebra implementation of
-        1 - np.dot(f,g) / (np.sqrt(np.dot(g,g)) * np.sqrt(np.dot(f,f)) )
-        """
-        outputs = np.array(outputs)
-        if outputs.ndim != 2:
-            sys.exit('ERROR: 2 dimensions expected')
-        length = np.sqrt(np.sum(outputs*outputs, axis=1))
-        length = np.tile(length, (len(length), 1))  # make a square matrix
-        return 1 - np.dot(outputs,outputs.T) / (length * length.T)
+    def dissimilarity(self, *args, **kwargs):
+        if 'kind' not in kwargs:
+            kwargs['kind'] = 'gaborjet'  # we want this by default
+        return super(GaborJet, self).dissimilarity(*args, **kwargs)
 
     def compare(self, ims):
         output = []
@@ -546,7 +537,6 @@ class HMAX(Model):
         First, it trains the model, i.e., sets up prototypes for VTU.
         Next, it runs the model.
         """
-        print '==== Running HMAX... ===='
         if train_ims is not None:
             self.train(train_ims)
         if test_ims is None:
@@ -560,7 +550,6 @@ class HMAX(Model):
         Train the model, i.e., supply VTUs with C2 responses to 'prototype'
         images to which these units will be maximally tuned.
         """
-        print 'training:',
         try:
             self.tuning = pickle.load(open(train_ims,'rb'))
             print 'done'
@@ -592,7 +581,7 @@ class HMAX(Model):
         output['C2'] = np.zeros((len(ims),C2_tmp.shape[0]))
 
         for imNo, im in enumerate(ims):
-            sys.stdout.write("\r%s: %d%%" %(op, 100*imNo/len(ims)))
+            sys.stdout.write("\rRunning HMAX... %s: %d%%" %(op, 100*imNo/len(ims)))
             sys.stdout.flush()
             # Go through each scale band
             S1_idx = 0
@@ -614,7 +603,7 @@ class HMAX(Model):
         # calculate VTU if trained
         if self.istrained:
             output['VTU'] = self.get_VTU(output['C2'])
-        sys.stdout.write("\r%s: done\n" %op)
+        sys.stdout.write("\rRunning HMAX... %s: done\n" %op)
 
 
         return output
