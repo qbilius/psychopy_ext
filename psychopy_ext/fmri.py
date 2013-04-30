@@ -39,11 +39,13 @@ class Analysis(object):
     Assumptions:
         1. For beta- and t-values, analyses were done is SPM.
         2. Functional runs named as `func_<runNo>`, anatomicals named as
-           `struct<optional extra stuff>`
+           `struct<optional extra stuff>`, behavioral data files (or files with
+           condition assignments) as `<something>_<runNo>_<runType>.csv`
         3. Beta-values model every condition, including fixation. But
            t-values are computed as each conditions versus a fixation.
         4. Conditions are in the 'cond' column of data files, trial
            duration is in 'dur'
+        5. Fixation condition is 0 (an int).
 
     :Args:
         paths (dict of str:str pairs)
@@ -69,6 +71,8 @@ class Analysis(object):
             reliably coded in NIfTI files, so you need to define it yourself.
         - fmri_prefix (str, default: 'swa*')
             Prefix of SPM output functional scans that you want to analyze.
+        - fix (int or str, default: 0)
+            Label to identify fixation condition.
         - rois (list of str)
             A list of ROIs to analyze. See :func:`make_roi_pattern` for
             accepted formats.
@@ -80,7 +84,10 @@ class Analysis(object):
                  extraInfo=None,
                  runParams=None,
                  fmri_prefix='swa*',
+                 fix=0,
                  rois=None,
+                 offset=None,
+                 dur=None
                  ):
         self.extraInfo = extraInfo
         self.runParams = runParams
@@ -108,7 +115,15 @@ class Analysis(object):
         self.paths = paths
         self.tr = tr
         self.fmri_prefix = fmri_prefix
+        self.fix = fix
         self.rois = make_roi_pattern(runParams['rois'])
+        if self.runParams['method'] == 'timecourse':
+            self.runParams['values'] = 'raw'
+            if offset is None:
+                self.offset = 0
+            else:
+                self.offset = offset
+        self.dur = dur
 
     def run(self):
         """
@@ -156,6 +171,11 @@ class Analysis(object):
                 simds=simds)
             df = pandas.DataFrame(results, columns=header)
             if not self.runParams['noOutput']:
+                try:
+                    #import pdb; pdb.set_trace()
+                    os.makedirs(os.path.dirname(df_fname))
+                except:
+                    pass
                 pickle.dump(df, open(df_fname,'wb'))
                 if self.runParams['verbose']:
                     print ("saved dataset of %s %s results to %s" %
@@ -164,16 +184,14 @@ class Analysis(object):
 
         return df, df_fname
 
-    def plot(self, df, plt=None):
-        if plt is None:
-            plt = plot.Plot(nrows_ncols=(3,2), figsize=(10, 12))
-
+    def plot(self, df, plt=None, cols=['cond', 'name']):
         if self.runParams['method'] == 'timecourse':
-            plot_timecourse(df, plt=plt,
-                cols=['stim1.cond', 'name'])
+            plt = plot_timecourse(df, plt=plt, cols=cols)
         else:
             agg = self.get_mri_data(df)
             order = [r[1] for r in self.rois]
+            if plt is None:
+                plt = plot.Plot()
             plt.plot(agg, subplots='ROI', subplots_order=order, kind='bar')
         plt.tight_layout()
 
@@ -242,6 +260,8 @@ class Analysis(object):
 
         for subjID in subjIDs:
             print subjID,
+            #sys.stdout.write("\n%s" % subjID)
+            sys.stdout.flush()
             try:
                 out_fname = filename % (method, values, subjID)
             except:
@@ -265,6 +285,7 @@ class Analysis(object):
                 temp_res = []
                 for r, ROI_list in enumerate(rois):
                     print ROI_list[1],
+                    sys.stdout.flush()
                     if simds is not None:
                         values = 'sim'
                     else:
@@ -289,10 +310,10 @@ class Analysis(object):
                     elif method in ['signal', 'univariate']:
                         header, result = self.get_signal(evds, values)
                     elif method == 'corr':
-                        evds = evds[evds.sa.targets != 0]
+                        evds = evds[evds.sa.targets != self.fix]
                         header, result = self.get_correlation(evds, nIter=100)
                     elif method == 'svm':
-                        evds = evds[evds.sa.targets != 0]
+                        evds = evds[evds.sa.targets != self.fix]
                         header, result = self.get_svm(evds, nIter=100)
                     else:
                         raise NotImplementedError('Analysis for %s values is not '
@@ -415,7 +436,7 @@ class Analysis(object):
         # make a mask by combining all ROIs
         allROIs = []
         for ROI in ROIs[2]:
-            theseROIs = glob.glob((self.paths['rec'] + ROI + '.nii') %subjID)
+            theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjID)
             allROIs.extend(theseROIs)
         # add together all ROIs -- and they should not overlap too much
         thisMask = sum([self.get_mri_data(roi) for roi in allROIs])
@@ -423,7 +444,8 @@ class Analysis(object):
         if values.startswith('raw'):
             # find all functional runs of a given runType
             allImg = glob.glob((self.paths['data_fmri'] + self.fmri_prefix + \
-                               runType + '.nii') % subjID)
+                               runType + '.nii*') % subjID)
+            allImg.sort()
             data_path = self.paths['data_behav']+'data_%02d_%s.csv'
             labels = self.extract_labels(allImg, data_path, subjID, runType)
             ds = self.fmri_dataset(allImg, labels, thisMask)
@@ -497,8 +519,7 @@ class Analysis(object):
         labels = []
         for img_fname in img_fnames:
             runNo = int(img_fname.split('_')[-2])
-
-            behav_data = self.read_csvs(data_path %(subjID, runNo, runType))
+            behav_data = pandas.read_csv(data_path %(subjID, runNo, runType))
             # indicate which condition was present for each acquisition
             # FIX: !!!ASSUMES!!! that each block/condition is a multiple of TR
             run_labels = []
@@ -526,7 +547,7 @@ class Analysis(object):
             tempNim = mvpa2.suite.fmri_dataset(
                     samples = thisImg,
                     targets = thisLabel,
-                    chunks = chunkCount,
+                    chunks = chunkCount,  #FIXME: change to runNo?
                     mask = thisMask
                     )
             # combine all functional runs into one massive NIfTI Dataset
@@ -559,18 +580,19 @@ class Analysis(object):
         :Kwargs:
             - offset (int, default: 2)
                 How much labels should be shifted due to the hemodynamic lag. A
-                good practice is to first plot data to see where the peaks are
+                good practice is to first plot data to see where the peaks are.
+                Default is 2 as a typical TR is between 2 and 3 secs and the
+                lag is around 6 seconds.
             - dur (int, default: 2)
-                How many timepoints per condition.
+                How many timepoints per condition. You may want to use a couple
+                because the peak response may occupy more than a single
+                timepoint (thus the default is 2).
         """
-
-        # if self.visualize: self.plotChunks(ds, chunks=[0], shiftTp=2)
 
         # convert to an event-related design
         events = mvpa2.suite.find_events(targets=ds.sa.targets, chunks=ds.sa.chunks)
-        # import pdb; pdb.set_trace()
         # Remove the first and the last fixation period of each block
-        # We don't want any overlap between chunks
+        # Also, we don't want any spillover between adjacent chunks
         events_temp = []
         for evNo, ev in enumerate(events):
             if evNo != 0 and evNo != len(events)-1:
@@ -578,23 +600,30 @@ class Analysis(object):
                 ev['chunks'] == events[evNo+1]['chunks']:
                     events_temp.append(ev)
         events = events_temp
-
         for ev in events:
-            ev['onset'] += offset  # offset since the peak is at 6-8 sec
-            ev['duration'] = dur  # use two time points as peaks since they are both high
+            ev['onset'] += offset
+            if dur is not None:
+                ev['duration'] = dur
         evds = mvpa2.suite.eventrelated_dataset(ds, events=events)
-        if self.visualize: self.plotChunks(ds, evds, chunks=[0], shiftTp=0)
+        #import pdb; pdb.set_trace()
+        durs = [ev['duration'] for ev in events]
+        evds.sa['durations'] = mvpa2.suite.ArrayCollectable(name='durations',
+            value=durs, length=len(durs))
+
+        if self.runParams['visualize']:
+            self.plot_chunks(ds, evds, chunks=[0], shiftTp=0)
 
         return evds
 
 
-    def plotChunks(self, ds, evds, chunks = None, shiftTp = 0):
+    def plot_chunks(self, ds, evds, chunks = None, shiftTp = 0):
         events = mvpa2.suite.find_events(targets=ds.sa.targets, chunks=ds.sa.chunks)
         # which chunks to display
         if chunks == None: chunks = ds.UC
 
         # get colors and assign them to targets
         numColors = len(ds.UT)
+        import matplotlib as mpl
         cmap = mpl.cm.get_cmap('Paired')
         norm = mpl.colors.Normalize(0, 1)
         z = np.linspace(0, 1, numColors + 2)
@@ -602,6 +631,7 @@ class Analysis(object):
         colors_tmp = cmap(norm(z))
         colors = {}
         for target, color in zip(ds.UT,colors_tmp): colors[target] = color
+        colors[self.fix] = 'black'
 
         chunkLen = ds.shape[0] / len(ds.UC)
         #
@@ -609,35 +639,52 @@ class Analysis(object):
 
         # evdsFlat = evds.a.mapper[2].reverse(evds)
         # ds = evds.a.mapper[1].reverse(evdsFlat)
-
+        plt = plot.Plot(nrows=len(chunks))
         for chunkNo, chunk in enumerate(chunks):
-            plt.subplot( len(chunks), 1, chunkNo+1 )
-            plt.title('Runs with conditions shifted by %d' %shiftTp)
+            #plt.subplot( len(chunks), 1, chunkNo+1 )
             sel = np.array([i==chunk for i in evds.sa.chunks])
+            evds_sel = evds[sel]
             sel_ds = np.array([i==chunk for i in ds.sa.chunks])
             # import pdb; pdb.set_trace()
             meanPerChunk = np.mean(ds[sel_ds],1) # mean across voxels
-            plt.plot(meanPerChunk.T, '.')
-            # import pdb; pdb.set_trace()
-            for onset, target in zip(evds[sel].sa.event_onsetidx,
-                                     evds[sel].sa.targets):
-                # import pdb;pdb.set_trace()
+            #data = pandas.DataFrame(ds[sel_ds].samples).T
+            #import pdb; pdb.set_trace()
+            plt.plot(meanPerChunk, kind='line',
+                title='Run %s with conditions shifted by %d' %(chunk, shiftTp),
+                xlabel='acquisition number', ylabel='signal intensity')
+            #import pdb; pdb.set_trace()
+            #for onset, target in zip(evds[sel].sa.event_onsetidx,
+                                     #evds[sel].sa.targets):
+                ## import pdb;pdb.set_trace()
+                #plt.axvspan(
+                    #xmin = onset + shiftTp - .5,
+                    #xmax = onset + eventDur + shiftTp - .5,
+                    #facecolor = colors[target],
+                    #alpha=0.5)
+            #import pdb; pdb.set_trace()
+            for evno in range(len(evds_sel.sa.event_onsetidx)):
+                #if evno < len(evds_sel.sa.event_onsetidx)-1:
+                #if ev['chunks'] == chunk:
+                    #plt.axvspan(
+                        #xmin = ev['onset'] + shiftTp - .5,
+                        #xmax = ev['onset'] + ev['duration'] + shiftTp - .5,
+                        #facecolor = colors[ev['targets']],
+                        #alpha=0.5)
+                    #plt.axvline(x=ev['onset'] % chunkLen + shiftTp - .5)
+                #import pdb; pdb.set_trace()
+                xmin = evds_sel.sa.event_onsetidx[evno] % chunkLen + shiftTp
                 plt.axvspan(
-                    xmin = onset + shiftTp - .5,
-                    xmax = onset + eventDur + shiftTp - .5,
-                    facecolor = colors[target],
+                    xmin = xmin + shiftTp - .5,
+                    xmax = xmin + evds_sel.sa.durations[evno] - .5,
+                    facecolor = colors[evds_sel.sa.targets[evno]],
                     alpha=0.5)
-
-            for ev in events:
-                # import pdb; pdb.set_trace()
-                if ev['chunks'] == chunk:
-                    plt.axvline(x=ev['onset']%chunkLen + shiftTp)
+                plt.axvline(x=evds_sel.sa.event_onsetidx[evno] % chunkLen + shiftTp - .5)
                         # xmin = ev['onset']%chunkLen + shiftTp,
                         # xmax = ev['onset']%chunkLen + ev['duration'] + shiftTp,
                         # facecolor = colors[ev['targets']],
                         # alpha=0.5)
 
-        plt.plot(meanPerChunk.T)
+        #plt.plot(meanPerChunk.T)
         plt.show()
 
     def get_timecourse(self, evds):
@@ -645,35 +692,39 @@ class Analysis(object):
         For each condition, extracts all timepoints as specified in the evds
         window, and averages across voxels
         """
-        baseline = evds[evds.sa.targets == 0].samples
-        baseline = evds.a.mapper[-1].reverse(baseline)
-        # average across all voxels and all blocks
-        baseline = np.mean(np.mean(baseline,2),0)
+
+        baseline = evds[evds.sa.targets == self.fix]
+        conds = evds[evds.sa.targets != self.fix]
+        if np.min(baseline.sa.durations) < np.max(conds.sa.durations):
+            warnings.warn('Some (all?) baseline events are shorter than '
+                          'condition events, thus percent signal change is '
+                          'computed w.r.t. the mean of all baseline events.')
+            baseline = np.mean(baseline.samples)
+        else:  # FIXME: what if baseline > conds?
+            #import pdb; pdb.set_trace()
+            baseline = evds.a.mapper[-1].reverse(baseline.samples)
+            # average across all voxels and all blocks
+            baseline = np.mean(np.mean(baseline,2),0)
         if np.any(baseline<0):
             warnings.warn('Some baseline values are negative')
         # now plot the mean timeseries and standard error
         header = ['cond', 'time', 'subjResp']
         results = []
-        for cond in evds.UT:
-            if cond != 0:
-                evdsMean = evds[np.array([t == cond for t in evds.sa.targets])].samples
-                # recover 3D evds structure: measurements x time points x voxels
-                evdsMean = evds.a.mapper[-1].reverse(evdsMean)
-                # average across all voxels and measurements
-                evdsMean = np.mean(np.mean(evdsMean,2),0)
-                thispsc = (evdsMean - baseline) / baseline * 100
-                #time = np.arange(len(thispsc))*self.tr
-                for pno, p in enumerate(thispsc):
-                    results.append([cond, pno*self.tr, p])
+        for cond in conds.UT:
+            evdsMean = conds[np.array([t == cond for t in conds.sa.targets])].samples
+            # recover 3D evds structure: measurements x time points x voxels
+            evdsMean = evds.a.mapper[-1].reverse(evdsMean)
+            # average across all voxels and measurements
+            evdsMean = np.mean(np.mean(evdsMean,2),0)
+            thispsc = (evdsMean - baseline) / baseline * 100
+            #time = np.arange(len(thispsc))*self.tr
+            for pno, p in enumerate(thispsc):
+                results.append([cond, pno*self.tr, p])
         return header, results
 
     def get_signal(self, evds, values):
         """
         Extracts fMRI signal.
-
-        .. note:: Assumes the condition 0 is the fixation condition, which
-                  will be used in percent signal change computations of raw
-                  values
 
         .. warning:: must be reviewed
 
@@ -693,7 +744,7 @@ class Analysis(object):
 
         if values.startswith('raw') or values == 'beta':
             # take fixation trials only
-            baseline = evds_avg[evds_avg.sa.targets == 0].samples
+            baseline = evds_avg[evds_avg.sa.targets == self.fix].samples
             baseline = np.mean(baseline, 1)  # mean across voxels
             # replicate across chunks
             baseline = np.tile(baseline, len(evds_avg.UT))
@@ -1101,6 +1152,7 @@ class Analysis(object):
 
         for vol in allvols:
             data = self.get_mri_data(vol)
+            #import pdb; pdb.set_trace()
             if coords is None or len(coords) <= 2:
                 coords = [m/2 for m in data.shape]  # middle
             if data.ndim == 4:  # time volume
@@ -1122,7 +1174,8 @@ class Analysis(object):
                 ax.set_title('%s at %s' % (labels[i], coords[i]))
 
                 if rois is not None:
-                    mask = sum([self.get_mri_data(roi[1]) for roi in rois])
+                    #import pdb; pdb.set_trace()
+                    mask = sum([self.get_mri_data(roi) for roi in rois])
                     mean_mask = np.mean(mask, i).T
                     # make it uniform color
                     mean_mask[np.nonzero(mean_mask)] = 1.  # ROI voxels are 1
@@ -1147,19 +1200,26 @@ class Analysis(object):
         allROIs = []
         for ROIs in self.rois:
             for ROI in ROIs[2]:
-                theseROIs = glob.glob((self.paths['rec'] + ROI + '.nii') %subjID)
+                theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjID)
+                theseROIs.sort()
                 allROIs.extend(theseROIs)
         if len(allROIs) == 0:
             raise Exception('Could not find matching ROIS at %s' %
-                             (self.paths['rec'] %subjID))
+                             (self.paths['rois'] %subjID))
         else:
             allROIs = (None, '-'.join([r[1] for r in self.rois]), allROIs)
 
-        fig = plot.Plot(nrows=5, ncols=3, sharex=False, sharey=False)
-        self._plot_slice(self.paths['data_struct']
-                 %subjID + 'wstruct*', fig=fig)
+        fig = plot.Plot(nrows=2, ncols=3, sharex=False, sharey=False)
+        try:
+            self._plot_slice(self.paths['data_struct']
+                     %subjID + 'wstruct*', fig=fig)
+        except:
+            pass
+        #try:
         self._plot_slice(self.paths['data_fmri']
-                 %subjID + 'swmeanafunc_*.nii', rois=allROIs[1], fig=fig)
+                     %subjID + 'afunc_01_main.nii*', rois=allROIs[2], fig=fig) #swmean
+        #except:
+            #pass
 
         # plot ROI values
         ds = self.extract_samples(subjID, self.extraInfo['runType'],
@@ -1171,6 +1231,8 @@ class Analysis(object):
             title = ''
         ax = fig.next()
         ax.hist(ds.samples.ravel(), label=title)
+        ax.set_xlabel('signal')
+        ax.set_ylabel('# of voxels (all timepoints)')
         fig.hide_plots([-2,-1])
         fig.show()
 
@@ -1382,8 +1444,10 @@ class Preproc(object):
                 For which subject the split is done.
         """
         funcImg = glob.glob(self.paths['data_fmri'] % subjID + 'func_*_*.nii')
+        funcImg.sort()
         rp_pattern = self.paths['data_fmri'] % subjID + 'rp_afunc_*.txt'
         rpFiles = glob.glob(rp_pattern)
+        rpFiles.sort()
 
         if len(rpFiles) == 0:  # probably split_rp has been done before
             if self.runParams['verbose']:
@@ -1465,8 +1529,10 @@ class Preproc(object):
                                 os.path.relpath(analysisDir, curpath))
             dataFiles = glob.glob(self.paths['data_behav'] % subjID +\
                                   'data_*_%s.csv' %runType)
+            dataFiles.sort()
             regressorFiles = glob.glob(self.paths['data_fmri'] % subjID +\
                                        'rp_*_%s.txt' %runType)
+            regressorFiles.sort()
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.dir = %s;\n" %
                     (3*rtNo+1, analysisDir_str))
             f.write("matlabbatch{%d}.spm.stats.fmri_spec.timing.units = 'secs';\n" %
@@ -1574,7 +1640,7 @@ def make_full(distance):
     res[iu] = distance[iu]
     return res
 
-def plot_timecourse(df, title='', plt=None, cols='name'):
+def plot_timecourse(df, title='', plt=None, cols='name', **kwargs):
     """Plots an fMRI time course for signal change.
 
     :Args:
@@ -1592,12 +1658,16 @@ def plot_timecourse(df, title='', plt=None, cols='name'):
     """
     if plt is None:
         plt = plot.Plot(sharex=True, sharey=True)
-    agg = stats.aggregate(df, values='subjResp', rows='time',
+    agg = stats.aggregate(df, subplots='ROI', values='subjResp', rows='time',
                           cols=cols, yerr='subjID')
-    ax = plt.plot(agg, title=title, kind='line')
-    ax.set_xlabel('Time since trial onset, s')
-    ax.set_ylabel('Signal change, %')
-    ax.axhline(linestyle='--', color='0.6')
+    ax = plt.plot(agg, kind='line',
+        xlabel='Time since trial onset, s',
+        ylabel='Signal change, %', **kwargs)
+    for thisax in ax:
+        thisax.axhline(linestyle='--', color='0.6')
+    #plt.tight_layout()
+    #plt.show()
+    return plt
 
 def plot_similarity(similarity, names=None, percent=False):
     similarity = make_symmetric(similarity)
