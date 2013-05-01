@@ -129,11 +129,23 @@ class Plot(object):
             num = None
         if kind == 'matrix':
             self.fig = self.figure(figsize=figsize, num=num)
+            if 'label_mode' not in kwargs:
+                kwargs['label_mode'] = "L"
+            if 'axes_pad' not in kwargs:
+                kwargs['axes_pad'] = .5
+            if 'share_all' not in kwargs:
+                kwargs['share_all'] = True
+            if 'cbar_mode' not in kwargs:
+                kwargs['cbar_mode'] = "single"
             self.axes = ImageGrid(self.fig, rect,
                                   nrows_ncols=nrows_ncols,
-                                  cbar_mode=cbar_mode,
+                                  #cbar_mode=cbar_mode,
                                   **kwargs
                                   )
+            self.naxes = len(self.axes.axes_all)
+            #def _matrix_len():
+                #return len(self.axes.axes_all)
+            #self.axes.__len__ = _matrix_len
         else:
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
@@ -144,6 +156,7 @@ class Plot(object):
                 **kwargs
                 )
             self.axes = self.axes.ravel()  # turn axes into a list
+            self.naxes = len(self.axes)
         self.kind = kind
         self.subplotno = -1  # will get +1 after the plot command
         self.nrows_ncols = nrows_ncols
@@ -164,10 +177,10 @@ class Plot(object):
     def __getitem__(self, key):
         """Allow to get axes as Plot()[key]
         """
-        if key > len(self.axes):
+        if key > self.naxes:
             raise IndexError
         if key < 0:
-            key += len(self.axes)
+            key += self.naxes
         return self.axes[key]
 
     def get_ax(self, subplotno=None):
@@ -284,7 +297,7 @@ class Plot(object):
                    title=title, kind=kind, xtickson=xtickson, ytickson=ytickson,
                    no_yerr=no_yerr, numb=numb, autoscale=autoscale, **kwargs)
 
-    def plot(self, agg, subplots=None, **kwargs):
+    def plot(self, agg, kind='bar', subplots=None, subplots_order=None, **kwargs):
         """
         The main plotting function.
 
@@ -315,41 +328,51 @@ class Plot(object):
         else:
             agg = pandas.DataFrame(agg)
         axes = []
-        try:
-            s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
-        except:
-            s_idx = None
-        if s_idx is not None:  # subplots implicit in agg
-            if len(s_idx) != 0:
-                sbp = agg.columns.levels[s_idx[0]]
+
+        if subplots_order is not None:
+            sbp = subplots_order
+        else:
+            try:
+                s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
+            except:
+                s_idx = None
+
+            if s_idx is not None:  # subplots implicit in agg
+                if len(s_idx) != 0:
+                    sbp = agg.columns.levels[s_idx[0]]
+                else:
+                    sbp = None
+            elif subplots:  # get subplots from the top level column
+                sbp = agg.columns.levels[0]
             else:
                 sbp = None
-        elif subplots:  # get subplots from the top level column
-            sbp = agg.columns.levels[0]
-        else:
-            sbp = None
 
         if sbp is None:
             axes = self._plot_ax(agg, **kwargs)
         else:
-            # if haven't made any plots yet...
+            # if we haven't made any plots yet...
+            #import pdb; pdb.set_trace()
             if self.subplotno == -1:
                 num_subplots = len(sbp)
                 # ...can still adjust the number of subplots
-                if num_subplots > len(self.axes):
-                    self._create_subplots(ncols=num_subplots)
+                if num_subplots > self.naxes:
+                    self._create_subplots(ncols=num_subplots, kind=kind)
 
             for no, subname in enumerate(sbp):
-                # all plots are the same, onle legend will suffice
-                if subplots is None or subplots:
-                    if no == 0:
+                if kind == 'matrix':
+                    legend = False
+                else:
+                    # all plots are the same, onle legend will suffice
+                    if subplots is None or subplots:
+                        if no == 0:
+                            legend = True
+                        else:
+                            legend = False
+                    else:  # plots vary; each should get a legend
                         legend = True
-                    else:
-                        legend = False
-                else:  # plots vary; each should get a legend
-                    legend = True
+
                 ax = self._plot_ax(agg[subname], title=subname, legend=legend,
-                                **kwargs)
+                                   kind=kind, **kwargs)
                 if 'title' in kwargs:
                     ax.set_title(kwargs['title'])
                 else:
@@ -359,11 +382,10 @@ class Plot(object):
 
     def _plot_ax(self, agg, ax=None, title='', kind='bar', legend=None,
                    xtickson=True, ytickson=True, rotate=True,
-                   no_yerr=False, numb=False, autoscale=False, order=None,
+                   no_yerr=False, numb=False, autoscale=True, order=None,
                    **kwargs):
         if ax is None:
-            self.subplotno += 1
-            ax = self.get_ax()
+            ax = self.next()
 
         if isinstance(agg, pandas.DataFrame):
             mean, p_yerr = stats.confidence(agg)
@@ -389,9 +411,11 @@ class Plot(object):
         elif kind == 'bean':
             autoscale = False  # FIX: autoscaling is incorrect on beanplots
             ax, mean = self.beanplot(agg, ax=ax, order=order, **kwargs)
+        elif kind == 'matrix':
+            self.matrix_plot(mean, ax=ax)
         else:
             raise Exception('%s plot not recognized. Choose from '
-                            '{bar, line, bean}.' %kind)
+                            '{bar, line, bean, matrix}.' %kind)
 
         if kind != 'line':
             ax.set_xticklabels(self._format_labels(labels=mean.index))
@@ -399,38 +423,38 @@ class Plot(object):
         labels = ax.get_xticklabels()
         max_len = max([len(label.get_text()) for label in labels])
         if max_len > 10 and rotate:  #FIX to this: http://stackoverflow.com/q/5320205
-            self.fig.autofmt_xdate()
+            for label in labels:
+                label.set_ha('right')
+                label.set_rotation(30)
         else:
             for label in labels:
                 label.set_rotation(0)
 
+        if kind == 'matrix':
+            #import pdb; pdb.set_trace()
+            ax.set_yticklabels(self._format_labels(labels=mean.columns))
         if not ytickson:
             ax.set_yticklabels(['']*len(ax.get_yticklabels()))
-        ax.set_xlabel('')
 
         # set y-axis limits
         if 'ylim' in kwargs:
             ax.set_ylim(kwargs['ylim'])
-        elif autoscale:
+        elif autoscale and kind in ['line', 'bar']:
             mean_array = np.asarray(mean)
             r = np.max(mean_array) - np.min(mean_array)
             ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
+            ymin = np.min(np.asarray(mean) - ebars)
+            ymax = np.max(np.asarray(mean) + ebars)
             if kind == 'bar':
-                ymin = np.min(np.asarray(mean) - ebars)
                 if ymin > 0:
                     ymin = 0
-                else:
-                    ymin = np.min(np.asarray(mean) - 3*ebars)
-            else:
-                ymin = np.min(np.asarray(mean) - 3*ebars)
-            if kind == 'bar':
-                ymax = np.max(np.asarray(mean) + ebars)
                 if ymax < 0:
                     ymax = 0
-                else:
-                    ymax = np.max(np.asarray(mean) + 3*ebars)
-            else:
-                ymax = np.max(np.asarray(mean) + 3*ebars)
+            xyrange = ymax - ymin
+            if ymin != 0:
+                ymin -= xyrange / 3.
+            if ymax != 0:
+                ymax += xyrange / 3.
             ax.set_ylim([ymin, ymax])
 
         # set x and y labels
@@ -441,10 +465,11 @@ class Plot(object):
         if 'ylabel' in kwargs:
             ax.set_ylabel(kwargs['ylabel'])
         else:
-            ax.set_ylabel(self._get_title(mean, 'cols'))
+            ax.set_ylabel('')
 
         ax.set_title(title)
-        self._draw_legend(ax, visible=legend, data=mean, **kwargs)
+        if kind != 'matrix':
+            self._draw_legend(ax, visible=legend, data=mean, **kwargs)
         if numb == True:
             self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
 
@@ -472,31 +497,31 @@ class Plot(object):
         return title
 
     def _draw_legend(self, ax, visible=True, data=None, **kwargs):
-        l = ax.get_legend()  # get an existing legend
-        if l is None:  # create a new legend
-            l = ax.legend()
-        l.legendPatch.set_alpha(0.5)
+        leg = ax.get_legend()  # get an existing legend
+        if leg is None:  # create a new legend
+            leg = ax.legend()
+        leg.legendPatch.set_alpha(0.5)
 
         try:  # may or may not have any columns
-            l.set_title(self._get_title(data, 'cols'))
+            leg.set_title(self._get_title(data, 'cols'))
         except:
             pass
         new_texts = self._format_labels(data.columns)
-        texts = l.get_texts()
+        texts = leg.get_texts()
         for text, new_text in zip(texts, new_texts):
             text.set_text(new_text)
         #loc='center left', bbox_to_anchor=(1.3, 0.5)
         #loc='upper right', frameon=False
 
         if 'legend_visible' in kwargs:
-            l.set_visible(kwargs['legend_visible'])
+            leg.set_visible(kwargs['legend_visible'])
         elif visible is not None:
-            l.set_visible(visible)
+            leg.set_visible(visible)
         else:  #decide automatically
-            if len(l.texts) == 1:  # showing a single legend entry is useless
-                l.set_visible(False)
+            if len(leg.texts) == 1:  # showing a single legend entry is useless
+                leg.set_visible(False)
             else:
-                l.set_visible(True)
+                leg.set_visible(True)
 
     def _format_labels(self, labels='', names=''):
         """Formats labels to avoid uninformative (singular) entries
@@ -655,7 +680,7 @@ class Plot(object):
         ax.set_title(title)
         return ax
 
-    def matrix_plot(self, matrix, ax=None, title='', **kwargs):
+    def matrix_plot(self, mean, ax=None, **kwargs):
         """
         Plots a matrix.
 
@@ -673,30 +698,16 @@ class Plot(object):
                 Keyword arguments to pass to :func:`matplotlib.pyplot.imshow`
 
         """
-        if ax is None:
-            ax = plt.subplot(111)
+        #if ax is None: ax = self.next()
+
         import matplotlib.colors
-        norm = matplotlib.colors.normalize(vmax=1, vmin=0)
-        mean, sem = self.errorbars(matrix)
-        #matrix = pandas.pivot_table(mean.reset_index(), rows=)
+        norm = matplotlib.colors.normalize(vmin=np.min(np.asarray(mean)),
+                                           vmax=np.max(np.asarray(mean)))
+        mean = self._unstack_levels(mean, 'cols')
         im = ax.imshow(mean, norm=norm, interpolation='none', **kwargs)
-        # ax.set_title(title)
-
-        ax.cax.colorbar(im)#, ax=ax, use_gridspec=True)
-        # ax.cax.toggle_label(True)
-
-        t = self.add_inner_title(ax, title, loc=2)
-        t.patch.set_ec("none")
-        t.patch.set_alpha(0.8)
-        xnames = ['|'.join(map(str,label)) for label in matrix.minor_axis]
-        ax.set_xticks(range(len(xnames)))
-        ax.set_xticklabels(xnames)
-        # rotate long labels
-        if max([len(n) for n in xnames]) > 20:
-            ax.axis['bottom'].major_ticklabels.set_rotation(90)
-        ynames = ['|'.join(map(str,label)) for label in matrix.major_axis]
-        ax.set_yticks(range(len(ynames)))
-        ax.set_yticklabels(ynames)
+        ax.set_xticks(range(mean.shape[1]))
+        ax.set_yticks(range(mean.shape[0]))
+        self.colorbar(im, cax = self.axes.cbar_axes[0])
         return ax
 
     def add_inner_title(self, ax, title, loc=2, size=None, **kwargs):
