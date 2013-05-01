@@ -111,6 +111,14 @@ def aggregate(df, rows=None, cols=None, values=None,
                     names=['rows.' + r for r in rows]).T
         except:
             pass
+    elif not unstack and subplots is not None:
+        try:
+            order = df[subplots].unique()
+            agg = pandas.concat([agg[col].T for col in order], keys=order,
+                    names=['subplots.' + subplots]).T
+        except:
+            pass
+
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
