@@ -186,23 +186,41 @@ class Analysis(object):
 
         return df, df_fname
 
-    def plot(self, df, plt=None, cols=['cond', 'name']):
+    def plot(self, df, cols=['cond', 'name']):
         if self.runParams['method'] == 'timecourse':
-            plt = plot_timecourse(df, plt=plt, cols=cols)
+            plt = plot_timecourse(df, cols=cols)
+            plt.tight_layout()
         else:
-            agg = self.get_data(df)
-            order = [r[1] for r in self.rois]
-            if plt is None:
-                plt = plot.Plot()
-            plt.plot(agg, subplots='ROI', subplots_order=order, kind='bar')
-        plt.tight_layout()
+            agg = self.get_data(df, kind=self.runParams['method'])
+            agg = 1 - 2*agg
+            plt = plot.Plot()
+            axes = plt.plot(agg, subplots='ROI', kind='bar')
+            if self.runParams['method'] == 'svm':
+                # mark chance level
+                try:
+                    iter(axes)
+                except:
+                    axes = [axes]
+                for ax in axes:
+                    ax.axhline(y=.5, color='.2', ls='--', lw=2, marker='None')
+            plt.tight_layout()
 
+            if self.runParams['method'] in ['corr','svm']:
+                matrix = self.get_data(df, kind='matrix')
+                mtx = plot.Plot(kind='matrix')
+                axes = mtx.plot(matrix, subplots='ROI', kind='matrix')
+                for ax in axes:
+                    ax.set_xlabel('')
+                    ax.set_ylabel('')
+                mtx.tight_layout()
+
+        plt.show()  # will show mtx as well :/
         if self.runParams['saveplot'] and not self.runParams['noOutput']:
             plt.savefig(self.paths['analysis']+'%s_%s.png' %
-                (self.runParams['method'],
-                 self.runParams['values'])
-                 )
-        plt.show()
+                (self.runParams['method'], self.runParams['values']))
+            if self.runParams['method'] in ['corr','svm']:
+                mtx.savefig(self.paths['analysis']+'%s_%s_matrix.png' %
+                    (self.runParams['method'], self.runParams['values']))
 
     def get_data(self, df):
         raise NotImplementedError
@@ -790,10 +808,10 @@ class Analysis(object):
 
     def correlation(self, evds, nIter=100):
         """
-        Computes a correlation between multiple splits in half of the data.
+        Computes pariwise correlations between multiple splits in half of the data.
 
-        Reported as one minus a correlation to provide a dissimilarity measure
-        as in svm.
+        Reported as one minus a correlation over two to provide a dissimilarity
+        measure between 0 and 1 as in svm.
 
         :Args:
             evds (event-related mvpa dataset)
@@ -840,7 +858,8 @@ class Analysis(object):
             run_averager = mvpa2.suite.mean_group_sample(['targets'])
             evds_split2 = evds_split2.get_mapped(run_averager)
 
-            result = mvpa2.clfs.distance.one_minus_correlation(evds_split1.samples, evds_split2.samples)/2
+            result = mvpa2.clfs.distance.one_minus_correlation(evds_split1.samples,
+                evds_split2.samples) / 2
 
             for i in range(0, numT):
                 for j in range(0, numT):
@@ -1807,3 +1826,4 @@ def make_roi_pattern(rois):
         else:  # just a single ROI name provided
             ROIs.append((ROI, ROI, makePatt([ROI])))
     return ROIs
+
