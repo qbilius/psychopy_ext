@@ -461,6 +461,10 @@ class Analysis(object):
         for ROI in ROIs[2]:
             theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjID)
             allROIs.extend(theseROIs)
+        if len(allROIs) == 0:
+            raise Exception('No matching ROIs were found in %s' %
+                            (self.paths['rois'] % subjID))
+
         # add together all ROIs -- and they should not overlap too much
         thisMask = sum([self.get_mri_data(roi) for roi in allROIs])
 
