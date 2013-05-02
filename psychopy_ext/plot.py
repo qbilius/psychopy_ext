@@ -139,13 +139,9 @@ class Plot(object):
                 kwargs['cbar_mode'] = "single"
             self.axes = ImageGrid(self.fig, rect,
                                   nrows_ncols=nrows_ncols,
-                                  #cbar_mode=cbar_mode,
                                   **kwargs
                                   )
             self.naxes = len(self.axes.axes_all)
-            #def _matrix_len():
-                #return len(self.axes.axes_all)
-            #self.axes.__len__ = _matrix_len
         else:
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
@@ -365,11 +361,11 @@ class Plot(object):
                     # all plots are the same, onle legend will suffice
                     if subplots is None or subplots:
                         if no == 0:
-                            legend = True
+                            legend = None
                         else:
                             legend = False
                     else:  # plots vary; each should get a legend
-                        legend = True
+                        legend = None
 
                 ax = self._plot_ax(agg[subname], title=subname, legend=legend,
                                    kind=kind, **kwargs)
@@ -496,7 +492,7 @@ class Plot(object):
         title = ', '.join(title)
         return title
 
-    def _draw_legend(self, ax, visible=True, data=None, **kwargs):
+    def _draw_legend(self, ax, visible=None, data=None, **kwargs):
         leg = ax.get_legend()  # get an existing legend
         if leg is None:  # create a new legend
             leg = ax.legend()
@@ -512,7 +508,6 @@ class Plot(object):
             text.set_text(new_text)
         #loc='center left', bbox_to_anchor=(1.3, 0.5)
         #loc='upper right', frameon=False
-
         if 'legend_visible' in kwargs:
             leg.set_visible(kwargs['legend_visible'])
         elif visible is not None:
@@ -624,8 +619,9 @@ class Plot(object):
                 ecolor='black')
         step = np.ptp(x) / (len(x) - 1.)
         xlim = ax.get_xlim()
-        ax.set_xlim((xlim[0] - step/2, xlim[1] + step/2))
-        ax.set_xticks(x)
+        if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
+            ax.set_xlim((xlim[0] - step/2, xlim[1] + step/2))
+            ax.set_xticks(x)
 
         # nicely space tick labels
         if len(x) <= 5:
@@ -935,14 +931,17 @@ class Plot(object):
         except:
             unstacked = data
         else:
-            try:
-                levs = data.columns.names + levels
-            except:
-                levs = levels
-            if len(levels) == 1:
-                levels = levels[0]
-            unstacked = data.unstack(levels)
-            unstacked.columns.names = levs
+            if len(levels) == 0:
+                unstacked = pandas.DataFrame(data)
+            else:
+                try:
+                    levs = data.columns.names + levels
+                except:
+                    levs = levels
+                if len(levels) == 1:
+                    levels = levels[0]
+                unstacked = data.unstack(levels)
+                unstacked.columns.names = levs
         return unstacked
 
     def _stack_levels(self, data, pref):
