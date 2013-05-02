@@ -17,7 +17,8 @@ import pandas
 
 
 def aggregate(df, rows=None, cols=None, values=None,
-    subplots=None, yerr=None, aggfunc='mean', unstack=False):
+    subplots=None, yerr=None, aggfunc='mean', unstack=False,
+    order='natural'):
     """
     Aggregates data over specified columns.
 
@@ -42,6 +43,10 @@ def aggregate(df, rows=None, cols=None, values=None,
             If True, returns an unstacked version of aggregated data (i.e.,
             rows in rows and columns in columns)). Useful for printing and
             other non-plotting tasks.
+        - order (str, {'natural', 'sorted'}, default: 'natural')
+            If order is 'natural', attempts to keep the original order of the
+            data (as in the file). Works only sometimes though. If 'sorted',
+            then will come out sorted as is by default in pandas.
 
     :Returns:
         A `pandas.DataFrame` where data has been aggregated in the following
@@ -104,20 +109,21 @@ def aggregate(df, rows=None, cols=None, values=None,
         else:
             agg = pandas.DataFrame(agg).T
     # rudimentary sorting abilities
-    if rows[0] is not None and not unstack and subplots is None:
-        try:
-            order = df[rows[0]].unique()
-            agg = pandas.concat([agg[col].T for col in order], keys=order,
-                    names=['rows.' + r for r in rows]).T
-        except:
-            pass
-    elif not unstack and subplots is not None:
-        try:
-            order = df[subplots].unique()
-            agg = pandas.concat([agg[col].T for col in order], keys=order,
-                    names=['subplots.' + subplots]).T
-        except:
-            pass
+    if order != 'sorted':
+        if rows[0] is not None and not unstack and subplots is None:
+            try:
+                order = df[rows[0]].unique()
+                agg = pandas.concat([agg[col].T for col in order], keys=order,
+                        names=['rows.' + r for r in rows]).T
+            except:
+                pass
+        elif not unstack and subplots is not None:
+            try:
+                order = df[subplots].unique()
+                agg = pandas.concat([agg[col].T for col in order], keys=order,
+                        names=['subplots.' + subplots]).T
+            except:
+                pass
 
     return agg
 
