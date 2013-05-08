@@ -21,11 +21,11 @@ psychopy_ext.fmri.Analysis
       ~Analysis.genFakeData
       ~Analysis.get_df
       ~Analysis.get_mri_data
-      ~Analysis.get_signal
-      ~Analysis.get_timecourse
-      ~Analysis.get_univariate
+      ~Analysis.signal
+      ~Analysis.timecourse
+      ~Analysis.univariate
       ~Analysis.plot
-      ~Analysis.plotChunks
+      ~Analysis.plot_chunks
       ~Analysis.plot_roi
       ~Analysis.read_csvs
       ~Analysis.roi_params

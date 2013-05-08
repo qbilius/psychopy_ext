@@ -14,7 +14,6 @@ psychopy_ext.plot.Plot
       ~Plot.add_inner_title
       ~Plot.barplot
       ~Plot.beanplot
-      ~Plot.errorbars
       ~Plot.get_ax
       ~Plot.get_colors
       ~Plot.hide_plots
@@ -26,8 +25,6 @@ psychopy_ext.plot.Plot
       ~Plot.plot
       ~Plot.sample_paired
       ~Plot.scatter
-      ~Plot.stats_test
-      ~Plot.ttestPrint
 
 
 
