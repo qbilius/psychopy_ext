@@ -48,7 +48,7 @@ class Analysis(object):
         5. Fixation condition is 0 (an int).
 
     :Args:
-        paths (dict of str:str pairs)
+        - paths (dict of str:str pairs)
             A dictionary of paths where data is stored. Expected to have at
             least the following keys:
                 - 'analysis' (for storing analysis outputs),
@@ -56,6 +56,8 @@ class Analysis(object):
                 - 'data_fmri',
                 - 'rec' (for ROIs from surface reconstruction in Caret or so),
                 - 'data_rois' (for storing the extracted signals in these ROIs),
+        - tr (int or float)
+            Time of repetition during the fMRI scan. Usually 1, 2, or 3 seconds.
 
     :Kwargs:
         - extraInfo (dict, default: None)

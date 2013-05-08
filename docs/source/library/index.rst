@@ -1,12 +1,10 @@
-Documentation
-=============
-
 .. toctree::
-   :maxdepth: 2
-   
+   :maxdepth: 3
+
    installation
    project
    computer
-   experiment   
+   experiment
    plot
    ui
+
