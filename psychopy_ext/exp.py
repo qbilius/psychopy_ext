@@ -29,6 +29,7 @@ except:
     pass
 
 class default_computer:
+
     """The default computer parameters. Hopefully will form a full class at
     some point.
     """
@@ -46,6 +47,9 @@ class default_computer:
     # window defaults
     screen = 0  # default screen is 0
     viewScale = [1,1]
+
+    def __init__(self):
+        pass
 
 def set_paths(exp_root, computer=default_computer, fmri_rel=''):
     """Set paths to data storage.
@@ -1340,6 +1344,11 @@ class ThickShapeStim(visual.ShapeStim):
 
 
 class GroupStim(object):
+    """
+    A convenience class to put together stimuli in a single group.
+
+    You can then do things like `stimgroup.draw()`.
+    """
 
     def __init__(self, stimuli=None, name=None):
         if not isinstance(stimuli, tuple) and not isinstance(stimuli, list):

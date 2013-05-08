@@ -299,10 +299,11 @@ class Zoccolan(Model):
 
 class GaborJet(Model):
     """
-    This is a Python implementation of the Gabor-Jet model from Biederman lab
-    (http://geon.usc.edu/GWTgrid_simple.m). A given image is transformed with a
-    gabor wavelet and certain values on a grid are chosen for the output.
-    Further details are in http://dx.doi.org/10.1016/j.visres.2009.08.021.
+    Python implementation of the `Gabor-Jet model from Biederman lab
+    <http://geon.usc.edu/GWTgrid_simple.m>`_. A given image is transformed with a
+    Gabor wavelet and certain values on a grid are chosen for the output.
+    Further details are in `Xu et al., 2009
+    <http://dx.doi.org/10.1016/j.visres.2009.08.021>`_.
 
     Original implementation copyright 2004 Xiaomin Yue
     """
@@ -331,7 +332,7 @@ class GaborJet(Model):
         :Kwargs:
             - cell_type (str, default: 'complex')
                 Choose between 'complex'(40 output values) and 'simple'
-                (80 values, NOT FULLY WORKING, FIX)
+                (80 values, NOT FULLY WORKING, FIXME)
             - grid_size (int, default: 0)
                 How many positions within an image to take
             - sigma (float, default: 2*np.pi)
@@ -480,7 +481,8 @@ class HMAX(Model):
     """
     HMAX for Python
 
-    Based on the original HMAX (Riesenhuber & Poggio, 1999, doi:10.1038/14819)
+    Based on the original HMAX (`Riesenhuber & Poggio, 1999
+    <http://dx.doi.org/10.1038/14819>`_)
     Code rewritten using a Pure MatLab implementation by Minjoon Kouh at the
     MIT Center for Biological and Computational Learning. Most of the
     structure, variable names and some of the comments come from this
@@ -489,33 +491,39 @@ class HMAX(Model):
     original. View-tuned units have been added by Hans Op de Beeck.
 
     Code's output is tested against the Pure MatLab output which can be tested
-    agains the Standard C/MatLab code featured at
-    http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code
+    against the Standard C/MatLab code featured at `Riesenhuber's lab
+    <http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code>`_.
     You can compare the outputs to the standard Lena image between the present
-    and C/MatLab implementation using function test_matlab()
+    and C/MatLab implementation using function :mod:test_models
 
     Note that this implementation is not the most current HMAX
     implementation that doesn't rely on hardcoding features anymore (e.g.,
     Serre et al., 2007).
 
     Copyright 2011-2012 Jonas Kubilius
+
     Original VTU implementation copyright 2007 Hans P. Op de Beeck
+
     Original MatLab implementation copyright 2004 Minjoon Kouh
+
     Since the original code did not specify a license type, I assume GNU GPL v3
-    since it is used in Jim Mutch's latest implementation of HMAX
-    http://cbcl.mit.edu/jmutch/cns/
+    since it is used in `Jim Mutch's latest implementation of HMAX
+    <http://cbcl.mit.edu/jmutch/cns/>`_
+
+    :Kwargs:
+
+        - matlab (boolean, default: False)
+            If *True*, Gaussian filters will be implemented using the
+            original models implementation which mimicks MatLab's behavior.
+            Otherwise, a more efficient numerical method is used.
+        - filt_type ({'gaussian', 'gabor'}, default: 'gaussian')
+            Type of V1 filter. We default to gaussian as it was used originally
+            in HMAX'99. However, many people prefer using Gabor filters as
+            they presumambly model V1 better.
+
     """
     def __init__(self, matlab=False, filt_type='gaussian'):
-        """
-        Initializes key HMAX parameters
 
-        **Parameters**
-
-            matlab: boolean
-                If *True*, Gaussian filters will be implemented using the
-                original models implementation which mimicks MatLab's behavior.
-                Otherwise, a more efficient numerical method is used.
-        """
         self.n_ori = 4 # number of orientations
         # S1 filter sizes for scale band 1, 2, 3, and 4
         self.filter_sizes_all = [[7, 9], [11, 13, 15], [17, 19, 21],
