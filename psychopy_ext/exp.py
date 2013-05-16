@@ -830,11 +830,14 @@ class Experiment(TrialHandler):
                     thisTrial=thisTrial, thisEvent=thisEvent, j=j, allKeys=allKeys)
                 if eventKeys is not None:
                     allKeys += eventKeys
-                # this is to get keys if we did not do that during trial
+                # this is to get keys if we did not do that during trial                
                 allKeys += event.getKeys(
                     keyList = self.validResponses.keys(),
-                    timeStamped = trialClock)
-
+                    timeStamped = trialClock)            
+            
+            if len(allKeys) == 0 and self.runParams['autorun'] > 0:
+                allKeys += [(thisTrial['autoResp'], thisTrial['autoRT'])]
+                
             thisTrial = self.post_trial(thisTrial, allKeys)
             if self.runParams['autorun'] > 0:  # correct the timing
                 try:
