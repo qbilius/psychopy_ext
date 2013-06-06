@@ -344,7 +344,7 @@ class Plot(object):
                 sbp = None
 
         if sbp is None:
-            axes = self._plot_ax(agg, **kwargs)
+            axes = self._plot_ax(agg, kind=kind, **kwargs)
         else:
             # if we haven't made any plots yet...
             #import pdb; pdb.set_trace()
@@ -366,7 +366,6 @@ class Plot(object):
                             legend = False
                     else:  # plots vary; each should get a legend
                         legend = None
-
                 ax = self._plot_ax(agg[subname], title=subname, legend=legend,
                                    kind=kind, **kwargs)
                 if 'title' in kwargs:
@@ -406,7 +405,7 @@ class Plot(object):
             self.lineplot(mean, yerr=p_yerr, ax=ax)
         elif kind == 'bean':
             autoscale = False  # FIX: autoscaling is incorrect on beanplots
-            ax, mean = self.beanplot(agg, ax=ax, order=order, **kwargs)
+            ax = self.beanplot(agg, ax=ax, order=order, **kwargs)
         elif kind == 'matrix':
             self.matrix_plot(mean, ax=ax)
         else:
@@ -748,7 +747,7 @@ class Plot(object):
             print 'Cannot plot more than 2 dims'
 
 
-    def _violinplot(self, data, pos, rlabels, sel, ax=None, bp=False, cut=None, **kwargs):
+    def _violinplot(self, data, pos, rlabels, ax=None, bp=False, cut=None, **kwargs):
         """
         Make a violin plot of each dataset in the `data` sequence.
 
@@ -784,39 +783,58 @@ class Plot(object):
         w = min(0.15*max(dist,1.0),0.5) * .5
 
         #for major_xs in range(data.shape[1]):
-        for num, rlabel in enumerate(rlabels):
-            p = pos[num]
-            d1 = data.ix[rlabel].icol(0)  # FIXME: from pandas 0.11 change to iloc
-            s1 = sel.ix[rlabel].icol(0)
-            if s1:
-                k1 = scipy.stats.gaussian_kde(d1)  # calculates kernel density
-            else:
-                k1 = None
+        for rno, rlabel in enumerate(rlabels):
+            p = pos[rno]
+            #d1 = data.iloc[rlabel].icol(0)
+            ##s1 = sel.iloc[rlabel].icol(0)
+            ##if s1:
+            #d1 = d1[pandas.notnull(d1)]
+            #k1 = scipy.stats.gaussian_kde(d1)  # calculates kernel density
+            #else:
+                #k1 = None
+            #import pdb; pdb.set_trace()
+            d = data.loc[:,rlabel]
 
-            if data.shape[1] == 1:
+            if d.ndim == 1:
+                d1 = d
+                d1 = d1[pandas.notnull(d1)]
                 d2 = d1
-                s2 = s1
+                if len(d1) > 1:
+                    k1 = scipy.stats.gaussian_kde(d1)  # calculates kernel density
+                else:
+                    k1 = None
                 k2 = k1
-            else:
-                d2 = data.ix[rlabel].icol(1)
-                s2 = sel.ix[rlabel].icol(1)
-                if s2:
+            elif d.ndim == 2:
+                d1 = d.iloc[:,0]
+                d1 = d1[pandas.notnull(d1)]
+                if len(d1) > 1:
+                    k1 = scipy.stats.gaussian_kde(d1)  # calculates kernel density
+                else:
+                    k1 = None
+
+                d2 = d.iloc[:,1]
+                d2 = d2[pandas.notnull(d2)]
+                #s2 = sel.ix[rlabel].icol(1)
+                if len(d2) > 1:
                     k2 = scipy.stats.gaussian_kde(d2)  # calculates kernel density
                 else:
                     k2 = None
+            else:
+                raise Exception('beanplots are only available for one or two '
+                    'columns, but we detected %d columns' % data.ndim)
 
             if k1 is not None and k2 is not None:
                 cutoff = .001
                 if cut is None:
-                    if s1 and s2:
-                        high = max(d1.max(),d2.max())
-                        low = min(d1.min(),d2.min())
-                    elif s1:
-                        high = d1.max()
-                        low = d1.min()
-                    elif s2:
-                        high = d2.max()
-                        low = d2.min()
+                    #if s1 and s2:
+                    high = max(d1.max(),d2.max())
+                    low = min(d1.min(),d2.min())
+                    #elif s1:
+                        #high = d1.max()
+                        #low = d1.min()
+                    #elif s2:
+                        #high = d2.max()
+                        #low = d2.min()
                     stepsize = (high - low) / 100
                     area_low1 = 1  # max cdf value
                     area_low2 = 1  # max cdf value
@@ -833,7 +851,7 @@ class Plot(object):
                 else:
                     low, high = cut
 
-                draw_density(p, low, high, k1, k2, ncols=data.shape[1])
+                draw_density(p, low, high, k1, k2, ncols=d.ndim)
 
         # a work-around for generating a legend for the PolyCollection
         # from http://matplotlib.org/users/legend_guide.html#using-proxy-artist
@@ -846,7 +864,7 @@ class Plot(object):
             #ax.boxplot(data,notch=1,positions=pos,vert=1)
         return ax
 
-    def _stripchart(self, data, pos, rlabels, sel, ax=None,
+    def _stripchart(self, data, pos, rlabels, ax=None,
         mean=False, median=False, width=None, discrete=True, bins=30):
         """Plot samples given in `data` as horizontal lines.
 
@@ -855,19 +873,22 @@ class Plot(object):
             median: plot median of each dataset as a dot if True.
             width: Horizontal width of a single dataset plot.
         """
-        def draw_lines(d, sel, maxcount, hist, bin_edges, sides=None):
+        def draw_lines(p, d, maxcount, hist, bin_edges, sides=None):
+            d = d[pandas.notnull(d)]
             if discrete:
                 bin_edges = bin_edges[:-1]  # upper edges not needed
                 hw = hist * w / (2.*maxcount)
             else:
                 bin_edges = d
                 hw = w / 2.
-            if mean:  # draws a longer black line
+            if mean or len(d) < 2:  # draws a longer black line
                 ax.hlines(np.mean(d), sides[0]*2*w + p, sides[1]*2*w + p,
                     lw=2, color='black')
-            if sel:
+            #if sel:
+            #import pdb; pdb.set_trace()
+            if len(d) > 1:
                 ax.hlines(bin_edges, sides[0]*hw + p, sides[1]*hw + p, color='white')
-            if median:  # puts a white dot
+            if median and len(d) > 1:  # puts a white dot
                 ax.plot(p, np.median(d), 'x', color='white', mew=2)
 
         if width:
@@ -876,31 +897,65 @@ class Plot(object):
             dist = np.max(pos)-np.min(pos)
             w = min(0.15*max(dist,1.0),0.5) * .5
 
-        # put rows and cols in cols, yerr in rows (original format)
-        data = self._stack_levels(data, 'cols')
-        data = self._unstack_levels(data, 'yerr').T
-        sel = self._stack_levels(sel, 'cols')
-        sel = self._unstack_levels(sel, 'yerr').T
+        ## put rows and cols in cols, yerr in rows (original format)
+        #data = self._stack_levels(data, 'cols')
+        #data = self._unstack_levels(data, 'yerr').T
+        #sel = self._stack_levels(sel, 'cols')
+        #sel = self._unstack_levels(sel, 'yerr').T
         # apply along cols
-        hist, bin_edges = np.apply_along_axis(np.histogram, 0, data, bins)
-        # it return arrays of object type, so we got to correct that
-        hist = np.array(hist.tolist())
-        bin_edges = np.array(bin_edges.tolist())
-        maxcount = np.max(hist)
+        #import pdb; pdb.set_trace()
+        rng = (data.min().min(), data.max().max())
+        hists = []#data.max()
+        for dno, d in data.iteritems():
+            #d = data.iloc[:,p]
+            d = d[pandas.notnull(d)]
+            hist, bin_ed = np.histogram(d, bins=bins, range=rng)
+            #import pdb; pdb.set_trace()
+            hists.extend(hist.tolist())
+            #hists.iloc[p] = hist  # hists is Series
+        maxcount = np.max(hists)
+        #import pdb; pdb.set_trace()
 
-        for n, rlabel in enumerate(rlabels):
-            p = pos[n]
-            d = data.ix[:, rlabel]
-            s = sel.ix[:, rlabel]
-
-            if len(d.columns) == 2:
-                draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[0],
-                    bin_edges[0], sides=[-1,0])
-                draw_lines(d.ix[:,1], s.ix[:,0], maxcount, hist[1],
-                    bin_edges[1], sides=[ 0,1])
+        for rno, rlab in enumerate(rlabels):
+            d = data.loc[:,rlab]
+            # awful repetition of hist
+            # until I figure out something better
+            if d.ndim == 1:
+                d = d[pandas.notnull(d)]
+                hist, bin_edges = np.histogram(pos[rno], d, bins=bins, range=rng)
+                draw_lines(d, maxcount, hist, bin_edges, sides=[-1,1])
+            elif d.ndim == 2:
+                #import pdb; pdb.set_trace()
+                d1 = d.iloc[pandas.notnull(d.iloc[:,0]),0]
+                hist, bin_edges = np.histogram(d1, bins=bins, range=rng)
+                draw_lines(pos[rno], d1, maxcount, hist, bin_edges, sides=[-1,0])
+                d2 = d.iloc[pandas.notnull(d.iloc[:,1]),1]
+                hist, bin_edges = np.histogram(d2, bins=bins, range=rng)
+                draw_lines(pos[rno], d2, maxcount, hist, bin_edges, sides=[ 0,1])
             else:
-                draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[n],
-                            bin_edges[n], sides=[-1,1])
+                raise Exception('beanplots are only available for one or two '
+                    'columns, but we detected %d columns' % d.ndim)
+
+
+        #hist, bin_edges = np.apply_along_axis(np.histogram, 0, data, bins)
+        ## it return arrays of object type, so we got to correct that
+        #hist = np.array(hist.tolist())
+        #bin_edges = np.array(bin_edges.tolist())
+        #maxcount = np.max(hist)
+
+        #for n, rlabel in enumerate(rlabels):
+            #p = pos[n]
+            #d = data.ix[:, rlabel]
+            #s = sel.ix[:, rlabel]
+
+            #if len(d.columns) == 2:
+                #draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[0],
+                    #bin_edges[0], sides=[-1,0])
+                #draw_lines(d.ix[:,1], s.ix[:,0], maxcount, hist[1],
+                    #bin_edges[1], sides=[ 0,1])
+            #else:
+                #draw_lines(d.ix[:,0], s.ix[:,0], maxcount, hist[n],
+                            #bin_edges[n], sides=[-1,1])
 
         ax.set_xlim(min(pos)-3*w, max(pos)+3*w)
         ax.set_xticks(pos)
@@ -912,18 +967,33 @@ class Plot(object):
 
         Reference: `<http://www.jstatsoft.org/v28/c01/paper>`_
         """
-        data_tr, pos, rlabels, sel = self._beanlike_setup(data, ax, order)
-        data_mean = self._stack_levels(data_tr, 'cols')
-        data_mean = self._unstack_levels(data_mean, 'yerr')
-        data_mean = data_mean.mean(1)
+        #data_tr, pos, rlabels, sel = self._beanlike_setup(data, ax, order)
+        #data_mean = self._stack_levels(data_tr, 'cols')
+        #data_mean = self._unstack_levels(data_mean, 'yerr')
+        #data_mean = data_mean.mean(1)
+
+        try:  # not guaranteed that columns have names
+            len(data.columns.names)
+        except:
+            rlabels = data.columns
+        else:
+            inds = [i for i,n in enumerate(data.columns.names) if n.startswith('rows.')]
+            if len(inds) > 0:
+                rlabels = data.columns.levels[inds[-1]]
+            else:
+                rlabels = 1
+        pos = range(len(rlabels))
 
         dist = np.max(pos) - np.min(pos)
         w = min(0.15*max(dist,1.0),0.5) * .5
-        ax = self._stripchart(data_tr, pos, rlabels, sel, ax=ax, mean=mean, median=median,
+        ax = self._stripchart(data, pos, rlabels, ax=ax, mean=mean, median=median,
             width=0.8*w, discrete=discrete)
-        ax = self._violinplot(data_tr, pos, rlabels, sel, ax=ax, bp=False, cut=cut)
+        ax = self._violinplot(data, pos, rlabels, ax=ax, bp=False, cut=cut)
+        #ax = self._stripchart(data_tr, pos, rlabels, sel, ax=ax, mean=mean, median=median,
+            #width=0.8*w, discrete=discrete)
+        #ax = self._violinplot(data_tr, pos, rlabels, sel, ax=ax, bp=False, cut=cut)
 
-        return ax, data_mean
+        return ax
 
     def _unstack_levels(self, data, pref):
         try:

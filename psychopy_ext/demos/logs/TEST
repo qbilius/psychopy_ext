@@ -1,0 +1,81 @@
+#[ PsychoPy2 RuntimeInfoStart ]
+  #[[ PsychoPy ]] #---------
+    psychopyVersion: 1.76.00
+    psychopyHaveExtRush: True
+    psychopyGitHead: master 
+  #[[ Experiment ]] #---------
+    experimentAuthor: Jonas Kubilius
+    experimentAuthVersion: 0.1
+    experimentRandomSeed.isSet: True
+    experimentRandomSeed.string: 1365523017.7
+    experimentRunTime: 2013_04_09 17:56 (Year_Month_Day Hour:Min)
+    experimentRunTime.epoch: 1365523017.7
+    experimentScript: run.py
+    experimentScript.digestSHA1: f7234b89326627b0809fa06f6308e290dac29b67
+    experimentScript.directory: /media/qbilius/Data/Dropbox/experiments/psychopy_ext/psychopy_ext/demos
+  #[[ System ]] #---------
+    systemHaveInternetAccess: True
+    systemHostName: P102PW036
+    systemLocale: lt_LT.UTF-8
+    systemMemFreeRAM: 564
+    systemMemTotalRAM: 3826
+    systemPlatform: linux 3.5.0-26-generic
+    systemPyoVersion: 0.6.2
+    systemRavailable: R version 2.15.1 (2012-06-22) -- Roasted Marshmallows
+    systemRebooted: 2013-04-09 08:40
+    systemRpy2: 2.3.2
+    systemSec.GPGHome: ~/.gnupg
+    systemSec.GPGVersion: gpg (GnuPG) 1.4.11
+    systemSec.OpenSSLVersion: OpenSSL 1.0.1c 10 May 2012
+    systemSec.pythonSSL: True
+    systemTimeNumpySD1000000_sec: 0.0117
+    systemUser: qbilius
+    systemUserID: 1000
+    systemUserProcCount: 160
+    systemUserProcFlagged: Dropbox
+    systemUsersCount: 1
+  #[[ Window ]] #---------
+  #[[ Python ]] #---------
+    pythonWxVersion: 2.8.12.1 (gtk2-unicode)
+    pythonVersion: 2.7.3
+    pythonScipyVersion: 0.10.1
+    pythonPygletVersion: 1.1.4
+    pythonPygameVersion: 1.9.1release
+    pythonNumpyVersion: 1.6.2
+    pythonMatplotlibVersion: 1.1.1
+    pythonFullVersion: 2.7.3 (default, Sep 26 2012, 21:51:14)  [GCC 4.7.2]
+    pythonExecutable: /usr/bin/python
+  #[[ OpenGL ]] #---------
+#[ PsychoPy2 RuntimeInfoEnd ]
+
+1.2781	WARNING	Creating new monitor...
+1.3029	WARNING	User requested fullscreen with size [800 600], but screen is actually [1280, 1024]. Using actual size
+2.2411	WARNING	Couldn't measure a consistent frame rate.
+  - Is your graphics card set to sync to vertical blank?
+  - Are you running other processes on your computer?
+
+2.4279	WARNING	t of last frame was 186.90ms (=1/5)
+2.5017	WARNING	t of last frame was 73.86ms (=1/13)
+3.2455	WARNING	t of last frame was 743.77ms (=1/1)
+3.3381	WARNING	t of last frame was 20.86ms (=1/47)
+3.4568	WARNING	Multiple dropped frames have occurred - I'll stop bothering you about them!
+1.2422	WARNING	Creating new monitor...
+1.2763	WARNING	User requested fullscreen with size [800 600], but screen is actually [1280, 1024]. Using actual size
+2.1501	WARNING	Couldn't measure a consistent frame rate.
+  - Is your graphics card set to sync to vertical blank?
+  - Are you running other processes on your computer?
+
+2.3482	WARNING	t of last frame was 198.14ms (=1/5)
+2.4211	WARNING	t of last frame was 72.95ms (=1/13)
+2.7378	WARNING	t of last frame was 316.72ms (=1/3)
+1.3336	WARNING	Creating new monitor...
+1.3670	WARNING	User requested fullscreen with size [800 600], but screen is actually [1280, 1024]. Using actual size
+2.2296	WARNING	Couldn't measure a consistent frame rate.
+  - Is your graphics card set to sync to vertical blank?
+  - Are you running other processes on your computer?
+
+2.4143	WARNING	t of last frame was 184.80ms (=1/5)
+2.4942	WARNING	t of last frame was 79.85ms (=1/12)
+2.8842	WARNING	t of last frame was 390.01ms (=1/2)
+3.2971	WARNING	t of last frame was 22.57ms (=1/44)
+3.5270	WARNING	Multiple dropped frames have occurred - I'll stop bothering you about them!
