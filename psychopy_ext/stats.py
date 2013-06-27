@@ -18,7 +18,7 @@ import pandas
 
 def aggregate(df, rows=None, cols=None, values=None,
     subplots=None, yerr=None, aggfunc='mean', unstack=False,
-    order='natural'):
+    order='natural', add_names=True):
     """
     Aggregates data over specified columns.
 
@@ -72,7 +72,8 @@ def aggregate(df, rows=None, cols=None, values=None,
     if isinstance(yerr, str) or yerr is None:
         yerr = [yerr]
     if values is None:
-        raise Exception('You must provide the name(s) of the column(s) that is aggregated.')
+        raise Exception('You must provide the name(s) of the column(s) that '
+                        'is/are aggregated.')
     allconds = [subplots] + rows + cols + yerr
     allconds = [c for c in allconds if c is not None]
 
@@ -92,7 +93,7 @@ def aggregate(df, rows=None, cols=None, values=None,
                 agg.index.names[g] = group[0] + '.' + item
                 g += 1
 
-    if yerr[0] is not None:
+    if yerr[0] is not None:  # if yerr present, yerr is in rows, the rest in cols
         for yr in yerr:
             agg = agg.unstack(level='yerr.'+yr)
         # seems like a pandas bug here for not naming levels properly
@@ -113,8 +114,14 @@ def aggregate(df, rows=None, cols=None, values=None,
         if rows[0] is not None and not unstack and subplots is None:
             try:
                 order = df[rows[0]].unique()
-                agg = pandas.concat([agg[col].T for col in order], keys=order,
-                        names=['rows.' + r for r in rows]).T
+                names = ['rows.' + r for r in rows]
+                #con = []
+                #for col in order:
+                    #thiscol = agg[col].T
+                    #if thiscol.ndim == 1:
+
+                agg = pandas.concat([pandas.DataFrame(agg[col]).T for col in order], keys=order,
+                        names=names, axis=0).T
             except:
                 pass
         elif not unstack and subplots is not None:
@@ -124,7 +131,13 @@ def aggregate(df, rows=None, cols=None, values=None,
                         names=['subplots.' + subplots]).T
             except:
                 pass
-
+    if not add_names:
+        names = []
+        for name in agg.columns.names:
+            spl = name.split('.')
+            if spl[0] in ['cols','rows','subplots']:
+                names.append('.'.join(spl[1:]))
+        agg.columns.names = names
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
@@ -164,20 +177,36 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     agg = agg_corr.astype(float) / agg_all
     return agg
 
-def confidence(df, kind='sem', nsamples=None):
-    mean = df.mean()  # mean across items
-    if kind == 'sem':
-        p_yerr = df.std() / np.sqrt(len(df))  # std already has ddof=1
+def confidence(agg, kind='sem', nsamples=None, skipna=True):
+    if isinstance(agg, pandas.DataFrame):
+        mean = agg.mean(skipna=skipna)  # mean across items
+        if kind == 'sem':
+            p_yerr = agg.std(skipna=skipna) / np.sqrt(len(agg))  # std already has ddof=1
 
-    # compute binomial distribution error bars if there is a single sample
-    # only (presumably the number of correct responses, i.e., successes)
-    # from http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval
-    elif kind == 'binomial':
-        alpha = .05
-        z = scipy.stats.norm.ppf(1-alpha/2.)
-        p_yerr = z * np.sqrt(mean * (1-mean) / nsamples)
+        # compute binomial distribution error bars if there is a single sample
+        # only (presumably the number of correct responses, i.e., successes)
+        # from http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval
+        elif kind == 'binomial':
+            alpha = .05
+            z = scipy.stats.norm.ppf(1-alpha/2.)
+            p_yerr = z * np.sqrt(mean * (1-mean) / nsamples)
+    else:
+        #mean, p_yerr = self.errorbars(agg, kind='binomial')
+        mean = agg
+        p_yerr = np.zeros((len(agg), 1))
 
     return mean, p_yerr
+
+def get_star(p):
+    if p < .001:
+        star = '***'
+    elif p < .01:
+        star = '**'
+    elif p < .05:
+        star = '*'
+    else:
+        star = ''
+    return star
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
     value_filter=None, yerr=None, func='mean'):
@@ -489,7 +518,19 @@ def reliability(panel, level=1, niter=100, func='mean'):
                    # of the data here
     return corr, t, p
 
-def mds(self, d, ndim=2):
+def mds(mean, ndim=2):
+    if mean.ndim != 2:
+        raise Exception('Similarity matrix for MDS must have exactly 2 '
+                        'dimensions but only %d were found.' % mean.ndim)
+    res = classical_mds(np.array(mean), ndim=ndim)
+    if ndim <= 3:
+        columns = ['x', 'y', 'z']
+    else:
+        columns = ['x%d' % i for i in range(ndim)]
+    res = pandas.DataFrame(res, index=mean.index, columns=columns[:ndim])
+    return res
+
+def classical_mds(d, ndim=2):
     """
     Metric Unweighted Classical Multidimensional Scaling
 
