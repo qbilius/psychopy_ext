@@ -91,6 +91,7 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'rois': os.path.join(fmri_root,'rois/'),  # ROIs (no data, just masks)
         'data_rois': os.path.join(fmri_root,'data_rois/'), # preprocessed and masked data
         'sim': exp_root,  # path for storing simulations of models
+        'report': os.path.join(exp_root, 'report/'),
         }
     return paths
 
@@ -176,12 +177,17 @@ class Experiment(TrialHandler):
         if runParams is not None:
             self.runParams.update(runParams)
 
+        #sysinfo = info.RunTimeInfo(verbose=True, win=False,
+                #randomSeed='set:time')
+        #seed = sysinfo['experimentRandomSeed.string']
+        self.seed = 10#int(seed)
+
         try:
             self.validResponses = self.computer.validResponses
         except:
             self.validResponses = {'0': 0, '1': 1}
 
-    def setup(self, create_win=True):
+    def setup(self):
         """
         Does all the dirty setup before running the experiment.
 
@@ -203,7 +209,7 @@ class Experiment(TrialHandler):
                 between the sessions.
         """
         self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        if create_win:  # maybe you have a screen already
+        if self.win is None:  # maybe you have a screen already
             self.create_win(debug=self.runParams['debug'])
         self.create_stimuli()
         self.create_trial()
@@ -247,12 +253,11 @@ class Experiment(TrialHandler):
             logname (str, default: 'log.log')
                 The log file name.
         """
-        sysinfo = info.RunTimeInfo(verbose=True, win=False,
-                randomSeed='set:time')
-        seed = sysinfo['experimentRandomSeed.string']
-        self.seed = int(seed)
 
         if not self.runParams['noOutput']:
+            sysinfo = info.RunTimeInfo(verbose=True, win=False,
+                randomSeed='set:time')
+
             # add .log if no extension given
             if len(logname.split('.')) < 2: logname += '.log'
 
@@ -366,7 +371,7 @@ class Experiment(TrialHandler):
         else:
             return mon_sizes[screen]
 
-    def create_win(self, debug = False, color = 'DimGray'):
+    def create_win(self, debug=False, color='DimGray'):
         """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
 
         :Kwargs:
@@ -385,8 +390,16 @@ class Experiment(TrialHandler):
         logging.console.setLevel(current_level)
         res = self.get_mon_sizes(self.computer.screen)
         monitor.setSizePix(res)
+        try:
+            size = self.computer.win_size
+        except:
+            if not debug:
+                size = tuple(res)
+            else:
+                size = (res[0]/2, res[1]/2)
 
         self.win = visual.Window(
+            size=size,
             monitor = monitor,
             units = 'deg',
             fullscr = not debug,
@@ -396,6 +409,11 @@ class Experiment(TrialHandler):
             screen = self.computer.screen,
             viewScale = self.computer.viewScale
         )
+
+    def show_intro(self, text):
+        #if text is not None:
+        self.create_win(debug=self.runParams['debug'])
+        self.show_instructions(text=text)
 
     def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
@@ -609,6 +627,8 @@ class Experiment(TrialHandler):
         if not isinstance(thisEvent['display'], tuple) and \
         not isinstance(thisEvent['display'], list):
             display = [thisEvent['display']]
+        else:
+            display = thisEvent['display']
 
         if thisEvent['dur'] == 0:
             self.last_keypress()
@@ -721,8 +741,7 @@ class Experiment(TrialHandler):
         Setup and go!
         """
         self.setup()
-        self.show_instructions(**self.instructions)
-        self.loop_trials(
+        self.go(
             datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
             noOutput=self.runParams['noOutput'])
         if self.runParams['register']:
@@ -782,7 +801,30 @@ class Experiment(TrialHandler):
             self.win.flip()
         core.wait(wait)  # wait a little bit before starting the experiment
 
-    def loop_trials(self, datafile='data.csv', noOutput=False):
+    def go(self, datafile='data.csv', noOutput=False):
+        if not noOutput:
+            self.try_makedirs(os.path.dirname(datafile))
+            try:
+                dfile = open(datafile, 'ab')
+                datawriter = csv.writer(dfile, lineterminator = '\n')
+            except IOError:
+                print('Cannot write to the data file %s!' % datafile)
+            else:
+                write_head = True
+        else:
+            datawriter = None
+            write_head = None
+
+        for rep in range(self.nReps):
+            self.show_instructions(**self.instructions)
+            self._loop_trials(datafile=datafile, datawriter=datawriter,
+                         write_head=write_head)
+
+        sys.stdout.write("\n")  # finally jump to the next line in the terminal
+        if not noOutput: dfile.close()
+
+    def _loop_trials(self, datafile='data.csv', datawriter=None,
+                    write_head=True):
         """
         Iterate over the sequence of trials and events.
 
@@ -799,16 +841,6 @@ class Experiment(TrialHandler):
         :Raises:
             :py:exc:`IOError` if `datafile` is not found.
         """
-        if not noOutput:
-            self.try_makedirs(os.path.dirname(datafile))
-            try:
-                dfile = open(datafile, 'ab')
-                datawriter = csv.writer(dfile, lineterminator = '\n')
-            except IOError:
-                print('Cannot write to the data file %s!' % datafile)
-            else:
-                write_head = True
-
         # set up clocks
         globClock = core.Clock()
         trialClock = core.Clock()
@@ -816,6 +848,7 @@ class Experiment(TrialHandler):
         trialNo = 0
         # go over the trial sequence
         for thisTrial in self:
+            thisTrial['session'] = self.thisRepN
             trialClock.reset()
             thisTrial['onset'] = globClock.getTime()
             sys.stdout.write("\rtrial %s" % (trialNo+1))
@@ -830,14 +863,14 @@ class Experiment(TrialHandler):
                     thisTrial=thisTrial, thisEvent=thisEvent, j=j, allKeys=allKeys)
                 if eventKeys is not None:
                     allKeys += eventKeys
-                # this is to get keys if we did not do that during trial                
+                # this is to get keys if we did not do that during trial
                 allKeys += event.getKeys(
                     keyList = self.validResponses.keys(),
-                    timeStamped = trialClock)            
-            
+                    timeStamped = trialClock)
+
             if len(allKeys) == 0 and self.runParams['autorun'] > 0:
                 allKeys += [(thisTrial['autoResp'], thisTrial['autoRT'])]
-                
+
             thisTrial = self.post_trial(thisTrial, allKeys)
             if self.runParams['autorun'] > 0:  # correct the timing
                 try:
@@ -847,7 +880,7 @@ class Experiment(TrialHandler):
                 except:  # maybe not all keys are present
                     pass
 
-            if not noOutput:
+            if datawriter is not None:
                 header = self.extraInfo.keys() + thisTrial.keys()
                 if write_head:  # will write the header the first time
                     write_head = self._write_header(datafile, header, datawriter)
@@ -857,8 +890,8 @@ class Experiment(TrialHandler):
                 datawriter.writerow(outf)
 
             trialNo += 1
-        sys.stdout.write("\n")  # finally jump to the next line in the terminal
-        if not noOutput: dfile.close()
+            if trialNo == self.nTotal/self.nReps:
+                break
 
     def _write_header(self, datafile, header, datawriter):
         """Determines if a header should be writen in a csv data file.
@@ -1198,28 +1231,32 @@ class Experiment(TrialHandler):
         :Returns:
             A `pandas.DataFrame` of data for the requested participants.
         """
-        if type(self.extraInfo['subjID']) not in [list, tuple]:
-            subjID_list = [self.extraInfo['subjID']]
-        else:
-            subjID_list = self.extraInfo['subjID']
+        return get_behav_df(self.extraInfo['subjID'], pattern=pattern)
 
-        df_fnames = []
-        for subjID in subjID_list:
-            fnames = glob.glob(pattern % subjID)
-            fnames.sort()
-            df_fnames += fnames
-        dfs = []
-        for dtf in df_fnames:
-            data = pandas.read_csv(dtf)
-            if data is not None:
-                dfs.append(data)
-        if dfs == []:
-            print df_fnames
-            raise IOError('Behavioral data files not found.\n'
-                'Tried to look for %s' % (pattern % subjID))
-        df = pandas.concat(dfs, ignore_index=True)
 
-        return df
+def get_behav_df(subjID, pattern='%s'):
+    if type(subjID) not in [list, tuple]:
+        subjID_list = [subjID]
+    else:
+        subjID_list = subjID
+
+    df_fnames = []
+    for subjID in subjID_list:
+        fnames = glob.glob(pattern % subjID)
+        fnames.sort()
+        df_fnames += fnames
+    dfs = []
+    for dtf in df_fnames:
+        data = pandas.read_csv(dtf)
+        if data is not None:
+            dfs.append(data)
+    if dfs == []:
+        print df_fnames
+        raise IOError('Behavioral data files not found.\n'
+            'Tried to look for %s' % (pattern % subjID))
+    df = pandas.concat(dfs, ignore_index=True)
+
+    return df
 
 
 class ThickShapeStim(visual.ShapeStim):
