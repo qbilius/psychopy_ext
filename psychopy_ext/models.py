@@ -187,7 +187,7 @@ class Model(object):
 
 
 class Pixelwise(Model):
-    def run(self, test_ims):
+    def run(self, test_ims, **kwargs):
         ims = self.input2array(test_ims)
         if ims.ndim != 3:
             sys.exit('ERROR: Input images must be two-dimensional')
@@ -307,7 +307,7 @@ class GaborJet(Model):
 
     Original implementation copyright 2004 Xiaomin Yue
     """
-    def run(self, ims=None):
+    def run(self, ims=None, oneval=False):
         ims = self.input2array(ims)
         JetsMagnitudes = []
         JetsPhases = []
@@ -315,7 +315,10 @@ class GaborJet(Model):
             JetsMagnitude, JetsPhase, grid_position = self.test(im)
             JetsMagnitudes.append(JetsMagnitude.ravel())
             JetsPhases.append(JetsPhase.ravel())
-        return (np.array(JetsMagnitudes), np.array(JetsPhases), grid_position)
+        if oneval:
+            return np.array(JetsMagnitudes)
+        else:
+            return (np.array(JetsMagnitudes), np.array(JetsPhases), grid_position)
 
     def test(self,
             im,
@@ -539,7 +542,7 @@ class HMAX(Model):
 
         self.istrained = False  # initially VTUs are not set up
 
-    def run(self, test_ims=None, train_ims=None):
+    def run(self, test_ims=None, train_ims=None, oneval=False):
         """
         This is the main function to run the model.
         First, it trains the model, i.e., sets up prototypes for VTU.
@@ -549,9 +552,11 @@ class HMAX(Model):
             self.train(train_ims)
         if test_ims is None:
             test_ims = [self.get_testim()]
-        output = self.test(test_ims)
-
-        return output
+        output = self.test(test_ims, oneval=oneval)
+        if oneval:
+            return output['C2']
+        else:
+            return output
 
     def train(self, train_ims):
         """
@@ -566,7 +571,7 @@ class HMAX(Model):
             self.tuning = self.test(train_ims, op='training')['C2']
         self.istrained = True
 
-    def test(self, ims, op='testing'):
+    def test(self, ims, op='testing', oneval=False):
         """
         Test the model on the given image
         """
@@ -612,7 +617,6 @@ class HMAX(Model):
         if self.istrained:
             output['VTU'] = self.get_VTU(output['C2'])
         sys.stdout.write("\rRunning HMAX... %s: done\n" %op)
-
 
         return output
 
@@ -995,8 +999,18 @@ class HMAX(Model):
         plt.show()
 
 
+KNOWN_MODELS = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX}
+#['px': Pixelwise, GaborJet, HMAX]
+
+def get_model(model_name):
+    if model_name in KNOWN_MODELS:
+        return KNOWN_MODELS[model_name]()
+    else:
+        raise Exception('Model %s not recognized' %model_name)
+
+
 if __name__ == '__main__':
-    models = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX}
+    models = KNOWN_MODELS
 
     if len(sys.argv) == 1:
         m = HMAX()
