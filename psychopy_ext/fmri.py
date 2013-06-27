@@ -15,6 +15,7 @@ features are not as extensively tested.
 """
 
 import os, sys, glob, shutil, warnings
+from datetime import datetime
 import cPickle as pickle
 
 import numpy as np
@@ -29,7 +30,7 @@ except:
     from exp import OrderedDict
 
 # stuff from psychopy_ext
-import plot, stats
+import exp, plot, stats
 
 
 class Analysis(object):
@@ -43,8 +44,8 @@ class Analysis(object):
            condition assignments) as `<something>_<runNo>_<runType>.csv`
         3. Beta-values model every condition, including fixation. But
            t-values are computed as each conditions versus a fixation.
-        4. Conditions are in the 'cond' column of data files, trial
-           duration is in 'dur'
+        #4. Conditions are in the 'cond' column of data files, trial
+        #   duration is in 'dur'
         5. Fixation condition is 0 (an int).
 
     :Args:
@@ -89,10 +90,10 @@ class Analysis(object):
                  fix=0,
                  rois=None,
                  offset=None,
-                 dur=None
+                 dur=None,
+                 condlabel='cond',
+                 durlabel='dur'
                  ):
-        self.extraInfo = extraInfo
-        self.runParams = runParams
         # minimal parameters that Analysis expects in extraInfo and runParams
         self.extraInfo = OrderedDict([
             ('subjID', 'subj'),
@@ -128,6 +129,8 @@ class Analysis(object):
         else:
             self.offset = None
         self.dur = dur
+        self.condlabel = condlabel
+        self.durlabel = durlabel
 
     def run(self):
         """
@@ -145,12 +148,12 @@ class Analysis(object):
             `subjResp` column, and a file name where that data is stored.
 
         """
-        df, df_fname = self.get_df()
+        df, df_fname, loaded = self.get_fmri_df()
         if self.runParams['plot']:
             self.plot(df)
-        return df, df_fname
+        return df, df_fname, loaded
 
-    def get_df(self):
+    def get_fmri_df(self, avg_iters=True):
         df_fname = (self.paths['analysis']+'df_%s_%s.pkl' %
                     (self.runParams['method'], self.runParams['values']))
         try:
@@ -159,8 +162,12 @@ class Analysis(object):
             else:
                 df = pickle.load(open(df_fname,'rb'))
                 if self.runParams['verbose']:
-                    print ("loaded stored dataset of %s %s results" %
-                        (self.runParams['values'], self.runParams['method']))
+                    mtime = os.path.getmtime(df_fname)
+                    mtime = datetime.fromtimestamp(mtime).ctime()
+                    print ('loaded stored dataset of %s %s results '
+                           '[saved on %s]' % (self.runParams['values'],
+                           self.runParams['method'], mtime))
+                    print 'subjIDs: %s' % ', '.join(df.subjID.unique())
         except:
             res_fname = self.paths['analysis']+'%s_%s_%s.pkl'
             # generate some fake data to check a particular hypothesis
@@ -174,31 +181,51 @@ class Analysis(object):
                 method=self.runParams['method'], values=self.runParams['values'],
                 simds=simds)
             df = pandas.DataFrame(results, columns=header)
-            if not self.runParams['noOutput']:
-                try:
-                    #import pdb; pdb.set_trace()
-                    os.makedirs(os.path.dirname(df_fname))
-                except:
-                    pass
-                pickle.dump(df, open(df_fname,'wb'))
-                if self.runParams['verbose']:
-                    print ("saved dataset of %s %s results to %s" %
-                          (self.runParams['values'], self.runParams['method'],
-                              df_fname))
+            #if not self.runParams['noOutput']:
+                #try:
+                    ##import pdb; pdb.set_trace()
+                    #os.makedirs(os.path.dirname(df_fname))
+                #except:
+                    #pass
+                #pickle.dump(df, open(df_fname,'wb'))
+                #if self.runParams['verbose']:
+                    #print ("saved dataset of %s %s results to %s" %
+                          #(self.runParams['values'], self.runParams['method'],
+                              #df_fname))
+            loaded = False
+        else:
+            loaded = True
 
-        return df, df_fname
+        return df, df_fname, loaded
 
-    def plot(self, df, cols=['cond', 'name']):
+    def get_behav_df(self, pattern='%s'):
+        """
+        Extracts data from files for data analysis.
+
+        :Kwargs:
+            pattern (str, default: '%s')
+                A string with formatter information. Usually it contains a path
+                to where data is and a formatter such as '%s' to indicate where
+                participant ID should be incorporated.
+
+        :Returns:
+            A `pandas.DataFrame` of data for the requested participants.
+        """
+        return exp.get_behav_df(self.extraInfo['subjID'], pattern=pattern)
+
+
+    def plot(self, df, cols=['cond', 'name'], **kwargs):
         if self.runParams['method'] == 'timecourse':
             plt = plot_timecourse(df, cols=cols)
             plt.tight_layout()
         else:
-            agg = self.get_data(df, kind=self.runParams['method'])
-            agg = 1 - 2*agg
+            agg = self.get_agg(df, **kwargs)
+            #agg = 1 - 2*agg
             plt = plot.Plot()
-            axes = plt.plot(agg, subplots='ROI', kind='bar')
+            axes = plt.plot(agg, subplots='ROI', kind='bar',
+                            ylabel='dissimilarity')
+            # mark chance level
             if self.runParams['method'] == 'svm':
-                # mark chance level
                 try:
                     iter(axes)
                 except:
@@ -208,9 +235,9 @@ class Analysis(object):
             plt.tight_layout()
 
             if self.runParams['method'] in ['corr','svm']:
-                matrix = self.get_data(df, kind='matrix')
+                #matrix = self.get_data(df, kind='matrix')
                 mtx = plot.Plot(kind='matrix')
-                axes = mtx.plot(matrix, subplots='ROI', kind='matrix')
+                axes = mtx.plot(agg, subplots='ROI', kind='matrix')
                 for ax in axes:
                     ax.set_xlabel('')
                     ax.set_ylabel('')
@@ -224,8 +251,11 @@ class Analysis(object):
                 mtx.savefig(self.paths['analysis']+'%s_%s_matrix.png' %
                     (self.runParams['method'], self.runParams['values']))
 
-    def get_data(self, df):
-        raise NotImplementedError
+    #def get_data(self, df):
+        #raise NotImplementedError
+
+    def get_agg(self, df, **kwargs):
+        raise NotImplementedError('You should define get_agg method yourself.')
 
     def run_method(self, subjIDs, runType, rois, method='svm', values='raw',
                 offset=None, dur=None, filename = 'RENAME.pkl', simds=None):
@@ -334,6 +364,7 @@ class Analysis(object):
                         header, result = self.timecourse(evds)
                     elif method in ['signal', 'univariate']:
                         header, result = self.signal(evds, values)
+                        #print result
                     elif method == 'corr':
                         evds = evds[evds.sa.targets != self.fix]
                         header, result = self.correlation(evds, nIter=100)
@@ -344,14 +375,13 @@ class Analysis(object):
                         raise NotImplementedError('Analysis for %s values is not '
                                                   'implemented')
 
-                    header.extend(['subjID', 'ROI'])
+                    header = ['subjID', 'ROI'] + header
                     for line in result:
-                        line.extend([subjID, ROI_list[1]])
+                        line = [subjID, ROI_list[1]] + line
                         temp_res.append(line)
                 print
                 results.extend(temp_res)
 
-                # import pdb; pdb.set_trace()
                 if not self.runParams['noOutput'] and method in ['corr', 'svm']:
                     # mvpa2.suite.h5save(rp.o, results)
                     try:
@@ -360,7 +390,7 @@ class Analysis(object):
                         pass
 
                     pickle.dump([header,temp_res], open(out_fname,'wb'))
-
+        #import pdb; pdb.set_trace()
         return header, results
 
     #def time_course(self):
@@ -413,7 +443,7 @@ class Analysis(object):
         data = nim.get_data()
         # reorient data based on the affine information in the header
         ori = nb.io_orientation(nim.get_affine())
-        data = nb.apply_orientation(data, ori)
+        #data = nb.apply_orientation(data, ori)
         data = np.squeeze(data)  # remove singular dimensions (useful for ROIs)
         return data
 
@@ -470,6 +500,8 @@ class Analysis(object):
         # add together all ROIs -- and they should not overlap too much
         thisMask = sum([self.get_mri_data(roi) for roi in allROIs])
 
+        thisMask = thisMask[::-1]
+
         if values.startswith('raw'):
             # find all functional runs of a given runType
             allImg = glob.glob((self.paths['data_fmri'] + self.fmri_prefix + \
@@ -481,10 +513,7 @@ class Analysis(object):
         elif values == 'beta':
             data_path = self.paths['data_behav'] + 'data_*_%s.csv'
             behav_data = self.read_csvs(data_path %(subjID, runType))
-            try:
-                labels = np.unique(behav_data['stim1.cond']).tolist()
-            except:
-                labels = np.unique(behav_data['cond']).tolist()
+            labels = np.unique(behav_data[self.condlabel]).tolist()
             numRuns = len(np.unique(behav_data['runNo']))
             analysis_path = self.paths['spm_analysis'] % subjID + runType + '/'
             betaval = np.array(sorted(glob.glob(analysis_path + 'beta_*.img')))
@@ -508,10 +537,7 @@ class Analysis(object):
         elif values == 't':
             data_path = self.paths['data_behav'] + 'data_*_%s.csv'
             behav_data = self.read_csvs(data_path %(subjID, runType))
-            try:
-                labels = np.unique(behav_data['stim1.cond']).tolist()
-            except:
-                labels = np.unique(behav_data['cond']).tolist()
+            labels = np.unique(behav_data[self.condlabel]).tolist()
             # t-values did not model all > fixation, so we skip it now
             labels = labels[1:]
             numRuns = len(np.unique(behav_data['runNo']))
@@ -527,9 +553,10 @@ class Analysis(object):
                 chunks = np.tile(np.arange(numRuns), len(labels)).tolist(),
                 mask = thisMask
                 )
+            #ds2 = mvpa2.suite.h5load('/media/qbilius/backup/D/data/twolines/fmri2/twolines2_03/data_rois/V1_t.gz.hdf5')
+            #import pdb; pdb.set_trace()
         else:
             raise Exception('values %s are not recognized' % values)
-
         if not self.runParams['noOutput']:  # save the extracted data
             try:
                 os.makedirs(self.paths['data_rois'] %subjID)
@@ -554,12 +581,11 @@ class Analysis(object):
             run_labels = []
             for lineNo, line in behav_data.iterrows():
                 # how many TRs per block or condition
-                repeat = int(line['dur'] / self.tr)  # FIX
-                run_labels.extend( [line['cond']] * repeat )  #FIX
+                repeat = int(line[self.durlabel] / self.tr)  # FIX
+                run_labels.extend( [line[self.condlabel]] * repeat )  #FIX
             labels.append(run_labels)
 
         return labels
-
 
     def fmri_dataset(self, samples, labels, thisMask=None):
         """
@@ -831,7 +857,8 @@ class Analysis(object):
                 - iter: iteration number
                 - stim1.cond: first condition
                 - stim2.cond: second condition
-                - subjResp: one minus the correlation value
+                - subjResp: one minus the correlation value over two
+                    (0: patterns identical, 1: patterns have nothing in common)
         """
 
         # calculate the mean per target per chunk (across trials)
@@ -1452,8 +1479,31 @@ class Preproc(object):
                 - 'data_rois' (for storing the extracted signals in these ROIs)
 
     """
-    def __init__(self, paths):
+    def __init__(self,
+                 paths,
+                 extraInfo=None,
+                 runParams=None
+                 ):
+        self.extraInfo = OrderedDict([
+            ('subjID', 'subj'),
+            ('runType', 'main'),
+            ])
+        self.runParams = OrderedDict([
+            ('method', 'timecourse'),
+            ('values', 'raw'),
+            ('noOutput', False),
+            ('debug', False),
+            ('verbose', True),
+            ('visualize', False),
+            ('force', False),
+            ('dry', False),
+            ('reuserois', True),
+            ])
         self.paths = paths
+        if extraInfo is not None:
+            self.extraInfo.update(extraInfo)
+        if runParams is not None:
+            self.runParams.update(runParams)
 
     def split_rp(self, subjID):
         """
@@ -1518,24 +1568,19 @@ class Preproc(object):
                        'scans in the functional runs.')
 
 
-    def gen_stats_batch(self, subjID, runType=['main','loc','mer'],
-                        condcol='cond', descrcol='name'):
+    def gen_stats_batch(self, condcol='cond', descrcol='name'):
         """
         Generates a batch file for statistical analyses in SPM.
 
-        :Args:
-            subjID
-
         :Kwargs:
-            - runType (str or list of str, default: ['main', 'loc', 'mer'])
-                The prefix of functional data files indicating which kind of
-                run it was.
             - condcol (str)
                 Column in the data files with condition labels (numbers)
             - descrcol (str)
                 Column in the data files with condition names
 
         """
+        subjID = self.extraInfo['subjID']
+        runType = self.extraInfo['runType']
         if isinstance(runType, str):
             runType = [runType]
 
@@ -1575,22 +1620,20 @@ class Preproc(object):
 
                 data = np.recfromcsv(dataFile, case_sensitive = True)
                 swapath = os.path.relpath(self.paths['data_fmri']%subjID, curpath)
-                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = " %
-                        (3*rtNo+1,rnNo+1) +\
-                    # "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
-                    "cellstr(spm_select('ExtFPList','%s'," +\
-                    "'^swafunc_%02d_%s\.nii$',1:168));\n" %
-                    (swapath,runNo,runType))
-
+                f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d).scans = "
+                        "cellstr(spm_select('ExtFPList','%s',"
+                        "'^swafunc_%02d_%s\.nii$',1:168));\n" %
+                        (3*rtNo+1, rnNo+1, swapath, runNo, runType))
+                # "cellstr(spm_select('ExtFPList','%s','^swafunc_%02d_%s\.nii$',1:168));\n" %(os.path.abspath(self.paths['data_fmri']%subjID),runNo,runType))
                 conds = np.unique(data[condcol])
                 if runType == 'mer':
                     conds = conds[conds!=0]
 
                 for cNo, cond in enumerate(conds):
                     agg = data[data[condcol] == cond]
-                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d)." +\
-                            "cond(%d).name = '%d|%s';\n" % (3*rtNo+1,rnNo+1,cNo+1,
-                            cond, agg[descrcol][0]))
+                    f.write("matlabbatch{%d}.spm.stats.fmri_spec.sess(%d)."
+                            "cond(%d).name = '%d|%s';\n" %
+                            (3*rtNo+1, rnNo+1, cNo+1, cond, agg[descrcol][0]))
                     if 'blockNo' in agg.dtype.names:
                         onsets = []
                         durs = []
@@ -1670,7 +1713,7 @@ def make_full(distance):
     res[iu] = distance[iu]
     return res
 
-def plot_timecourse(df, title='', plt=None, cols='name', **kwargs):
+def plot_timecourse(df, plt=None, cols='name', **kwargs):
     """Plots an fMRI time course for signal change.
 
     :Args:
@@ -1688,14 +1731,18 @@ def plot_timecourse(df, title='', plt=None, cols='name', **kwargs):
     """
     if plt is None:
         plt = plot.Plot(sharex=True, sharey=True)
+    #f, axes = plt.subplots(2, 2, sharex=True, sharey=True)
+    #axes = axes.ravel()
+    #for i, ax in enumerate(plt.axes):
+        #ax.plot(range(5), np.arange(5)*i)
     agg = stats.aggregate(df, subplots='ROI', values='subjResp', rows='time',
                           cols=cols, yerr='subjID')
     ax = plt.plot(agg, kind='line',
         xlabel='Time since trial onset, s',
         ylabel='Signal change, %', **kwargs)
     for thisax in ax:
-        thisax.axhline(linestyle='--', color='0.6')
-    #plt.tight_layout()
+        thisax.axhline(linestyle='-', color='0.6')
+    plt.tight_layout()
     #plt.show()
     return plt
 
