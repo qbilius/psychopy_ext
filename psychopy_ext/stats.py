@@ -450,7 +450,7 @@ def oneway_anova(data):
     N = k*len(data.columns)  # conditions times participants
     return F, p, k-1, N-k
 
-def p_corr(df1, df2):
+def p_corr(df1, df2=None):
     """
     Computes Pearson correlation and its significance (using a t
     distribution) on a pandas.DataFrame.
@@ -472,11 +472,29 @@ def p_corr(df1, df2):
         p: float
             one-tailed p-value that the two datasets differ
     """
-    corr = df1.corr(df2)
-    N = np.sum(df1.notnull())
-    t = corr*np.sqrt((N-2)/(1-corr**2))
-    p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
-    return corr, t, p
+    if df2 is not None:
+        if isinstance(df2, pandas.Series):
+            df2 = pandas.DataFrame(df2)
+        elif df2.shape[1] > 1:
+            raise Exception('Cannot correlate two DataFrames')
+        corrs = df1.corrwith(df2)
+    else:
+        corrs = df1.corr()
+    Ns = corrs.copy()
+    ts = corrs.copy()
+    ps = corrs.copy()
+    for colname, col in corrs.iteritems():
+        for rowname, corr in col.iteritems():
+            N = min(df1[colname].count(), df1[rowname].count())
+            Ns.loc[rowname, colname] = N
+            t = corr * np.sqrt((N-2) / (1-corr**2))
+            ts.loc[rowname, colname] = t
+            ps.loc[rowname, colname] = scipy.stats.t.sf(abs(t), N-2)  # one-tailed
+    #import pdb; pdb.set_trace()
+    #N = np.sum(df1.notnull())
+    #t = corr * (N-2).applymap(np.sqrt) / (1-corr**2))
+    #p = 1-scipy.stats.t.cdf(t.abs(), N-2)  # one-tailed
+    return corrs, ts, ps
 
 
 def reliability(panel, level=1, niter=100, func='mean'):
