@@ -369,7 +369,6 @@ class Plot(object):
             #axes, xmin, xmax, ymin, ymax = self._label_ax(agg, mean, p_yerr, axes, kind=kind,
                                     #autoscale=autoscale, **kwargs)
             axes = [axes]
-            legend = None
             if 'title' in kwargs:
                 axes[0].set_title(kwargs['title'])
             #if 'title' not in kwargs:
@@ -390,18 +389,6 @@ class Plot(object):
                     #norm = (
             for no, subname in enumerate(sbp):
 
-                if kind in ['matrix', 'scatter', 'mds']:
-                    legend = False
-                else:
-                    # all plots are the same, onle legend will suffice
-                    if subplots is None or subplots:
-                        if no == 0:
-                            legend = None
-                        else:
-                            legend = False
-                    else:  # plots vary; each should get a legend
-                        legend = None
-
                 if 'title' not in kwargs:
                     title = subname
                 else:
@@ -421,21 +408,22 @@ class Plot(object):
                 #ymaxs.append(ymax)
                 axes.append(ax)
 
-        self.decorate(axes, kind=kind, legend=legend, **kwargs)
+        self.decorate(axes, kind=kind, **kwargs)
         return axes
 
-    def decorate(self, axes, kind='bar', legend=None, **kwargs):
+    def decorate(self, axes, kind='bar', **kwargs):
         lims = np.zeros((len(axes),3,2))
 
         for i, ax in enumerate(axes):
-            if kind in ['scatter', 'mds']:
-                lims[i,0,0] = ax.mean.x.min()#.min()
-                lims[i,0,1] = ax.mean.x.max()#.max()
-                lims[i,1,0] = ax.mean.y.min()#.min()
-                lims[i,1,1] = ax.mean.y.max()#.max()
-            elif kind == 'histogram':
+            #if kind in ['scatter', 'mds']:
+                #lims[i,0,0] = ax.mean.min().min()
+                #lims[i,0,1] = ax.mean.max().max()
+                #lims[i,1,0] = ax.mean.min().min()
+                #lims[i,1,1] = ax.mean.max().max()
+            if kind in ['histogram']:
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_ylim()
+                #import pdb; pdb.set_trace()
             elif kind == 'matrix':
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_xlim()
@@ -460,7 +448,7 @@ class Plot(object):
                                                 np.max(lims[:,2,1]))
                     im.set_norm(norm)
 
-        else:
+        elif kind not in ['scatter', 'mds']:
             if self.sharex:
                 #if kind in ['scatter', 'mds']: # set y-axis limits globally
                 #if 'xlim' in kwargs:
@@ -485,8 +473,39 @@ class Plot(object):
                     ax.set_ylim(lims[i,1])
 
 
-        for ax in axes:
-            self._label_ax(ax.agg, ax.mean, ax.p_yerr, ax, kind=kind, legend=legend, **kwargs)
+        for axno, ax in enumerate(axes):
+            if kind not in ['scatter', 'mds']:
+                #import pdb; pdb.set_trace()
+                #print axno / self.nrows_ncols[1]
+                #print self.nrows_ncols[1]
+                if axno / self.nrows_ncols[1] == self.nrows_ncols[0]-1 \
+                or not self.sharex:
+                    self._label_x(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
+                if axno % self.nrows_ncols[1] == 0 or not self.sharey:
+                    self._label_y(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
+
+            if kind == 'bar':
+                self.draw_sig(ax.agg, ax, **kwargs)
+
+            #if kind in ['matrix', 'scatter', 'mds']:
+                #legend = False
+            #else:
+            # all plots are the same, onle legend will suffice
+            if len(axes) > 1:
+                if axno == 0:
+                    legend = None
+                else:
+                    legend = False
+            else:  # plots vary; each should get a legend
+                legend = None
+
+            if kind not in ['matrix', 'scatter', 'mds']:
+                self._draw_legend(ax, visible=legend, data=ax.mean, **kwargs)
+            if 'numb' in kwargs:
+                if kwargs['numb'] == True:
+                    self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
+
+            #self._label_ax(ax.agg, ax.mean, ax.p_yerr, ax, kind=kind, legend=legend, **kwargs)
         return axes
 
     def printfig(self):
@@ -536,7 +555,7 @@ class Plot(object):
         ax.p_yerr = p_yerr
         return ax
 
-    def _label_ax(self, agg, mean, p_yerr, ax, title='', kind='bar', legend=None,
+    def _label_ax_old(self, agg, mean, p_yerr, ax, title='', kind='bar', legend=None,
                    autoscale=True, **kwargs):
         if kind not in ['scatter', 'mds']:
             if self.subplotno / self.nrows_ncols[1] == self.nrows_ncols[1] \
@@ -544,8 +563,6 @@ class Plot(object):
                 self._label_x(mean, p_yerr, ax, kind=kind, **kwargs)
             if self.subplotno % self.nrows_ncols[1] == 0 or not self.sharey:
                 self._label_y(mean, p_yerr, ax, kind=kind, **kwargs)
-
-
 
         if kind == 'bar':
             self.draw_sig(agg, ax)
@@ -579,7 +596,6 @@ class Plot(object):
 
         if kind not in ['line', 'histogram']:
             ax.set_xticklabels(self._format_labels(labels=mean.index))
-
         labels = ax.get_xticklabels()
         if len(labels) > 0:
             max_len = max([len(label.get_text()) for label in labels])
@@ -654,42 +670,53 @@ class Plot(object):
         title = ', '.join(title)
         return title
 
-    def draw_sig(self, agg, ax):
+    def draw_sig(self, agg, ax, popmean=0, **kwargs):
         if isinstance(agg, pandas.DataFrame):
             mean, p_yerr = stats.confidence(agg)
         else:
             mean = agg
-
+        #import pdb; pdb.set_trace()
         r = mean.max().max() - mean.min().min()
         ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
         eb = np.max([r/6., 1.5*np.max(ebars)/2])
+
         try:  # not guaranteed that columns have names
-            len(agg.columns.names)
+            inds = [i for i,n in enumerate(agg.columns.names) if n.startswith('rows.')]
         except:
             rlabels = agg.columns
         else:
-            inds = [i for i,n in enumerate(agg.columns.names) if n.startswith('rows.')]
-            try:
-                rlabels = agg.columns.levels[inds[0]]
-            except:
-                if len(inds) == 1:
-                    rlabels = agg.columns
-                else:
-                    rlabels = 1
-        #import pdb; pdb.set_trace()
+            #rlevel = inds[-1] + 1
+            #try:
+                #rlabels = agg.columns.levels[inds[-1]]
+            #except:
+                #if len(inds) == 1:
+                    #rlabels = agg.columns
+                #else:
+                    #rlabels = 1
+            #import pdb; pdb.set_trace()
+            if len(inds) == len(agg.columns.names):
+                rlabels = agg.columns
+            else:
+                rlabels = agg.mean().unstack(inds).columns
         ticks = ax.get_xticks()
+
         for rno, rlab in enumerate(rlabels):
-            d = agg.loc[:,rlab]
+            #import pdb; pdb.set_trace()
+            #rlab = rlabel[:rlevel]
+            d = agg[rlab]
+
             if d.ndim == 1:
                 d = d.dropna() #d[pandas.notnull(d)]
-                t, p = scipy.stats.ttest_1samp(d, popmean=0)
+                t, p = scipy.stats.ttest_1samp(d, popmean=popmean)
                 ax.text(ticks[rno], mean[rlab] + np.sign(mean[rlab])*eb,
                         stats.get_star(p), ha='center')
             elif d.ndim == 2 and d.shape[1] == 2:
                 d1 = d.iloc[:,0].dropna()
                 d2 = d.iloc[:,1].dropna()
+                #import pdb; pdb.set_trace()
                 t, p = scipy.stats.ttest_rel(d1, d2)
-                ax.text(ticks[rno], mean[rlab]+eb, stats.get_star(p), ha='center')
+                mn = mean[rlab] + np.sign(mean[rlab])*eb
+                ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
 
     def _draw_legend(self, ax, visible=None, data=None, **kwargs):
         leg = ax.get_legend()  # get an existing legend
@@ -719,14 +746,16 @@ class Plot(object):
 
     def set_legend_pos(self, subplot=1, loc=6,#'center left',
                         bbox_to_anchor=(1.1, 0.5)):
-        for ax in self.axes:
-            #import pdb; pdb.set_trace()
-            leg = ax.get_legend()
-            if leg is not None: break
-        leg.set_axes(self.axes[subplot-1])
-        leg._set_loc(loc)
-        leg.set_bbox_to_anchor(bbox_to_anchor)
-        leg.set_visible(True)
+        #for ax in self.axes:
+            ##import pdb; pdb.set_trace()
+            #leg = ax.get_legend()
+            #if leg is not None: break
+        leg = self.axes[subplot-1].get_legend()
+        if leg is not None:
+            #leg.set_axes(self.axes[subplot-1])
+            leg._set_loc(loc)
+            leg.set_bbox_to_anchor(bbox_to_anchor)
+            leg.set_visible(True)
         # frameon=False
 
     def _format_labels(self, labels='', names=''):
