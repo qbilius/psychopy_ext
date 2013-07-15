@@ -1,3 +1,11 @@
+v0.5a1, 2013-07-15
+------------------
+Skipping to 0.5 due to a significant change in exp module (Experiment split into Experiment and Task).
+
+v0.4a2, 2013-04
+---------------
+Alpha version, working more or less
+
 v0.4dev1, 2013-03-06
 ------------------
 Initial dev release as a package

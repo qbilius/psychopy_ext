@@ -4,7 +4,7 @@ from distutils.core import setup
 description = ('A framework for reproducible neuroscience research')
 setup(
     name='psychopy_ext',
-    version='0.4a2',
+    version='0.5a1',
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
     packages=['psychopy_ext', 'psychopy_ext.tests'],
