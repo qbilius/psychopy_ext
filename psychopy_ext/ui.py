@@ -7,7 +7,7 @@
 
 """Basic command-line and graphic user interface"""
 
-import wx, sys, inspect
+import wx, sys, os, inspect, shutil
 from types import ModuleType
 
 from psychopy import core
@@ -47,7 +47,8 @@ class Control(object):
         except: # otherwise do standard stuff
             pass
         else:
-            if sys.argv[1] in ['--commit','--register','--push']:
+            recognized = ['--commit','--register','--push']
+            if sys.argv[1] in recognized:
                 if sys.argv[1] == '--commit':
                     try:
                         message = sys.argv[2]
@@ -64,6 +65,7 @@ class Control(object):
                         _repo_action(action[2:], tag=tag)
                 elif action == '--push':
                     _repo_action(action[2:])
+
                 sys.exit()
 
         # direct path to the experiment
@@ -87,7 +89,10 @@ class Control(object):
         exp_choices = choices
 
         if len(sys.argv) > 1:  # command line interface desired
-            self.cmd(exp_choices)
+            if sys.argv[1] == 'report':
+                report(exp_choices)
+            else:
+                self.cmd(exp_choices)
         else:
             self.app(exp_choices, title=title, size=size)
 
@@ -325,6 +330,28 @@ class Control(object):
         #                 runParams=OrderedDict(runParams))
         getattr(module, rp.action)()
         # args.func(args)
+
+
+def report(exp_choices):
+    reports = []
+    for ch in exp_choices:
+        choice = ch[1]
+        if isinstance(choice, str):
+            try:
+                __import__(choice)
+            except:
+                module = None
+            else:
+                module = sys.modules[choice]
+        else:
+            module = choice
+        if module is not None:
+            functions = inspect.getmembers(module, inspect.isfunction)
+            for name, func in functions:
+                if name == 'report':
+                    reports.append((ch[0], func))
+                    break
+    Report().make(reports)
 
 def _get_classes(module, input_class_alias=None, class_order=None):
     """
@@ -630,3 +657,79 @@ def _repo_action(cmd, **kwargs):
         write.append(err)
     sys.stdout.write('\n'.join(write) + '\n')
     return call, out, err
+
+
+class Report(object):
+
+    def __init__(self, output='html', path='report'):
+        self.path = path+'/'
+        #if not os.path.isdir(self.paths['report']):
+            #os.makedirs(self.paths['report'])
+        #self.runParams['plot'] = False
+        #self.runParams['saveplot'] = True
+        #self.runParams['html'] = True
+
+    def write(self, text):
+        self.htmlfile.write(text)
+
+    def make(self, reports):
+        if not os.path.isdir(self.path):
+            os.makedirs(self.path)
+        else:
+            for root, dirs, files in os.walk(self.path):
+                for f in files:
+                    try:
+                	os.unlink(os.path.join(root, f))
+                    except:
+                        pass
+                for d in dirs:
+                    try:
+                	shutil.rmtree(os.path.join(root, d))
+                    except:
+                        pass
+
+        src = os.path.dirname(__file__)
+        src = os.path.join(src, 'resources/')
+        import glob
+        for f in glob.glob(src+'*'):
+            if os.path.isfile(f):
+                if os.path.basename(f) != 'index.html':
+                    shutil.copy2(f)
+            else:
+                dst = os.path.join(self.path, os.path.basename(f))
+                shutil.copytree(f, dst,
+                    ignore=shutil.ignore_patterns('index.html'))
+        with open(src + 'index.html', 'rb') as tmp:
+            template = tmp.read().split('####REPLACE####')
+        self.htmlfile = open(self.path + 'index.html', 'wb')
+        self.write(template[0])
+        for name, report in reports:
+            self.writeh(name, h='h1')
+            report(self)
+
+        self.write(template[1])
+        self.htmlfile.close()
+
+    def writeimg(self, names, caption=None, plt=None, win=None):
+        if isinstance(names, str):
+            names = [names]
+        fname = '_'.join(names) + '.png'
+        imgdir = self.path + self.imgpath
+        if plt is not None or win is not None:
+            if not os.path.isdir(imgdir):
+                os.makedirs(imgdir)
+            if plt is not None:
+                plt.savefig(imgdir + fname)
+            elif win is not None:
+                win.saveMovieFrames(imgdir + fname)
+        if caption is None:
+            caption = ' '.join(names)
+        self.htmlfile.write(
+            '<figure>\n'
+            '    <img src="%s" />\n'
+            '    <figcaption><strong>Figure.</strong> %s</figcaption>\n'
+            '</figure>\n' % (self.imgpath + fname, caption)
+            )
+
+    def writeh(self, text, h='h1'):
+        self.htmlfile.write('<%s>%s</%s>\n' % (h, text, h))
