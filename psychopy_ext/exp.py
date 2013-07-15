@@ -957,6 +957,10 @@ class Task(TrialHandler, _Common):
                     else:
                         breaks.append([0,n])
                     last = trial[breakcol]
+            try:
+                breaks.append((breaks[-1][-1], len(self.expPlan)))
+            except:
+                breaks = [(0, len(self.expPlan))]
         else:
             breaks = [(0, len(self.expPlan))]
         if self.method == 'fullRandom':
