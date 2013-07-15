@@ -17,7 +17,7 @@ from UserDict import DictMixin
 import numpy as np
 import wx
 from psychopy import visual, core, event, info, logging, misc, monitors
-from psychopy.data import TrialHandler
+from psychopy.data import TrialHandler, ExperimentHandler
 
 import ui
 
@@ -39,7 +39,7 @@ class default_computer:
     stereo = False  # not like in Psychopy; this merely creates two Windows
     trigger = 'space'  # hit to start the experiment
     defaultKeys = ['escape', trigger]  # "special" keys
-    validResponses = {'0': 0, '1': 1}  # organized as input value: output value
+    validResponses = {'f': 0, 'j': 1}  # organized as input value: output value
     # monitor defaults
     name = 'default'
     distance = 80
@@ -51,7 +51,7 @@ class default_computer:
     def __init__(self):
         pass
 
-def set_paths(exp_root, computer=default_computer, fmri_rel=''):
+def set_paths(exp_root='.', computer=default_computer, fmri_rel=''):
     """Set paths to data storage.
 
     :Args:
@@ -75,7 +75,8 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
     """
     run_tests(computer)
     fmri_root = os.path.join(computer.root, fmri_rel)
-    exp_root += '/'
+    if exp_root != '':
+        exp_root += '/'
     paths = {
         'root': computer.root,
         'exp_root': exp_root,
@@ -83,6 +84,7 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'analysis': os.path.join(exp_root, 'analysis/'),  # where analysis files are stored
         'logs': os.path.join(exp_root, 'logs/'),
         'data': os.path.join(exp_root, 'data/'),
+        'report': 'report/',
         'data_behav': os.path.join(fmri_root, 'data_behav/'),  # for fMRI behav data
         'data_fmri': os.path.join(fmri_root,'data_fmri/'),
         'data_struct': os.path.join(fmri_root,'data_struct/'),  # anatomical data
@@ -91,7 +93,6 @@ def set_paths(exp_root, computer=default_computer, fmri_rel=''):
         'rois': os.path.join(fmri_root,'rois/'),  # ROIs (no data, just masks)
         'data_rois': os.path.join(fmri_root,'data_rois/'), # preprocessed and masked data
         'sim': exp_root,  # path for storing simulations of models
-        'report': os.path.join(exp_root, 'report/'),
         }
     return paths
 
@@ -131,118 +132,177 @@ def run_tests(computer):
                    #"file to " % mac
 
 
-class Experiment(TrialHandler):
+class _Common(object):
+
+    def __init__(self):
+        pass
+
+    def show_instructions(self, text='', wait=0, wait_stim=None, auto=0):
+        """
+        Displays instructions on the screen.
+
+        :Kwargs:
+            - text (str, default: '')
+                Text to be displayed
+            - wait (int, default: 0)
+                Seconds to wait after removing the text from the screen after
+                hitting a spacebar (or a `computer.trigger`)
+            - wait_stim (a psychopy stimuli object or their list, default: None)
+                Stimuli to show while waiting after the trigger. This is used
+                for showing a fixation spot for people to get used to it.
+        """
+        # for some graphics drivers (e.g., mine:)
+        # draw() command needs to be invoked once
+        # before it can draw properly
+        visual.TextStim(self.win, text='').draw()
+        self.win.flip()
+
+        instructions = visual.TextStim(self.win, text=text,
+            color='white', height=20, units='pix', pos=(0,0),
+            wrapWidth=30*20)
+        instructions.draw()
+        self.win.flip()
+
+        if auto > 0:  # show text and blank out
+            if self.runParams['autorun']:
+                auto /= self.runParams['autorun']
+            core.wait(auto)
+        elif not self.runParams['autorun'] or not self.runParams['unittest']:
+            thisKey = None
+            while thisKey != self.computer.trigger:
+                thisKey = self.last_keypress()
+            if self.runParams['autorun']:
+                wait /= self.runParams['autorun']
+        self.win.flip()
+
+        if wait_stim is not None:
+            if not isinstance(wait_stim, tuple) and not isinstance(wait_stim, list):
+                wait_stim = [wait_stim]
+            for stim in wait_stim:
+                stim.draw()
+            self.win.flip()
+        core.wait(wait)  # wait a little bit before starting the experiment
+
+    def last_keypress(self, keyList=None):
+        """
+        Extract the last key pressed from the event list.
+
+        If escape is pressed, quits.
+
+        :Kwargs:
+            keyList (list of str, default: `self.computer.defaultKeys`)
+                A list of keys that are recognized. Any other keys pressed will
+                not matter.
+
+        :Returns:
+            An str of a last pressed key or None if nothing has been pressed.
+        """
+        if keyList is None:
+            keyList = self.computer.defaultKeys
+        thisKeyList = event.getKeys(keyList=keyList)
+        if len(thisKeyList) > 0:
+            thisKey = thisKeyList.pop()
+            if thisKey == 'escape':
+                print  # because we've been using sys.stdout.write without \n
+                self.quit()
+            else:
+                return thisKey
+        else:
+            return None
+
+    def quit(self):
+        """What to do when exit is requested.
+        """
+        logging.warning('Premature exit requested by user.')
+        self.win.close()
+        core.quit()
+        # redefine core.quit() so that an App window would not be killed
+        #logging.flush()
+        #for thisThread in threading.enumerate():
+            #if hasattr(thisThread,'stop') and hasattr(thisThread,'running'):
+                ##this is one of our event threads - kill it and wait for success
+                #thisThread.stop()
+                #while thisThread.running==0:
+                    #pass#wait until it has properly finished polling
+        #sys.exit(0)
+
+
+class Experiment(ExperimentHandler, _Common):
     """An extension of an TrialHandler with many useful functions.
     """
     def __init__(self,
-                parent=None,
-                name='',
-                version=0.1,
-                extraInfo=None,
-                runParams=None,
-                instructions={'text': '', 'wait': 0},
-                actions=None,
-                seed=None,
-                nReps=1,
-                method='random',
-                computer=default_computer,
-                dataTypes=None,
-                originPath=None,
-                ):
+                 name='',
+                 version='0.1',
+                 extraInfo=None,
+                 runParams=None,
+                 instructions={'text': '', 'wait': 0},
+                 ):
 
-        self.parent = parent
+                 #runtimeInfo=None,
+                 #originPath=None,
+                 #savePickle=True,
+                 #saveWideText=True,
+                 #dataFileName=''):
+
+        ExperimentHandler.__init__(self,
+            name=name,
+            version=version,
+            extraInfo=extraInfo
+            )
+
         self.name = name
         self.version = version
         self.instructions = instructions
-        self.actions=actions
-        self.nReps = nReps
-        self.method = method
-        self.computer = computer
-        self.dataTypes = dataTypes
-        self.originPath = originPath
+        #self.paths = set_paths('.')
+
+        #self.nReps = nReps
+        #self.method = method
+        #self.computer = computer
+        #self.dataTypes = dataTypes
+        #self.originPath = originPath
+
+        self._initialized = False
 
         #self.signalDet = {False: 'Incorrect', True: 'Correct'}
 
         # minimal parameters that Experiment expects in extraInfo and runParams
         self.extraInfo = OrderedDict([('subjID', 'subj')])
-        self.runParams = OrderedDict([('noOutput', False),
-                ('debug', False),
-                ('autorun', 0),  # if >0, will autorun at the specified speed
-                ('commit', False),  # commit data the moment it comes out
-                ('push', False),
-                #('nocheck', False)  # FIXME
-                ])
+        self.runParams = OrderedDict([  # these control how the experiment is run
+            ('noOutput', False),  # do you want output? or just playing around?
+            ('debug', False),  # not fullscreen presentation etc
+            ('autorun', 0),  # if >0, will autorun at the specified speed
+            ('unittest', False),
+            ('register', False),  # add and commit changes, like new data files?
+            ('push', False),  # add, commit and push to a hg repo?
+            ])
         if extraInfo is not None:
             self.extraInfo.update(extraInfo)
         if runParams is not None:
             self.runParams.update(runParams)
 
+        if self.runParams['unittest']:
+            self.runParams['autorun'] = 100
+
         #sysinfo = info.RunTimeInfo(verbose=True, win=False,
                 #randomSeed='set:time')
         #seed = sysinfo['experimentRandomSeed.string']
-        self.seed = 10#int(seed)
 
-        try:
-            self.validResponses = self.computer.validResponses
-        except:
-            self.validResponses = {'0': 0, '1': 1}
+        #self.seed = 10#int(seed)
+        self.tasks = []
 
-    def setup(self):
-        """
-        Does all the dirty setup before running the experiment.
+    def add_tasks(self, tasks):
+        if isinstance(tasks, str):
+            tasks = [tasks]
 
-        Steps include:
-            - Logging file setup (:func:`set_logging`)
-            - Creating a :class:`~psychopy.visual.Window` (:func:`create_window`)
-            - Creating stimuli (:func:`create_stimuli`)
-            - Creating trial structure (:func:`create_trial`)
-            - Combining trials into a trial list  (:func:`create_triaList`)
-            - Creating a :class:`~psychopy.data.TrialHandler` using the
-              defined trialList  (:func:`create_TrialHandler`)
-
-        :Kwargs:
-            create_win (bool, default: True)
-                If False, a window is not created. This is useful when you have
-                an experiment consisting of a couple of separate sessions. For
-                the first one you create a window and want everything to be
-                presented on that window without closing and reopening it
-                between the sessions.
-        """
-        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        if self.win is None:  # maybe you have a screen already
-            self.create_win(debug=self.runParams['debug'])
-        self.create_stimuli()
-        self.create_trial()
-        self.create_trialList()
-        self.set_TrialHandler()
-        #dataFileName=self.paths['data']%self.extraInfo['subjID'])
-
-        ## guess participant ID based on the already completed sessions
-        #self.extraInfo['subjID'] = self.guess_participant(
-            #self.paths['data'],
-            #default_subjID=self.extraInfo['subjID'])
-
-        #self.dataFileName = self.paths['data'] + '%s.csv'
-
-    def try_makedirs(self, path):
-        """Attempts to create a new directory.
-
-        This function improves :func:`os.makedirs` behavior by printing an
-        error to the log file if it fails and entering the debug mode
-        (:mod:`pdb`) so that data would not be lost.
-
-        :Args:
-            path (str)
-                A path to create.
-        """
-        if not os.path.isdir(path) and path not in ['','.','./']:
-            try: # if this fails (e.g. permissions) we will get an error
-                os.makedirs(path)
-            except:
-                logging.error('ERROR: Cannot create a folder for storing data %s' %path)
-                # FIX: We'll enter the debugger so that we don't lose any data
-                import pdb; pdb.set_trace()
-                self.quit()
+        for task in tasks:
+            task = task()
+            task.computer = self.computer
+            task.win = self.win
+            if task.extraInfo is not None:
+                task.extraInfo.update(self.extraInfo)
+            if task.runParams is not None:
+                task.runParams.update(self.runParams)
+            self.tasks.append(task)
 
     def set_logging(self, logname='log.log', level=logging.WARNING):
         """Setup files for saving logging information.
@@ -255,14 +315,11 @@ class Experiment(TrialHandler):
         """
 
         if not self.runParams['noOutput']:
-            sysinfo = info.RunTimeInfo(verbose=True, win=False,
-                randomSeed='set:time')
-
             # add .log if no extension given
             if len(logname.split('.')) < 2: logname += '.log'
 
             # Setup logging file
-            self.try_makedirs(os.path.dirname(logname))
+            try_makedirs(os.path.dirname(logname))
             if os.path.isfile(logname):
                 writesys = False  # we already have sysinfo there
             else:
@@ -271,9 +328,11 @@ class Experiment(TrialHandler):
 
             # Write system information first
             if writesys:
-                self.logFile.write('%s\n' % sysinfo)
+                self.logFile.write('%s\n' % self.runtimeInfo)
                 self.logFile.write('\n\n' + '#'*40 + '\n\n')
                 self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
+        else:
+            self.logFile = None
 
         # output to the screen
         logging.console.setLevel(level)
@@ -397,7 +456,6 @@ class Experiment(TrialHandler):
                 size = tuple(res)
             else:
                 size = (res[0]/2, res[1]/2)
-
         self.win = visual.Window(
             size=size,
             monitor = monitor,
@@ -410,10 +468,156 @@ class Experiment(TrialHandler):
             viewScale = self.computer.viewScale
         )
 
-    def show_intro(self, text):
+    def show_intro(self, text, **kwargs):
         #if text is not None:
+        #self.create_win(debug=self.runParams['debug'])
+        self.show_instructions(text=text, **kwargs)
+
+    def setup(self):
+        try:
+            self.validResponses = self.computer.validResponses
+        except:
+            self.validResponses = {'0': 0, '1': 1}
+        if not self.runParams['noOutput']:
+            self.runtimeInfo = info.RunTimeInfo(verbose=True, win=False,
+                    randomSeed='set:time')
+            self.seed = int(self.runtimeInfo['experimentRandomSeed.string'])
+            np.random.seed(self.seed)
+        else:
+            self.runtimeInfo = None
+            self.seed = None
+
+        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
         self.create_win(debug=self.runParams['debug'])
+        self._initialized = True
+
+    def run(self):
+        self.setup()
+        self.show_intro(self, **self.instructions)
+        for task in self.tasks:
+            task.run()
+        text = ('End of Experiment. Thank you!\n\n'
+                'Press space bar to exit.')
         self.show_instructions(text=text)
+        self.quit()
+        if self.runParams['register']:
+            self.register()
+        elif self.runParams['push']:
+            self.commitpush()
+
+    def commit(self, message=None):
+        """
+        Add and commit changes in a repository.
+
+        TODO: How to set this up.
+        """
+        if message is None:
+            message = 'data for participant %s' % self.extraInfo['subjID']
+        cmd, out, err = ui._repo_action('commit', message=message)
+        self.logFile.write('\n'.join([cmd, out, err]))
+
+        return err
+
+    def commitpush(self, message=None):
+        """
+        Add, commit, and push changes to a remote repository.
+
+        Currently, only Mercurial repositories are supported.
+
+        TODO: How to set this up.
+        TODO: `git` support
+        """
+        err = self.commit(message=message)
+        if err == '':
+            out = ui._repo_action('push')
+            self.logFile.write('\n'.join(out))
+
+class Task(TrialHandler, _Common):
+
+    def __init__(self,
+                 #win,
+                 #log=None,
+                 #computer=default_computer,
+                 parent,
+                 extraInfo=None,
+                 runParams=None,
+                 instructions={'text': '', 'wait': 0},
+
+                 #parent=None,
+                 name='',
+                 version='0.1',
+                 nReps=1,
+                 method='random',
+                 ):
+
+        self.parent = parent
+        self.computer = self.parent.computer
+        self.paths = self.parent.paths
+
+        self.name = name
+        self.version = version
+        self.instructions = instructions
+        self.nReps = nReps
+        self.method = method
+
+        self.extraInfo = parent.extraInfo
+        self.runParams = parent.runParams
+        if extraInfo is not None:
+            self.extraInfo.update(extraInfo)
+        if runParams is not None:
+            self.runParams.update(runParams)
+
+    def setup(self):
+        """
+        Does all the dirty setup before running the experiment.
+
+        Steps include:
+            - Logging file setup (:func:`set_logging`)
+            - Creating a :class:`~psychopy.visual.Window` (:func:`create_window`)
+            - Creating stimuli (:func:`create_stimuli`)
+            - Creating trial structure (:func:`create_trial`)
+            - Combining trials into a trial list  (:func:`create_triaList`)
+            - Creating a :class:`~psychopy.data.TrialHandler` using the
+              defined trialList  (:func:`create_TrialHandler`)
+
+        :Kwargs:
+            create_win (bool, default: True)
+                If False, a window is not created. This is useful when you have
+                an experiment consisting of a couple of separate sessions. For
+                the first one you create a window and want everything to be
+                presented on that window without closing and reopening it
+                between the sessions.
+        """
+        if self.parent._initialized:
+            self.win = self.parent.win
+            self.logFile = self.parent.logFile
+            self.extraInfo = self.parent.extraInfo
+            self.runParams = self.parent.runParams
+            self.seed = self.parent.seed
+            try:
+                self.validResponses = self.computer.validResponses
+            except:
+                self.validResponses = self.parent.validResponses
+
+            self.create_stimuli()
+            self.create_trial()
+            self.create_trialList()
+            if not hasattr(self, 'trialDur'):
+                self.trialDur = sum(ev['dur'] for ev in self.trial)
+            if self.runParams['autorun']:
+                self.expPlan = self.set_autorun(self.expPlan)
+
+            #self.set_TrialHandler()
+        else:
+            raise Exception('You must first call Experiment.setup()')
+        #dataFileName=self.paths['data']%self.extraInfo['subjID'])
+
+        ## guess participant ID based on the already completed sessions
+        #self.extraInfo['subjID'] = self.guess_participant(
+            #self.paths['data'],
+            #default_subjID=self.extraInfo['subjID'])
+
+        #self.dataFileName = self.paths['data'] + '%s.csv'
 
     def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
@@ -586,11 +790,11 @@ class Experiment(TrialHandler):
 
     def create_trialList(self):
         """
-        Put together trials into a trialList.
+        Put together trials into a expPlan.
 
         Example::
 
-            trialList = OrderedDict([
+            expPlan = OrderedDict([
                 ('cond', self.morphInd[mNo]),
                 ('name', self.paraTable[self.morphInd[mNo]]),
                 ('onset', ''),
@@ -601,7 +805,7 @@ class Experiment(TrialHandler):
                 ('rt', ''),
                 ])
 
-            self.trialList = trialList
+            self.expPlan = expPlan
         """
         raise NotImplementedError
 
@@ -714,7 +918,7 @@ class Experiment(TrialHandler):
         return trialList
 
 
-    def set_TrialHandler(self):
+    def set_TrialHandler(self, trialList):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
@@ -722,32 +926,42 @@ class Experiment(TrialHandler):
         Creates ``self.trialDur`` if not present yet.
         Appends information for autorun.
         """
-        if not hasattr(self, 'trialDur'):
-            self.trialDur = sum(ev['dur'] for ev in self.trial)
-        if self.runParams['autorun']:
-            self.trialList = self.set_autorun(self.trialList)
         TrialHandler.__init__(self,
-            self.trialList,
+            trialList,
             nReps=self.nReps,
             method=self.method,
-            dataTypes=self.dataTypes,
             extraInfo=self.extraInfo,
-            seed=self.seed,
-            originPath=self.originPath,
-            name=self.name)
+            name=self.name,
+            seed=self.seed)
+    #def run(self):
+        #"""
+        #Setup and go!
+        #"""
+        #self.setup()
+        #self.go(
+            #datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
+            #noOutput=self.runParams['noOutput'])
+        #if self.runParams['register']:
+            #self.register()
+        #elif self.runParams['push']:
+            #self.commitpush()
 
-    def run(self):
-        """
-        Setup and go!
-        """
-        self.setup()
-        self.go(
-            datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
-            noOutput=self.runParams['noOutput'])
-        if self.runParams['register']:
-            self.register()
-        elif self.runParams['push']:
-            self.commitpush()
+    def get_breaks(self, breakcol=None):
+        if breakcol is not None:
+            breaks = []
+            last = self.expPlan[0][breakcol]
+            for n, trial in enumerate(self.expPlan):
+                if trial[breakcol] != last:
+                    if len(breaks) > 0:
+                        breaks.append((breaks[-1][-1], n))
+                    else:
+                        breaks.append([0,n])
+                    last = trial[breakcol]
+        else:
+            breaks = [(0, len(self.expPlan))]
+        if self.method == 'fullRandom':
+            np.random.shuffle(breaks)
+        return breaks
 
     def autorun(self):
         """
@@ -759,72 +973,21 @@ class Experiment(TrialHandler):
         self.runParams['autorun'] = 100
         self.run()
 
-    def show_instructions(self, text='', wait=0, wait_stim=None):
-        """
-        Displays instructions on the screen.
+    def run(self):
+        self.setup()
+        datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv'
+        breaks = self.get_breaks(breakcol=None)
+        self.show_instructions(**self.instructions)
+        pause_instr = self.instructions.copy()
+        pause_instr['text'] = '<pause>'
+        for i, br in enumerate(breaks):
+            self.set_TrialHandler(self.expPlan[br[0]:br[1]])
+            #for rep in range(self.nReps):
+            self._loop_trials(datafile=datafile)
+            if len(breaks) > 1:
+                self.show_instructions(**pause_instr)
 
-        :Kwargs:
-            - text (str, default: '')
-                Text to be displayed
-            - wait (int, default: 0)
-                Seconds to wait after removing the text from the screen after
-                hitting a spacebar (or a `computer.trigger`)
-            - wait_stim (a psychopy stimuli object or their list, default: None)
-                Stimuli to show while waiting after the trigger. This is used
-                for showing a fixation spot for people to get used to it.
-        """
-        # for some graphics drivers (e.g., mine:)
-        # draw() command needs to be invoked once
-        # before it can draw properly
-        visual.TextStim(self.win, text='').draw()
-        self.win.flip()
-
-        instructions = visual.TextStim(self.win, text=text,
-            color='white', height=20, units='pix', pos=(0,0),
-            wrapWidth=30*20)
-        instructions.draw()
-        self.win.flip()
-
-        if not self.runParams['autorun'] or True:
-            thisKey = None
-            while thisKey != self.computer.trigger:
-                thisKey = self.last_keypress()
-            if self.runParams['autorun']:
-                wait /= self.runParams['autorun']
-        self.win.flip()
-
-        if wait_stim is not None:
-            if not isinstance(wait_stim, tuple) and not isinstance(wait_stim, list):
-                wait_stim = [wait_stim]
-            for stim in wait_stim:
-                stim.draw()
-            self.win.flip()
-        core.wait(wait)  # wait a little bit before starting the experiment
-
-    def go(self, datafile='data.csv', noOutput=False):
-        if not noOutput:
-            self.try_makedirs(os.path.dirname(datafile))
-            try:
-                dfile = open(datafile, 'ab')
-                datawriter = csv.writer(dfile, lineterminator = '\n')
-            except IOError:
-                print('Cannot write to the data file %s!' % datafile)
-            else:
-                write_head = True
-        else:
-            datawriter = None
-            write_head = None
-
-        for rep in range(self.nReps):
-            self.show_instructions(**self.instructions)
-            self._loop_trials(datafile=datafile, datawriter=datawriter,
-                         write_head=write_head)
-
-        sys.stdout.write("\n")  # finally jump to the next line in the terminal
-        if not noOutput: dfile.close()
-
-    def _loop_trials(self, datafile='data.csv', datawriter=None,
-                    write_head=True):
+    def _loop_trials(self, datafile='data.csv'):
         """
         Iterate over the sequence of trials and events.
 
@@ -841,6 +1004,19 @@ class Experiment(TrialHandler):
         :Raises:
             :py:exc:`IOError` if `datafile` is not found.
         """
+        if not self.runParams['noOutput']:
+            try_makedirs(os.path.dirname(datafile))
+            try:
+                dfile = open(datafile, 'ab')
+                datawriter = csv.writer(dfile, lineterminator = '\n')
+            except IOError:
+                print('Cannot write to the data file %s!' % datafile)
+            else:
+                write_head = True
+        else:
+            datawriter = None
+            write_head = None
+
         # set up clocks
         globClock = core.Clock()
         trialClock = core.Clock()
@@ -848,7 +1024,8 @@ class Experiment(TrialHandler):
         trialNo = 0
         # go over the trial sequence
         for thisTrial in self:
-            thisTrial['session'] = self.thisRepN
+            if self.nReps > 1:
+                thisTrial['session'] = self.thisRepN
             trialClock.reset()
             thisTrial['onset'] = globClock.getTime()
             sys.stdout.write("\rtrial %s" % (trialNo+1))
@@ -893,6 +1070,9 @@ class Experiment(TrialHandler):
             if trialNo == self.nTotal/self.nReps:
                 break
 
+        sys.stdout.write("\n")  # finally jump to the next line in the terminal
+        if not self.runParams['noOutput']: dfile.close()
+
     def _write_header(self, datafile, header, datawriter):
         """Determines if a header should be writen in a csv data file.
 
@@ -932,32 +1112,6 @@ class Experiment(TrialHandler):
             datawriter.writerow(header)
         return False
 
-    def last_keypress(self, keyList=None):
-        """
-        Extract the last key pressed from the event list.
-
-        If escape is pressed, quits.
-
-        :Kwargs:
-            keyList (list of str, default: `self.computer.defaultKeys`)
-                A list of keys that are recognized. Any other keys pressed will
-                not matter.
-
-        :Returns:
-            An str of a last pressed key or None if nothing has been pressed.
-        """
-        if keyList is None:
-            keyList = self.computer.defaultKeys
-        thisKeyList = event.getKeys(keyList=keyList)
-        if len(thisKeyList) > 0:
-            thisKey = thisKeyList.pop()
-            if thisKey == 'escape':
-                print  # because we've been using sys.stdout.write without \n
-                self.quit()
-            else:
-                return thisKey
-        else:
-            return None
 
     def wait_for_response(self, RT_clock=False, fakeKey=None):
         """
@@ -1012,95 +1166,16 @@ class Experiment(TrialHandler):
         if len(allKeys) > 0:
             thisResp = allKeys.pop()
             thisTrial['subjResp'] = self.validResponses[thisResp[0]]
-            acc = self.signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
-            thisTrial['accuracy'] = self.signalDet[acc]
+            acc = signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
+            thisTrial['accuracy'] = acc
             thisTrial['rt'] = thisResp[1]
         else:
             thisTrial['subjResp'] = ''
-            acc = self.signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
+            acc = signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
             thisTrial['accuracy'] = acc
             thisTrial['rt'] = ''
 
         return thisTrial
-
-    def signal_det(self, corr_resp, subj_resp):
-        """
-        Returns an accuracy label according the (modified) Signal Detection Theory.
-
-        ================  ===================  =================
-                          Response present     Response absent
-        ================  ===================  =================
-        Stimulus present  correct / incorrect  miss
-        Stimulus absent   false alarm          (empty string)
-        ================  ===================  =================
-
-        :Args:
-            corr_resp
-                What one should have responded. If no response expected
-                (e.g., no stimulus present), then it should be an empty string
-                ('')
-            subj_resp
-                What the observer responsed. If no response, it should be
-                an empty string ('').
-        :Returns:
-            A string indicating the type of response.
-        """
-        if corr_resp == '':  # stimulus absent
-            if subj_resp == '':  # response absent
-                resp = ''
-            else:  # response present
-                resp = 'false alarm'
-        else:  # stimulus present
-            if subj_resp == '':  # response absent
-                resp = 'miss'
-            elif corr_resp == subj_resp:  # correct response present
-                resp = 'correct'
-            else:  # incorrect response present
-                resp = 'incorrect'
-        return resp
-
-    def commit(self, message=None):
-        """
-        Add and commit changes in a repository.
-
-        TODO: How to set this up.
-        """
-        if message is None:
-            message = 'data for participant %s' % self.extraInfo['subjID']
-        cmd, out, err = ui._repo_action('commit', message=message)
-        self.logFile.write('\n'.join([cmd, out, err]))
-
-        return err
-
-    def commitpush(self, message=None):
-        """
-        Add, commit, and push changes to a remote repository.
-
-        Currently, only Mercurial repositories are supported.
-
-        TODO: How to set this up.
-        TODO: `git` support
-        """
-        err = self.commit(message=message)
-        if err == '':
-            out = ui._repo_action('push')
-            self.logFile.write('\n'.join(out))
-
-    def quit(self):
-        """What to do when exit is requested.
-        """
-        logging.warning('Premature exit requested by user.')
-        self.win.close()
-        core.quit()
-        # redefine core.quit() so that an App window would not be killed
-        #logging.flush()
-        #for thisThread in threading.enumerate():
-            #if hasattr(thisThread,'stop') and hasattr(thisThread,'running'):
-                ##this is one of our event threads - kill it and wait for success
-                #thisThread.stop()
-                #while thisThread.running==0:
-                    #pass#wait until it has properly finished polling
-        #sys.exit(0)
 
     def _astype(self,type='pandas'):
         """
@@ -1235,6 +1310,18 @@ class Experiment(TrialHandler):
 
 
 def get_behav_df(subjID, pattern='%s'):
+    """
+    Extracts data from files for data analysis.
+
+    :Kwargs:
+        pattern (str, default: '%s')
+            A string with formatter information. Usually it contains a path
+            to where data is and a formatter such as '%s' to indicate where
+            participant ID should be incorporated.
+
+    :Returns:
+        A `pandas.DataFrame` of data for the requested participants.
+    """
     if type(subjID) not in [list, tuple]:
         subjID_list = [subjID]
     else:
@@ -1314,6 +1401,7 @@ class ThickShapeStim(visual.ShapeStim):
         self.ori = np.array(ori,float)
         self.size = np.array([0.0,0.0])
         self.setSize(size)
+        #self.size=size
         self.setVertices(vertices)
         # self._calcVerticesRendered()
         # if len(self.stimulus) == 1: self.stimulus = self.stimulus[0]
@@ -1350,6 +1438,12 @@ class ThickShapeStim(visual.ShapeStim):
         self.pos = newPos
         self.setVertices(self.vertices)
 
+    #def setSize(self, newSize):
+        ##for stim in self.stimulus:
+            ##stim.setPos(newPos)
+        #self.size = newSize
+        #self.setVertices(self.vertices)
+
     def setVertices(self, value=None):
         if isinstance(value[0][0], int) or isinstance(value[0][0], float):
             self.vertices = [value]
@@ -1360,9 +1454,14 @@ class ThickShapeStim(visual.ShapeStim):
         theta = self.ori/180.*np.pi #(newOri - self.ori)/180.*np.pi
         rot = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
 
+        self._rend_vertices = []
+
         for vertices in self.vertices:
-            if self.closeShape: numPairs = len(vertices)
-            else: numPairs = len(vertices)-1
+            rend_verts = []
+            if self.closeShape:
+                numPairs = len(vertices)
+            else:
+                numPairs = len(vertices)-1
 
             wh = self.lineWidth/2. - misc.pix2deg(1,self.win.monitor)
             for i in range(numPairs):
@@ -1373,7 +1472,8 @@ class ThickShapeStim(visual.ShapeStim):
                     thisPair_rot[1][1]-thisPair_rot[0][1]
                     ]
                 lh = np.sqrt(edges[0]**2 + edges[1]**2)/2.
-
+                rend_vert = [[-lh,-wh],[-lh,wh], [lh,wh],[lh,-wh]]
+                #import pdb; pdb.set_trace()
                 line = visual.ShapeStim(
                     self.win,
                     lineWidth   = 1,
@@ -1384,11 +1484,16 @@ class ThickShapeStim(visual.ShapeStim):
                     pos         = np.mean(thisPair_rot,0) + self.pos,
                     # [(thisPair_rot[0][0]+thisPair_rot[1][0])/2. + self.pos[0],
                                    # (thisPair_rot[0][1]+thisPair_rot[1][1])/2. + self.pos[1]],
-                    vertices    = [[-lh,-wh],[-lh,wh],
-                                   [lh,wh],[lh,-wh]]
+                    vertices    = rend_vert
                 )
                 #line.setOri(self.ori-np.arctan2(edges[1],edges[0])*180/np.pi)
                 self.stimulus.append(line)
+                rend_verts.append(rend_vert[0])
+            rend_verts.append(rend_vert[1])
+
+            self._rend_vertices.append(rend_verts)
+            #import pdb; pdb.set_trace()
+            #self.setSize(self.size)
 
 
 class GroupStim(object):
@@ -1603,3 +1708,58 @@ def combinations_with_replacement(iterable, r):
             return
         indices[i:] = [indices[i] + 1] * (r - i)
         yield tuple(pool[i] for i in indices)
+
+def try_makedirs(path):
+        """Attempts to create a new directory.
+
+        This function improves :func:`os.makedirs` behavior by printing an
+        error to the log file if it fails and entering the debug mode
+        (:mod:`pdb`) so that data would not be lost.
+
+        :Args:
+            path (str)
+                A path to create.
+        """
+        if not os.path.isdir(path) and path not in ['','.','./']:
+            try: # if this fails (e.g. permissions) we will get an error
+                os.makedirs(path)
+            except:
+                logging.error('ERROR: Cannot create a folder for storing data %s' %path)
+                # FIX: We'll enter the debugger so that we don't lose any data
+                import pdb; pdb.set_trace()
+
+def signal_det(corr_resp, subj_resp):
+    """
+    Returns an accuracy label according the (modified) Signal Detection Theory.
+
+    ================  ===================  =================
+                      Response present     Response absent
+    ================  ===================  =================
+    Stimulus present  correct / incorrect  miss
+    Stimulus absent   false alarm          (empty string)
+    ================  ===================  =================
+
+    :Args:
+        corr_resp
+            What one should have responded. If no response expected
+            (e.g., no stimulus present), then it should be an empty string
+            ('')
+        subj_resp
+            What the observer responsed. If no response, it should be
+            an empty string ('').
+    :Returns:
+        A string indicating the type of response.
+    """
+    if corr_resp == '':  # stimulus absent
+        if subj_resp == '':  # response absent
+            resp = ''
+        else:  # response present
+            resp = 'false alarm'
+    else:  # stimulus present
+        if subj_resp == '':  # response absent
+            resp = 'miss'
+        elif corr_resp == subj_resp:  # correct response present
+            resp = 'correct'
+        else:  # incorrect response present
+            resp = 'incorrect'
+    return resp
