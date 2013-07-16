@@ -499,11 +499,11 @@ class Experiment(ExperimentHandler, _Common):
         text = ('End of Experiment. Thank you!\n\n'
                 'Press space bar to exit.')
         self.show_instructions(text=text)
-        self.quit()
         if self.runParams['register']:
             self.register()
         elif self.runParams['push']:
             self.commitpush()
+        self.quit()
 
     def commit(self, message=None):
         """
@@ -1014,7 +1014,7 @@ class Task(TrialHandler, _Common):
                 dfile = open(datafile, 'ab')
                 datawriter = csv.writer(dfile, lineterminator = '\n')
             except IOError:
-                print('Cannot write to the data file %s!' % datafile)
+                raise IOError('Cannot write to the data file %s!' % datafile)
             else:
                 write_head = True
         else:
@@ -1057,9 +1057,9 @@ class Task(TrialHandler, _Common):
                 try:
                     thisTrial['autoRT'] *= self.runParams['autorun']
                     thisTrial['rt'] *= self.runParams['autorun']
-                    thisTrial['onset'] *= self.runParams['autorun']
                 except:  # maybe not all keys are present
                     pass
+                thisTrial['onset'] *= self.runParams['autorun']
 
             if datawriter is not None:
                 header = self.extraInfo.keys() + thisTrial.keys()
@@ -1071,8 +1071,8 @@ class Task(TrialHandler, _Common):
                 datawriter.writerow(outf)
 
             trialNo += 1
-            if trialNo == self.nTotal/self.nReps:
-                break
+            #if trialNo == self.nTotal/self.nReps:
+                #break
 
         sys.stdout.write("\n")  # finally jump to the next line in the terminal
         if not self.runParams['noOutput']: dfile.close()
