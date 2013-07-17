@@ -1767,3 +1767,15 @@ def signal_det(corr_resp, subj_resp):
         else:  # incorrect response present
             resp = 'incorrect'
     return resp
+
+def invert_dict(d):
+    """
+    Inverts a dictionary: keys become values.
+
+    This is an instance of an OrderedDict, and so the new keys are
+    sorted.
+    """
+    invertDict = dict([[v,k] for k,v in d.items()])
+    sortKeys = sorted(invertDict.keys())
+    invertDict = OrderedDict([(k,invertDict[k]) for k in sortKeys])
+    return invertDict
