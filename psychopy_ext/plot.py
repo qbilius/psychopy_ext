@@ -370,7 +370,8 @@ class Plot(object):
                                     #autoscale=autoscale, **kwargs)
             axes = [axes]
             if 'title' in kwargs:
-                axes[0].set_title(kwargs['title'])
+                if kwargs['title'] is not None:
+                    axes[0].set_title(kwargs['title'])
             #if 'title' not in kwargs:
                 #kwargs['title']
             #else:
@@ -393,6 +394,8 @@ class Plot(object):
                     title = subname
                 else:
                     title = kwargs['title']
+                    if title is None:
+                        title = subname
 
                 ax = self._plot_ax(agg[subname], kind=kind, **kwargs)
                 #ax, xmin, xmax, ymin, ymax = self._label_ax(agg[subname],
@@ -506,6 +509,14 @@ class Plot(object):
                     self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
 
             #self._label_ax(ax.agg, ax.mean, ax.p_yerr, ax, kind=kind, legend=legend, **kwargs)
+        if self.sharex or len(axes) == 1:
+            try:
+                self.sig_t = pandas.concat([ax.sig_t for ax in axes], axis=1)
+                            #keys=[ax.get_title() for ax in axes])
+                self.sig_p = pandas.concat([ax.sig_p for ax in axes], axis=1)
+                            #keys=[ax.get_title() for ax in axes])
+            except:
+                pass
         return axes
 
     def printfig(self):
@@ -608,9 +619,12 @@ class Plot(object):
                     label.set_rotation(0)
 
         if 'xlabel' in kwargs:
-            ax.set_xlabel(kwargs['xlabel'])
+            xlabel = kwargs['xlabel']
         else:
-            ax.set_xlabel(self._get_title(mean, 'rows'))
+            xlabel = None
+        if xlabel is None:
+            xlabel = self._get_title(mean, 'rows')
+        ax.set_xlabel(xlabel)
 
         return ax
 
@@ -623,9 +637,12 @@ class Plot(object):
             ax.set_yticklabels(['']*len(ax.get_yticklabels()))
 
         if 'ylabel' in kwargs:
-            ax.set_ylabel(kwargs['ylabel'])
+            ylabel = kwargs['ylabel']
         else:
-            ax.set_ylabel('')
+            ylabel = None
+        if ylabel is None:
+            ylabel = ''
+        ax.set_ylabel(ylabel)
 
         return ax
 
@@ -694,16 +711,25 @@ class Plot(object):
                 #else:
                     #rlabels = 1
             #import pdb; pdb.set_trace()
+            # all columns names start with 'row.'
             if len(inds) == len(agg.columns.names):
                 rlabels = agg.columns
+            elif len(inds) == 0:  # no rows at all
+                rlabels = [None]
             else:
                 rlabels = agg.mean().unstack(inds).columns
         ticks = ax.get_xticks()
 
+        sig_t = []
+        sig_p = []
+
         for rno, rlab in enumerate(rlabels):
             #import pdb; pdb.set_trace()
             #rlab = rlabel[:rlevel]
-            d = agg[rlab]
+            if len(inds) == 0:  # no rows at all
+                d = agg
+            else:
+                d = agg[rlab]
 
             if d.ndim == 1:
                 d = d.dropna() #d[pandas.notnull(d)]
@@ -717,6 +743,14 @@ class Plot(object):
                 t, p = scipy.stats.ttest_rel(d1, d2)
                 mn = mean[rlab] + np.sign(mean[rlab])*eb
                 ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
+            try:
+                sig_t.append((rlab, t))
+                sig_p.append((rlab, p))
+            except:
+                pass
+        if len(sig_t) > 0:
+            ax.sig_t = pandas.DataFrame(sig_t)
+            ax.sig_p = pandas.DataFrame(sig_p)
 
     def _draw_legend(self, ax, visible=None, data=None, **kwargs):
         leg = ax.get_legend()  # get an existing legend
