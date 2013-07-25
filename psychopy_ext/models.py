@@ -307,6 +307,18 @@ class GaborJet(Model):
 
     Original implementation copyright 2004 Xiaomin Yue
     """
+
+    def __init__(self, nScale = 5, nOrientation = 8):
+        """
+        :Kwargs:
+            - nScale (int, default: 5)
+                Spatial frequency scales
+            - nOrientation (int, default: 8)
+                Orientation spacing; angle = np.pi/nOrientations
+        """
+        self.nScale = nScale
+        self.nOrientation = nOrientation
+
     def run(self, ims=None, oneval=False):
         ims = self.input2array(ims)
         JetsMagnitudes = []
@@ -371,8 +383,6 @@ class GaborJet(Model):
         im_freq = np.fft.fft2(im)
 
         # setup the paramers
-        nScale = 5  # spatial frequency scales
-        nOrientation = 8  # orientation spacing; angle = np.pi/nOrientations
         xHalfResL = im.shape[0]/2
         yHalfResL = im.shape[1]/2
         kxFactor = 2*np.pi/im.shape[0]
@@ -384,17 +394,18 @@ class GaborJet(Model):
         ty = kyFactor*(-ty)
 
         # initiallize useful variables
+        nvars = self.nScale*self.nOrientation
         if cell_type == 'complex':
-            JetsMagnitude  = np.zeros((len(grid),nScale*nOrientation))
-            JetsPhase      = np.zeros((len(grid),nScale*nOrientation))
+            JetsMagnitude  = np.zeros((len(grid), nvars))
+            JetsPhase      = np.zeros((len(grid), nvars))
         else:
-            JetsMagnitude  = np.zeros((len(grid),2*nScale*nOrientation))
-            JetsPhase      = np.zeros((len(grid),nScale*nOrientation))
+            JetsMagnitude  = np.zeros((len(grid), 2*nvars))
+            JetsPhase      = np.zeros((len(grid), nvars))
 
-        for LevelL in range(nScale):
+        for LevelL in range(self.nScale):
             k0 = np.pi/2 * (1/np.sqrt(2))**LevelL
-            for DirecL in range(nOrientation):
-                kA = np.pi * DirecL / nOrientation
+            for DirecL in range(self.nOrientation):
+                kA = np.pi * DirecL / self.nOrientation
                 k0x = k0 * np.cos(kA)
                 k0y = k0 * np.sin(kA)
                 # generate a kernel specified scale and orientation, which has DC on the center
@@ -421,22 +432,22 @@ class GaborJet(Model):
 
                 TmpGWTPhase = np.angle(iTmpFilterImage)
                 tmpPhase = TmpGWTPhase[rangeXY,:][:,rangeXY] + np.pi
-                JetsPhase[:,LevelL*nOrientation+DirecL] = tmpPhase.ravel()
+                JetsPhase[:,LevelL*self.nOrientation+DirecL] = tmpPhase.ravel()
                 #import pdb; pdb.set_trace()
 
                 if cell_type == 'complex':
                     TmpGWTMag = np.abs(iTmpFilterImage)
                     # get magnitude and phase at specific positions
                     tmpMag = TmpGWTMag[rangeXY,:][:,rangeXY]
-                    JetsMagnitude[:,LevelL*nOrientation+DirecL] = tmpMag.ravel()
+                    JetsMagnitude[:,LevelL*self.nOrientation+DirecL] = tmpMag.ravel()
                 else:
                     TmpGWTMag_real = np.real(iTmpFilterImage)
                     TmpGWTMag_imag = np.imag(iTmpFilterImage)
                     # get magnitude and phase at specific positions
                     tmpMag_real = TmpGWTMag_real[rangeXY,:][:,rangeXY]
                     tmpMag_imag = TmpGWTMag_imag[rangeXY,:][:,rangeXY]
-                    JetsMagnitude_real[:,LevelL*nOrientation+DirecL] = tmpMag_real.ravel()
-                    JetsMagnitude_imag[:,LevelL*nOrientation+DirecL] =  tmpMag_imag.ravel()
+                    JetsMagnitude_real[:,LevelL*self.nOrientation+DirecL] = tmpMag_real.ravel()
+                    JetsMagnitude_imag[:,LevelL*self.nOrientation+DirecL] =  tmpMag_imag.ravel()
 
         if cell_type == 'simple':
             JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
