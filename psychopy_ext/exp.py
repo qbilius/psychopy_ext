@@ -226,312 +226,6 @@ class _Common(object):
                     #pass#wait until it has properly finished polling
         #sys.exit(0)
 
-
-class Experiment(ExperimentHandler, _Common):
-    """An extension of an TrialHandler with many useful functions.
-    """
-    def __init__(self,
-                 name='',
-                 version='0.1',
-                 extraInfo=None,
-                 runParams=None,
-                 instructions={'text': '', 'wait': 0},
-                 ):
-
-                 #runtimeInfo=None,
-                 #originPath=None,
-                 #savePickle=True,
-                 #saveWideText=True,
-                 #dataFileName=''):
-
-        ExperimentHandler.__init__(self,
-            name=name,
-            version=version,
-            extraInfo=extraInfo
-            )
-
-        self.name = name
-        self.version = version
-        self.instructions = instructions
-        #self.paths = set_paths('.')
-
-        #self.nReps = nReps
-        #self.method = method
-        #self.computer = computer
-        #self.dataTypes = dataTypes
-        #self.originPath = originPath
-
-        self._initialized = False
-
-        #self.signalDet = {False: 'Incorrect', True: 'Correct'}
-
-        # minimal parameters that Experiment expects in extraInfo and runParams
-        self.extraInfo = OrderedDict([('subjID', 'subj')])
-        self.runParams = OrderedDict([  # these control how the experiment is run
-            ('noOutput', False),  # do you want output? or just playing around?
-            ('debug', False),  # not fullscreen presentation etc
-            ('autorun', 0),  # if >0, will autorun at the specified speed
-            ('unittest', False),
-            ('register', False),  # add and commit changes, like new data files?
-            ('push', False),  # add, commit and push to a hg repo?
-            ])
-        if extraInfo is not None:
-            self.extraInfo.update(extraInfo)
-        if runParams is not None:
-            self.runParams.update(runParams)
-
-        if self.runParams['unittest']:
-            self.runParams['autorun'] = 100
-
-        #sysinfo = info.RunTimeInfo(verbose=True, win=False,
-                #randomSeed='set:time')
-        #seed = sysinfo['experimentRandomSeed.string']
-
-        #self.seed = 10#int(seed)
-        self.tasks = []
-
-    def add_tasks(self, tasks):
-        if isinstance(tasks, str):
-            tasks = [tasks]
-
-        for task in tasks:
-            task = task()
-            task.computer = self.computer
-            task.win = self.win
-            if task.extraInfo is not None:
-                task.extraInfo.update(self.extraInfo)
-            if task.runParams is not None:
-                task.runParams.update(self.runParams)
-            self.tasks.append(task)
-
-    def set_logging(self, logname='log.log', level=logging.WARNING):
-        """Setup files for saving logging information.
-
-        New folders might be created.
-
-        :Kwargs:
-            logname (str, default: 'log.log')
-                The log file name.
-        """
-
-        if not self.runParams['noOutput']:
-            # add .log if no extension given
-            if len(logname.split('.')) < 2: logname += '.log'
-
-            # Setup logging file
-            try_makedirs(os.path.dirname(logname))
-            if os.path.isfile(logname):
-                writesys = False  # we already have sysinfo there
-            else:
-                writesys = True
-            self.logFile = logging.LogFile(logname, filemode='a', level=level)
-
-            # Write system information first
-            if writesys:
-                self.logFile.write('%s\n' % self.runtimeInfo)
-                self.logFile.write('\n\n' + '#'*40 + '\n\n')
-                self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
-        else:
-            self.logFile = None
-
-        # output to the screen
-        logging.console.setLevel(level)
-
-    def create_seed(self, seed=None):
-        """
-        SUPERSEDED by `psychopy.info.RunTimeInfo`
-        Creates or assigns a seed for a reproducible randomization.
-
-        When a seed is set, you can, for example, rerun the experiment with
-        trials in exactly the same order as before.
-
-        :Kwargs:
-            seed (int, default: None)
-                Pass a seed if you already have one.
-
-        :Returns:
-            self.seed (int)
-        """
-        if seed is None:
-            try:
-                self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
-            except:
-                self.seed = 1
-                logging.warning('No seed provided. Setting seed to 1.')
-        else:
-            self.seed = seed
-        return self.seed
-
-    def _guess_participant(self, data_path, default_subjID='01'):
-        """Attempts to guess participant ID (it must be int).
-
-        .. :Warning:: Not usable yet
-
-        First lists all csv files in the data_path, then finds a maximum.
-        Returns maximum+1 or an empty string if nothing is found.
-
-        """
-        datafiles = glob.glob(data_path+'*.csv')
-        partids = []
-        #import pdb; pdb.set_trace()
-        for d in datafiles:
-            filename = os.path.split(d)[1]  # remove the path
-            filename = filename.split('.')[0]  # remove the extension
-            partid = filename.split('_')[-1]  # take the numbers at the end
-            try:
-                partids.append(int(partid))
-            except:
-                logging.warning('Participant ID %s is invalid.' %partid)
-
-        if len(partids) > 0: return '%02d' %(max(partids) + 1)
-        else: return default_subjID
-
-    def _guess_runNo(self, data_path, default_runNo = 1):
-        """Attempts to guess run number.
-
-        .. :Warning:: Not usable yet
-
-        First lists all csv files in the data_path, then finds a maximum.
-        Returns maximum+1 or an empty string if nothing is found.
-
-        """
-        if not os.path.isdir(data_path): runNo = default_runNo
-        else:
-            dataFiles = glob.glob(data_path + '*.csv')
-            # Splits file names into ['data', %number%, 'runType.csv']
-            allNums = [int(os.path.basename(thisFile).split('_')[1]) for thisFile in dataFiles]
-
-            if allNums == []: # no data files yet
-                runNo = default_runNo
-            else:
-                runNo = max(allNums) + 1
-                # print 'Guessing runNo: %d' %runNo
-
-        return runNo
-
-    def get_mon_sizes(self, screen=None):
-        """Get a list of resolutions for each monitor.
-
-        Recipe from <http://stackoverflow.com/a/10295188>_
-
-        :Args:
-            screen (int, default: None)
-                Which screen's resolution to return. If None, the a list of all
-                screens resolutions is returned.
-
-        :Returns:
-            a tuple or a list of tuples of each monitor's resolutions
-        """
-        app = wx.App(False)  # create an app if there isn't one and don't show it
-        nmons = wx.Display.GetCount()  # how many monitors we have
-        mon_sizes = [wx.Display(i).GetGeometry().GetSize() for i in range(nmons)]
-        if screen is None:
-            return mon_sizes
-        else:
-            return mon_sizes[screen]
-
-    def create_win(self, debug=False, color='DimGray'):
-        """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
-
-        :Kwargs:
-            - debug (bool, default: False)
-                - If True, then the window is half the screen size.
-                - If False, then the windon is full screen.
-            - color (str, str with a hexadecimal value, or a tuple of 3 values, default: "DimGray')
-                Window background color. Default is dark gray. (`See accepted
-                color names <http://www.w3schools.com/html/html_colornames.asp>`_
-        """
-        current_level = logging.getLevel(logging.console.level)
-        logging.console.setLevel(logging.ERROR)
-        monitor = monitors.Monitor(self.computer.name,
-            distance=self.computer.distance,
-            width=self.computer.width)
-        logging.console.setLevel(current_level)
-        res = self.get_mon_sizes(self.computer.screen)
-        monitor.setSizePix(res)
-        try:
-            size = self.computer.win_size
-        except:
-            if not debug:
-                size = tuple(res)
-            else:
-                size = (res[0]/2, res[1]/2)
-        self.win = visual.Window(
-            size=size,
-            monitor = monitor,
-            units = 'deg',
-            fullscr = not debug,
-            allowGUI = debug, # mouse will not be seen unless debugging
-            color = color,
-            winType = 'pyglet',
-            screen = self.computer.screen,
-            viewScale = self.computer.viewScale
-        )
-
-    def show_intro(self, text, **kwargs):
-        #if text is not None:
-        #self.create_win(debug=self.runParams['debug'])
-        self.show_instructions(text=text, **kwargs)
-
-    def setup(self):
-        try:
-            self.validResponses = self.computer.validResponses
-        except:
-            self.validResponses = {'0': 0, '1': 1}
-        if not self.runParams['noOutput']:
-            self.runtimeInfo = info.RunTimeInfo(verbose=True, win=False,
-                    randomSeed='set:time')
-            self.seed = int(self.runtimeInfo['experimentRandomSeed.string'])
-            np.random.seed(self.seed)
-        else:
-            self.runtimeInfo = None
-            self.seed = None
-
-        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        self.create_win(debug=self.runParams['debug'])
-        self._initialized = True
-
-    def run(self):
-        self.setup()
-        self.show_intro(self, **self.instructions)
-        for task in self.tasks:
-            task.run()
-        text = ('End of Experiment. Thank you!\n\n'
-                'Press space bar to exit.')
-        self.show_instructions(text=text)
-        if self.runParams['register']:
-            self.register()
-        elif self.runParams['push']:
-            self.commitpush()
-        self.quit()
-
-    def commit(self, message=None):
-        """
-        Add and commit changes in a repository.
-
-        TODO: How to set this up.
-        """
-        if message is None:
-            message = 'data for participant %s' % self.extraInfo['subjID']
-        cmd, out, err = ui._repo_action('commit', message=message)
-        self.logFile.write('\n'.join([cmd, out, err]))
-
-        return err
-
-    def commitpush(self, message=None):
-        """
-        Add, commit, and push changes to a remote repository.
-
-        Currently, only Mercurial repositories are supported.
-
-        TODO: How to set this up.
-        TODO: `git` support
-        """
-        err = self.commit(message=message)
-        if err == '':
-            out = ui._repo_action('push')
-            self.logFile.write('\n'.join(out))
-
 class Task(TrialHandler, _Common):
 
     def __init__(self,
@@ -1264,7 +958,8 @@ class Task(TrialHandler, _Common):
         #acc = accuracy * 100 / len(df)
         #return acc
     def weighted_sample(self, probs):
-        warnings.warn("weighted_sample is deprecated")
+        warnings.warn("weighted_sample is deprecated; "
+                      "use weighted_choice instead")
         return self.weighted_choice(self, weights=probs)
 
     def weighted_choice(self, choices=None, weights=None):
@@ -1311,6 +1006,313 @@ class Task(TrialHandler, _Common):
             A `pandas.DataFrame` of data for the requested participants.
         """
         return get_behav_df(self.extraInfo['subjID'], pattern=pattern)
+
+
+class Experiment(ExperimentHandler, Task):
+    """An extension of an TrialHandler with many useful functions.
+    """
+    def __init__(self,
+                 name='',
+                 version='0.1',
+                 extraInfo=None,
+                 runParams=None,
+                 instructions={'text': '', 'wait': 0},
+                 computer=default_computer,
+                 paths=set_paths,
+                 **kwargs
+                 ):
+
+                 #runtimeInfo=None,
+                 #originPath=None,
+                 #savePickle=True,
+                 #saveWideText=True,
+                 #dataFileName=''):
+
+        ExperimentHandler.__init__(self,
+            name=name,
+            version=version,
+            extraInfo=extraInfo
+            )
+
+        self.name = name
+        self.version = version
+        self.instructions = instructions
+        #self.paths = set_paths('.')
+
+        #self.nReps = nReps
+        #self.method = method
+        self.computer = computer
+        self.paths = paths
+        #if self.computer is None:
+            #self.computer =
+        ##self.dataTypes = dataTypes
+        #self.originPath = originPath
+
+        self._initialized = False
+
+        #self.signalDet = {False: 'Incorrect', True: 'Correct'}
+
+        # minimal parameters that Experiment expects in extraInfo and runParams
+        self.extraInfo = OrderedDict([('subjID', 'subj')])
+        self.runParams = OrderedDict([  # these control how the experiment is run
+            ('noOutput', False),  # do you want output? or just playing around?
+            ('debug', False),  # not fullscreen presentation etc
+            ('autorun', 0),  # if >0, will autorun at the specified speed
+            ('unittest', False),
+            ('register', False),  # add and commit changes, like new data files?
+            ('push', False),  # add, commit and push to a hg repo?
+            ])
+        if extraInfo is not None:
+            self.extraInfo.update(extraInfo)
+        if runParams is not None:
+            self.runParams.update(runParams)
+
+        if self.runParams['unittest']:
+            self.runParams['autorun'] = 100
+
+        #sysinfo = info.RunTimeInfo(verbose=True, win=False,
+                #randomSeed='set:time')
+        #seed = sysinfo['experimentRandomSeed.string']
+
+        #self.seed = 10#int(seed)
+        self.tasks = []
+
+        Task.__init__(self,
+            self,
+            name=name,
+            version=version,
+            instructions=instructions,
+            **kwargs
+            )
+
+
+    def add_tasks(self, tasks):
+        if isinstance(tasks, str):
+            tasks = [tasks]
+
+        for task in tasks:
+            task = task()
+            task.computer = self.computer
+            task.win = self.win
+            if task.extraInfo is not None:
+                task.extraInfo.update(self.extraInfo)
+            if task.runParams is not None:
+                task.runParams.update(self.runParams)
+            self.tasks.append(task)
+
+    def set_logging(self, logname='log.log', level=logging.WARNING):
+        """Setup files for saving logging information.
+
+        New folders might be created.
+
+        :Kwargs:
+            logname (str, default: 'log.log')
+                The log file name.
+        """
+
+        if not self.runParams['noOutput']:
+            # add .log if no extension given
+            if len(logname.split('.')) < 2: logname += '.log'
+
+            # Setup logging file
+            try_makedirs(os.path.dirname(logname))
+            if os.path.isfile(logname):
+                writesys = False  # we already have sysinfo there
+            else:
+                writesys = True
+            self.logFile = logging.LogFile(logname, filemode='a', level=level)
+
+            # Write system information first
+            if writesys:
+                self.logFile.write('%s\n' % self.runtimeInfo)
+                self.logFile.write('\n\n' + '#'*40 + '\n\n')
+                self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
+        else:
+            self.logFile = None
+
+        # output to the screen
+        logging.console.setLevel(level)
+
+    def create_seed(self, seed=None):
+        """
+        SUPERSEDED by `psychopy.info.RunTimeInfo`
+        Creates or assigns a seed for a reproducible randomization.
+
+        When a seed is set, you can, for example, rerun the experiment with
+        trials in exactly the same order as before.
+
+        :Kwargs:
+            seed (int, default: None)
+                Pass a seed if you already have one.
+
+        :Returns:
+            self.seed (int)
+        """
+        if seed is None:
+            try:
+                self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
+            except:
+                self.seed = 1
+                logging.warning('No seed provided. Setting seed to 1.')
+        else:
+            self.seed = seed
+        return self.seed
+
+    def _guess_participant(self, data_path, default_subjID='01'):
+        """Attempts to guess participant ID (it must be int).
+
+        .. :Warning:: Not usable yet
+
+        First lists all csv files in the data_path, then finds a maximum.
+        Returns maximum+1 or an empty string if nothing is found.
+
+        """
+        datafiles = glob.glob(data_path+'*.csv')
+        partids = []
+        #import pdb; pdb.set_trace()
+        for d in datafiles:
+            filename = os.path.split(d)[1]  # remove the path
+            filename = filename.split('.')[0]  # remove the extension
+            partid = filename.split('_')[-1]  # take the numbers at the end
+            try:
+                partids.append(int(partid))
+            except:
+                logging.warning('Participant ID %s is invalid.' %partid)
+
+        if len(partids) > 0: return '%02d' %(max(partids) + 1)
+        else: return default_subjID
+
+    def _guess_runNo(self, data_path, default_runNo = 1):
+        """Attempts to guess run number.
+
+        .. :Warning:: Not usable yet
+
+        First lists all csv files in the data_path, then finds a maximum.
+        Returns maximum+1 or an empty string if nothing is found.
+
+        """
+        if not os.path.isdir(data_path): runNo = default_runNo
+        else:
+            dataFiles = glob.glob(data_path + '*.csv')
+            # Splits file names into ['data', %number%, 'runType.csv']
+            allNums = [int(os.path.basename(thisFile).split('_')[1]) for thisFile in dataFiles]
+
+            if allNums == []: # no data files yet
+                runNo = default_runNo
+            else:
+                runNo = max(allNums) + 1
+                # print 'Guessing runNo: %d' %runNo
+
+        return runNo
+
+    def get_mon_sizes(self, screen=None):
+        warnings.warn('get_mon_sizes is deprecated; '
+                      'use exp.get_mon_sizes instead')
+        return get_mon_sizes(screen=screen)
+
+    def create_win(self, debug=False, color='DimGray'):
+        """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
+
+        :Kwargs:
+            - debug (bool, default: False)
+                - If True, then the window is half the screen size.
+                - If False, then the windon is full screen.
+            - color (str, str with a hexadecimal value, or a tuple of 3 values, default: "DimGray')
+                Window background color. Default is dark gray. (`See accepted
+                color names <http://www.w3schools.com/html/html_colornames.asp>`_
+        """
+        current_level = logging.getLevel(logging.console.level)
+        logging.console.setLevel(logging.ERROR)
+        monitor = monitors.Monitor(self.computer.name,
+            distance=self.computer.distance,
+            width=self.computer.width)
+        logging.console.setLevel(current_level)
+        res = get_mon_sizes(self.computer.screen)
+        monitor.setSizePix(res)
+        try:
+            size = self.computer.win_size
+        except:
+            if not debug:
+                size = tuple(res)
+            else:
+                size = (res[0]/2, res[1]/2)
+        self.win = visual.Window(
+            size=size,
+            monitor = monitor,
+            units = 'deg',
+            fullscr = not debug,
+            allowGUI = debug, # mouse will not be seen unless debugging
+            color = color,
+            winType = 'pyglet',
+            screen = self.computer.screen,
+            viewScale = self.computer.viewScale
+        )
+
+    def show_intro(self, text, **kwargs):
+        #if text is not None:
+        #self.create_win(debug=self.runParams['debug'])
+        self.show_instructions(text=text, **kwargs)
+
+    def setup(self):
+        try:
+            self.validResponses = self.computer.validResponses
+        except:
+            self.validResponses = {'0': 0, '1': 1}
+        if not self.runParams['noOutput']:
+            self.runtimeInfo = info.RunTimeInfo(verbose=True, win=False,
+                    randomSeed='set:time')
+            self.seed = int(self.runtimeInfo['experimentRandomSeed.string'])
+            np.random.seed(self.seed)
+        else:
+            self.runtimeInfo = None
+            self.seed = None
+
+        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
+        self.create_win(debug=self.runParams['debug'])
+        self._initialized = True
+        if len(self.tasks) == 0:
+            Task.setup(self)
+
+    def run(self):
+        self.setup()
+        self.show_intro(self, **self.instructions)
+        for task in self.tasks:
+            task.run()
+        text = ('End of Experiment. Thank you!\n\n'
+                'Press space bar to exit.')
+        self.show_instructions(text=text)
+        if self.runParams['register']:
+            self.register()
+        elif self.runParams['push']:
+            self.commitpush()
+        self.quit()
+
+    def commit(self, message=None):
+        """
+        Add and commit changes in a repository.
+
+        TODO: How to set this up.
+        """
+        if message is None:
+            message = 'data for participant %s' % self.extraInfo['subjID']
+        cmd, out, err = ui._repo_action('commit', message=message)
+        self.logFile.write('\n'.join([cmd, out, err]))
+
+        return err
+
+    def commitpush(self, message=None):
+        """
+        Add, commit, and push changes to a remote repository.
+
+        Currently, only Mercurial repositories are supported.
+
+        TODO: How to set this up.
+        TODO: `git` support
+        """
+        err = self.commit(message=message)
+        if err == '':
+            out = ui._repo_action('push')
+            self.logFile.write('\n'.join(out))
 
 
 def get_behav_df(subjID, pattern='%s'):
@@ -1779,3 +1781,61 @@ def invert_dict(d):
     sortKeys = sorted(invertDict.keys())
     invertDict = OrderedDict([(k,invertDict[k]) for k in sortKeys])
     return invertDict
+
+def get_mon_sizes(screen=None):
+    """Get a list of resolutions for each monitor.
+
+    Recipe from <http://stackoverflow.com/a/10295188>_
+
+    :Args:
+        screen (int, default: None)
+            Which screen's resolution to return. If None, the a list of all
+            screens resolutions is returned.
+
+    :Returns:
+        a tuple or a list of tuples of each monitor's resolutions
+    """
+    app = wx.App(False)  # create an app if there isn't one and don't show it
+    nmons = wx.Display.GetCount()  # how many monitors we have
+    mon_sizes = [wx.Display(i).GetGeometry().GetSize() for i in range(nmons)]
+    if screen is None:
+        return mon_sizes
+    else:
+        return mon_sizes[screen]
+
+def get_para_no(file_pattern, n=6):
+    """Looks up used para numbers and returns a new one for this run
+    """
+    allData = glob.glob(file_pattern)
+    if allData == []: paraNo = random.choice(range(n))
+    else:
+        paraNos = []
+        for thisData in allData:
+            lines = csv.reader( open(thisData) )
+            try:
+                header = lines.next()
+                ind = header.index('paraNo')
+                thisParaNo = lines.next()[ind]
+                paraNos.append(int(thisParaNo))
+            except: pass
+
+        if paraNos != []:
+            countUsed = np.bincount(paraNos)
+            countUsed = np.hstack((countUsed,np.zeros(n-len(countUsed))))
+            possParaNos = np.arange(n)
+            paraNo = random.choice(possParaNos[countUsed == np.min(countUsed)].tolist())
+        else: paraNo = random.choice(range(n))
+
+    return paraNo
+
+def get_unique_trials(trialList, column='cond'):
+    unique = []
+    conds = []
+    for trial in trialList:
+        if trial[column] not in conds:
+            unique.append(OrderedDict(trial))
+            conds.append(trial[column])
+    # this does an argsort
+    order = sorted(range(len(conds)), key=conds.__getitem__)
+    # return an ordered list
+    return [unique[c] for c in order]
