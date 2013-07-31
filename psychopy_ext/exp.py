@@ -243,7 +243,6 @@ class Task(TrialHandler, _Common):
                  nReps=1,
                  method='random',
                  ):
-
         self.parent = parent
         self.computer = self.parent.computer
         self.paths = self.parent.paths
@@ -557,11 +556,11 @@ class Task(TrialHandler, _Common):
                 display = [thisEvent['display']]
 
         for stim in display:
-            if stim.name == 'fixation':
+            if stim.name in ['fixation', 'fix']:
                 orig_color = stim.color
                 break
         for stim in display:
-            if stim.name == 'fixation':
+            if stim.name in ['fixation', 'fix']:
                 if thisTrial['corrResp'] == subjResp:
                     stim.setFillColor('DarkGreen')  # correct response
                 else:
@@ -990,7 +989,7 @@ class Task(TrialHandler, _Common):
             which -= weights[ind]
             ind +=1
         ind -= 1
-        return ind
+        return choices[ind]
 
     def get_behav_df(self, pattern='%s'):
         """
@@ -1031,7 +1030,8 @@ class Experiment(ExperimentHandler, Task):
         ExperimentHandler.__init__(self,
             name=name,
             version=version,
-            extraInfo=extraInfo
+            extraInfo=extraInfo,
+            dataFileName='.empty'
             )
 
         self.name = name
