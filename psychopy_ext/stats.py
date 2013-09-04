@@ -114,14 +114,19 @@ def aggregate(df, rows=None, cols=None, values=None,
         if rows[0] is not None and not unstack and subplots is None:
             try:
                 order = df[rows[0]].unique()
-                names = ['rows.' + r for r in rows]
+                names = agg.columns.names
+                #names = ['rows.' + r for r in rows]
                 #con = []
                 #for col in order:
                     #thiscol = agg[col].T
                     #if thiscol.ndim == 1:
-
-                agg = pandas.concat([pandas.DataFrame(agg[col]).T for col in order], keys=order,
-                        names=names, axis=0).T
+                if len(rows) == 1:
+                    keys = None
+                else:
+                    keys = order
+                agg = pandas.concat([pandas.DataFrame(agg[col]).T for col in order],
+                        keys=order, names=names, axis=0).T
+                agg.columns.names = names
             except:
                 pass
         elif not unstack and subplots is not None:
@@ -131,6 +136,7 @@ def aggregate(df, rows=None, cols=None, values=None,
                         names=['subplots.' + subplots]).T
             except:
                 pass
+
     if not add_names:
         names = []
         for name in agg.columns.names:
@@ -207,6 +213,54 @@ def get_star(p):
     else:
         star = ''
     return star
+
+def reorder(agg, order=None, level=0, dim='columns'):
+    """
+    Reorders rows or columns in a pandas.DataFrame.
+
+    If hierarchical indexing is used, level must be specified.
+
+    :Args:
+        agg (pandas.DataFrame)
+            Your (usually aggregated) data
+    :Kwargs:
+        - order (list-like, default: None)
+            Order of entries
+        - level (int or str, default: 0)
+            Which level needs to be reordered
+        - dim (str, {'rows', 'index', 'columns'}, default: 'columns')
+            Whether to reorder rows (or index) or columns.
+    :Returns:
+        Reordered pandas.DataFrame
+    """
+    if dim in ['index', 'rows']:
+        orig_idx = agg.index
+    else:
+        orig_idx = agg.columns
+
+    if not hasattr(orig_idx, 'levels'):
+        multidx = order
+    else:
+        n = len(orig_idx.levels)
+        count = [len(lev) for lev in orig_idx.levels]
+        multidx = []
+        for i in range(n):
+            if orig_idx.names[i] == level or i == level:
+                vals = order
+            else:
+                vals = orig_idx.get_level_values(i).unique()
+            rep = np.repeat(vals, np.product(count[i+1:]))
+            tile = np.tile(rep, np.product(count[:i]))
+            multidx.append(tile)
+        multidx = pandas.MultiIndex.from_tuples(list(zip(*multidx)),
+                                                names=orig_idx.names)
+
+    if dim in ['index', 'rows']:
+        agg_new = agg.reindex(index=multidx)
+    else:
+        agg_new = agg.reindex(columns=multidx)
+    return agg_new
+
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
     value_filter=None, yerr=None, func='mean'):
