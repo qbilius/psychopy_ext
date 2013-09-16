@@ -15,6 +15,11 @@ import numpy as np
 import scipy.stats
 import pandas
 
+try:
+    import OrderedDict
+except:
+    from exp import OrderedDict
+
 
 def aggregate(df, rows=None, cols=None, values=None,
     subplots=None, yerr=None, aggfunc='mean', unstack=False,
@@ -109,33 +114,21 @@ def aggregate(df, rows=None, cols=None, values=None,
             agg.columns.names = names
         else:
             agg = pandas.DataFrame(agg).T
-    # rudimentary sorting abilities
+
     if order != 'sorted':
-        if rows[0] is not None and not unstack and subplots is None:
-            try:
-                order = df[rows[0]].unique()
-                names = agg.columns.names
-                #names = ['rows.' + r for r in rows]
-                #con = []
-                #for col in order:
-                    #thiscol = agg[col].T
-                    #if thiscol.ndim == 1:
-                if len(rows) == 1:
-                    keys = None
-                else:
-                    keys = order
-                agg = pandas.concat([pandas.DataFrame(agg[col]).T for col in order],
-                        keys=order, names=names, axis=0).T
-                agg.columns.names = names
-            except:
-                pass
-        elif not unstack and subplots is not None:
-            try:
-                order = df[subplots].unique()
-                agg = pandas.concat([agg[col].T for col in order], keys=order,
-                        names=['subplots.' + subplots]).T
-            except:
-                pass
+        if isinstance(order, dict):
+            items = order
+        else:
+            items = dict([(col, order) for col in agg.columns.names])
+
+        for level, level_ord in items.items():
+            if isinstance(level_ord, str):
+                if level_ord == 'natural':
+                    col = '.'.join(level.split('.')[1:])
+                    thisord = df[col].unique()
+            else:
+                thisord = level_ord
+            agg = reorder(agg, level=level, order=thisord)
 
     if not add_names:
         names = []
@@ -219,6 +212,7 @@ def reorder(agg, order=None, level=0, dim='columns'):
     Reorders rows or columns in a pandas.DataFrame.
 
     If hierarchical indexing is used, level must be specified.
+    It relies on for loops, so it will be slow for large data frames.
 
     :Args:
         agg (pandas.DataFrame)
@@ -260,6 +254,42 @@ def reorder(agg, order=None, level=0, dim='columns'):
     else:
         agg_new = agg.reindex(columns=multidx)
     return agg_new
+
+def df_fromdict(data, repeat=1):
+    """
+    Produces a factorial DataFrame from a dict or list of tuples.
+
+    For example, suppose you want to generate a DataFrame like this::
+
+           a    b
+        0  one  0
+        1  one  1
+        2  two  0
+        3  two  1
+
+    This function generates such output simply by providing the following:
+    df_fromdict([('a', ['one', 'two']), ('b', [0, 1])])
+
+    :Args:
+        data: dict or a list of tuples
+            Data used to produce a DataFrame. Keys specify column names, and
+            values specify possible (unique) values.
+    :Kwargs:
+        repeat: int (default: 1)
+            How many times everything should be repeated. Useful if you want to
+            simulate multiple samples of each condition, for example.
+    :Returns:
+        pandas.DataFrame with data.items() column names
+    """
+    data = OrderedDict(data)
+    count = map(len, data.values())
+    df = {}
+    for i, (key, vals) in enumerate(data.items()):
+        rep = np.repeat(vals, np.product(count[i+1:]))
+        tile = np.tile(rep, np.product(count[:i]))
+        df[key] = np.repeat(tile, repeat)
+    df = pandas.DataFrame(df, columns=data.keys())
+    return df
 
 
 def _aggregate_panel(df, rows=None, cols=None, values=None,
