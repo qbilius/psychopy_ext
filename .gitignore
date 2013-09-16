@@ -11,6 +11,7 @@
 # Packages
 *.egg
 *.egg-info
+paper
 dist
 build
 resources
