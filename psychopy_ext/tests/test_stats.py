@@ -1,6 +1,6 @@
 import numpy as np
 import pandas
-from .. import stats
+from .. import stats, plot
 
 import unittest
 
@@ -26,7 +26,7 @@ class TestAgg(unittest.TestCase):
     def test_aggregate_random(self):
         df = self.get_df()
         df.rt = df.rt.astype(float)
-        df['rt'] = np.genfromtxt('rt.csv', delimiter=',')
+        df['rt'] = np.genfromtxt('psychopy_ext/tests/rt.csv', delimiter=',')
         agg = stats.aggregate(df, subplots='subplots', rows=['cond', 'name'],
             cols='levels', yerr='subjID', values='rt')
 
@@ -40,10 +40,9 @@ class TestAgg(unittest.TestCase):
         index = pandas.MultiIndex.from_tuples(tuples,
             names=['subplots.subplots','rows.cond','rows.name','cols.levels'])
         cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
-        data = np.genfromtxt('agg.csv', delimiter=',')
+        data = np.genfromtxt('psychopy_ext/tests/agg.csv', delimiter=',')
         test_agg = pandas.DataFrame(data, index=index, columns=cols).T
         test_agg.index.names = ['yerr.subjID']  # yeah...
-        df.to_csv('data.csv')
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate(self):
