@@ -52,7 +52,6 @@ s = {'axes.facecolor': '#eeeeee',
                           '#CF4457', # pink
                           '#188487', # turquoise
                           '#E24A33'], # orange
-
      'figure.facecolor': '0.85',
      'figure.edgecolor': '0.5',
      'figure.subplot.hspace': .5,
@@ -85,14 +84,14 @@ s = {'axes.facecolor': '#eeeeee',
      'patch.antialiased'      : True,    # render patches in antialised (no jaggies)
 
      }
-plt.rcParams.update(s)
 
 
 class Plot(object):
 
     def __init__(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
                  cbar_mode='single', squeeze=False, **kwargs):
-       self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
+        plt.rcParams.update(s)
+        self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
     def _create_subplots(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
@@ -166,9 +165,11 @@ class Plot(object):
         self.nrows_ncols = nrows_ncols
         try:
             self.sharex = kwargs['sharex']
-            self.sharey = kwargs['sharey']
         except:
             self.sharex = False
+        try:
+            self.sharey = kwargs['sharey']
+        except:
             self.sharey = False
         self.rcParams = plt.rcParams
         return (self.fig, self.axes)
@@ -275,7 +276,7 @@ class Plot(object):
             a list of colors
         """
         colorc = plt.rcParams['axes.color_cycle']
-        if ncolors < len(colorc):
+        if ncolors <= len(colorc):
             colors = colorc[:ncolors]
         elif ncolors <= 12:
             colors = self.sample_paired(ncolors=ncolors)
@@ -412,7 +413,10 @@ class Plot(object):
                 axes.append(ax)
 
         self.decorate(axes, kind=kind, **kwargs)
-        return axes
+        if len(axes) == 1:
+            return axes[0]
+        else:
+            return axes
 
     def decorate(self, axes, kind='bar', **kwargs):
         lims = np.zeros((len(axes),3,2))
@@ -688,69 +692,86 @@ class Plot(object):
         return title
 
     def draw_sig(self, agg, ax, popmean=0, **kwargs):
-        if isinstance(agg, pandas.DataFrame):
-            mean, p_yerr = stats.confidence(agg)
-        else:
-            mean = agg
-        #import pdb; pdb.set_trace()
-        r = mean.max().max() - mean.min().min()
-        ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
-        eb = np.max([r/6., 1.5*np.max(ebars)/2])
 
-        try:  # not guaranteed that columns have names
-            inds = [i for i,n in enumerate(agg.columns.names) if n.startswith('rows.')]
+        try:
+            cols = [i for i,n in enumerate(agg.columns.names) if n.startswith('cols.')]
         except:
-            rlabels = agg.columns
+            vals_len = 1
         else:
-            #rlevel = inds[-1] + 1
-            #try:
-                #rlabels = agg.columns.levels[inds[-1]]
-            #except:
-                #if len(inds) == 1:
-                    #rlabels = agg.columns
-                #else:
-                    #rlabels = 1
-            #import pdb; pdb.set_trace()
-            # all columns names start with 'row.'
-            if len(inds) == len(agg.columns.names):
-                rlabels = agg.columns
-            elif len(inds) == 0:  # no rows at all
-                rlabels = [None]
-            else:
-                rlabels = agg.mean().unstack(inds).columns
-        ticks = ax.get_xticks()
-
-        sig_t = []
-        sig_p = []
-
-        for rno, rlab in enumerate(rlabels):
-            #import pdb; pdb.set_trace()
-            #rlab = rlabel[:rlevel]
-            if len(inds) == 0:  # no rows at all
-                d = agg
-            else:
-                d = agg[rlab]
-
-            if d.ndim == 1:
-                d = d.dropna() #d[pandas.notnull(d)]
-                t, p = scipy.stats.ttest_1samp(d, popmean=popmean)
-                ax.text(ticks[rno], mean[rlab] + np.sign(mean[rlab])*eb,
-                        stats.get_star(p), ha='center')
-            elif d.ndim == 2 and d.shape[1] == 2:
-                d1 = d.iloc[:,0].dropna()
-                d2 = d.iloc[:,1].dropna()
-                #import pdb; pdb.set_trace()
-                t, p = scipy.stats.ttest_rel(d1, d2)
-                mn = mean[rlab] + np.sign(mean[rlab])*eb
-                ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
             try:
-                sig_t.append((rlab, t))
-                sig_p.append((rlab, p))
+                vals_len = np.max([len(agg.columns.levels[col]) for col in cols])
             except:
-                pass
-        if len(sig_t) > 0:
-            ax.sig_t = pandas.DataFrame(sig_t)
-            ax.sig_p = pandas.DataFrame(sig_p)
+                vals_len = len(agg.columns)
+
+        if vals_len <= 2:
+            if isinstance(agg, pandas.DataFrame):
+                mean, p_yerr = stats.confidence(agg)
+            else:
+                mean = agg
+            #import pdb; pdb.set_trace()
+            r = mean.max().max() - mean.min().min()
+            ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
+            #eb = np.max([r/6., 1.5*np.max(ebars)/2])
+            ylim = ax.get_ylim()
+            eb_gap = abs(ylim[0] - ylim[1]) / 8.
+
+            try:  # not guaranteed that columns have names
+                inds = [i for i,n in enumerate(agg.columns.names) if n.startswith('rows.')]
+            except:
+                inds = []
+                rlabels = agg.columns
+            else:
+                #rlevel = inds[-1] + 1
+                #try:
+                    #rlabels = agg.columns.levels[inds[-1]]
+                #except:
+                    #if len(inds) == 1:
+                        #rlabels = agg.columns
+                    #else:
+                        #rlabels = 1
+                #import pdb; pdb.set_trace()
+                # all columns names start with 'row.'
+                if len(inds) == len(agg.columns.names):
+                    rlabels = agg.columns
+                elif len(inds) == 0:  # no rows at all
+                    rlabels = [None]
+                else:
+                    rlabels = agg.mean().unstack(inds).columns
+            ticks = ax.get_xticks()
+
+            sig_t = []
+            sig_p = []
+            for rno, rlab in enumerate(rlabels):
+                #import pdb; pdb.set_trace()
+                #rlab = rlabel[:rlevel]
+                if len(inds) == 0:  # no rows at all
+                    d = agg
+                else:
+                    d = agg.copy()
+                    for r in rlab:
+                        d = d[r]
+
+                if d.ndim == 1:
+                    d = d.dropna() #d[pandas.notnull(d)]
+                    t, p = scipy.stats.ttest_1samp(d, popmean=popmean)
+                    ypos = mean[rlab] + np.sign(mean[rlab]) * (ebars[rlab] + eb_gap)
+                    ax.text(ticks[rno], ypos,
+                            stats.get_star(p), ha='center')
+                elif d.ndim == 2 and d.shape[1] == 2:
+                    d1 = d.iloc[:,0].dropna()
+                    d2 = d.iloc[:,1].dropna()
+                    #import pdb; pdb.set_trace()
+                    t, p = scipy.stats.ttest_rel(d1, d2)
+                    mn = mean[rlab] + np.sign(mean[rlab]) * (ebars[rlab] + eb_gap)
+                    ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
+                try:
+                    sig_t.append((rlab, t))
+                    sig_p.append((rlab, p))
+                except:
+                    pass
+            if len(sig_t) > 0:
+                ax.sig_t = pandas.DataFrame(sig_t)
+                ax.sig_p = pandas.DataFrame(sig_p)
 
     def _draw_legend(self, ax, visible=None, data=None, **kwargs):
         leg = ax.get_legend()  # get an existing legend
@@ -860,6 +881,7 @@ class Plot(object):
             rects.append(rect)
         ax.set_xticks(idx)# + width*n/2 + width/2)
         ax.legend(rects, data.columns.tolist())
+        ax.axhline(color=s['axes.edgecolor'])
 
         return ax
 
@@ -1311,6 +1333,10 @@ class Plot(object):
                 if len(levels) == 1:
                     levels = levels[0]
                 unstacked = data.unstack(levels)
+                unused = [n for n in data.index.names if not n.startswith(pref+'.')]
+                for lev in unused:
+                    order = data.index.get_level_values(lev).unique()
+                    unstacked = stats.reorder(unstacked, order=order, level=lev, dim='index')
                 unstacked.columns.names = levs
         return unstacked
 
