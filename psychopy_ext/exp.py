@@ -16,7 +16,8 @@ from UserDict import DictMixin
 
 import numpy as np
 import wx
-from psychopy import visual, core, event, info, logging, misc, monitors
+import psychopy.info
+from psychopy import visual, core, event, logging, misc, monitors
 from psychopy.data import TrialHandler, ExperimentHandler
 
 import ui
@@ -37,16 +38,16 @@ class default_computer:
     # computer defaults
     root = '.'  # means store output files here
     stereo = False  # not like in Psychopy; this merely creates two Windows
-    trigger = 'space'  # hit to start the experiment
-    defaultKeys = ['escape', trigger]  # "special" keys
-    validResponses = {'f': 0, 'j': 1}  # organized as input value: output value
+    default_keys = {'exit': ('lshift', 'escape'),
+                    'trigger': 'space'}  # "special" keys
+    valid_responses = {'f': 0, 'j': 1}  # organized as input value: output value
     # monitor defaults
     name = 'default'
     distance = 80
     width = 37.5
     # window defaults
     screen = 0  # default screen is 0
-    viewScale = [1,1]
+    view_scale = [1,1]
 
     def __init__(self):
         pass
@@ -135,7 +136,7 @@ def run_tests(computer):
 class _Common(object):
 
     def __init__(self):
-        pass
+        self.can_exit = 0
 
     def show_instructions(self, text='', wait=0, wait_stim=None, auto=0):
         """
@@ -146,7 +147,7 @@ class _Common(object):
                 Text to be displayed
             - wait (int, default: 0)
                 Seconds to wait after removing the text from the screen after
-                hitting a spacebar (or a `computer.trigger`)
+                hitting a spacebar (or a `computer.default_keys['trigger']`)
             - wait_stim (a psychopy stimuli object or their list, default: None)
                 Stimuli to show while waiting after the trigger. This is used
                 for showing a fixation spot for people to get used to it.
@@ -164,15 +165,15 @@ class _Common(object):
         self.win.flip()
 
         if auto > 0:  # show text and blank out
-            if self.runParams['autorun']:
-                auto /= self.runParams['autorun']
+            if self.rp['autorun']:
+                auto /= self.rp['autorun']
             core.wait(auto)
-        elif not self.runParams['autorun'] or not self.runParams['unittest']:
-            thisKey = None
-            while thisKey != self.computer.trigger:
-                thisKey = self.last_keypress()
-            if self.runParams['autorun']:
-                wait /= self.runParams['autorun']
+        elif not self.rp['autorun'] or not self.rp['unittest']:
+            this_key = None
+            while this_key != self.computer.default_keys['trigger']:
+                this_key = self.last_keypress()
+            if self.rp['autorun']:
+                wait /= self.rp['autorun']
         self.win.flip()
 
         if wait_stim is not None:
@@ -183,30 +184,54 @@ class _Common(object):
             self.win.flip()
         core.wait(wait)  # wait a little bit before starting the experiment
 
-    def last_keypress(self, keyList=None):
+    def last_keypress(self, keylist=None):
         """
         Extract the last key pressed from the event list.
 
         If escape is pressed, quits.
 
         :Kwargs:
-            keyList (list of str, default: `self.computer.defaultKeys`)
+            keylist (list of str, default: `self.computer.default_keys`)
                 A list of keys that are recognized. Any other keys pressed will
                 not matter.
 
         :Returns:
             An str of a last pressed key or None if nothing has been pressed.
         """
-        if keyList is None:
-            keyList = self.computer.defaultKeys
-        thisKeyList = event.getKeys(keyList=keyList)
-        if len(thisKeyList) > 0:
-            thisKey = thisKeyList.pop()
-            if thisKey == 'escape':
-                print  # because we've been using sys.stdout.write without \n
-                self.quit()
+        if keylist is None:
+            keylist = self.computer.default_keys.values()
+        else:
+            keylist.extend(self.computer.default_keys.values())
+        keys = []
+        for key in keylist:
+            if isinstance(key, (tuple, list)):
+                keys.append(key)
             else:
-                return thisKey
+                keys.append([key])
+        # keylist might have key combinations; get rid of them for now
+        keylist_flat = []
+        for key in keys:
+            keylist_flat.extend(key)
+
+        this_keylist = event.getKeys(keyList=keylist_flat)
+        if len(this_keylist) > 0:
+            this_key = this_keylist.pop()
+            exit_keys = self.computer.default_keys['exit']
+            if this_key in exit_keys:
+                if self.can_exit < len(exit_keys):
+                    if exit_keys[self.can_exit] == this_key:
+                        if self.can_exit == len(exit_keys) - 1:
+                            print  # in case there was anything without \n
+                            self.quit()
+                        else:
+                            self.can_exit += 1
+                    else:
+                        self.can_exit = 0
+                else:
+                    self.can_exit = 0
+            else:
+                self.can_exit = 0
+                return this_key
         else:
             return None
 
@@ -233,16 +258,18 @@ class Task(TrialHandler, _Common):
                  #log=None,
                  #computer=default_computer,
                  parent,
-                 extraInfo=None,
-                 runParams=None,
+                 info=None,
+                 #extraInfo=None,
+                 rp=None,
                  instructions={'text': '', 'wait': 0},
 
                  #parent=None,
                  name='',
                  version='0.1',
-                 nReps=1,
+                 nreps=1,
                  method='random',
                  ):
+        _Common.__init__(self)
         self.parent = parent
         self.computer = self.parent.computer
         self.paths = self.parent.paths
@@ -250,17 +277,18 @@ class Task(TrialHandler, _Common):
         self.name = name
         self.version = version
         self.instructions = instructions
-        self.nReps = nReps
+        self.nReps = nreps
         self.method = method
 
-        self.extraInfo = parent.extraInfo
-        self.runParams = parent.runParams
-        if extraInfo is not None:
-            self.extraInfo.update(extraInfo)
-        if runParams is not None:
-            self.runParams.update(runParams)
+        self.info = parent.info
+        #self.extraInfo = self.info  # just for compatibility with PsychoPy
+        self.rp = parent.rp
+        if info is not None:
+            self.info.update(info)
+        if rp is not None:
+            self.rp.update(rp)
 
-    def setup(self):
+    def setup_task(self):
         """
         Does all the dirty setup before running the experiment.
 
@@ -283,32 +311,32 @@ class Task(TrialHandler, _Common):
         """
         if self.parent._initialized:
             self.win = self.parent.win
-            self.logFile = self.parent.logFile
-            self.extraInfo = self.parent.extraInfo
-            self.runParams = self.parent.runParams
+            self.logfile = self.parent.logfile
+            self.info = self.parent.info
+            self.rp = self.parent.rp
             self.seed = self.parent.seed
             try:
-                self.validResponses = self.computer.validResponses
+                self.valid_responses = self.computer.valid_responses
             except:
-                self.validResponses = self.parent.validResponses
+                self.valid_responses = self.parent.valid_responses
 
             self.create_stimuli()
             self.create_trial()
-            self.create_trialList()
-            if not hasattr(self, 'trialDur'):
-                self.trialDur = sum(ev['dur'] for ev in self.trial)
-            if self.runParams['autorun']:
-                self.expPlan = self.set_autorun(self.expPlan)
+            self.create_trial_list()
+            if not hasattr(self, 'trial_dur'):
+                self.trial_dur = sum(ev['dur'] for ev in self.trial)
+            if self.rp['autorun']:
+                self.trialList = self.set_autorun(self.trialList)
 
             #self.set_TrialHandler()
         else:
             raise Exception('You must first call Experiment.setup()')
-        #dataFileName=self.paths['data']%self.extraInfo['subjID'])
+        #dataFileName=self.paths['data']%self.info['subjid'])
 
         ## guess participant ID based on the already completed sessions
-        #self.extraInfo['subjID'] = self.guess_participant(
+        #self.info['subjid'] = self.guess_participant(
             #self.paths['data'],
-            #default_subjID=self.extraInfo['subjID'])
+            #default_subjid=self.info['subjid'])
 
         #self.dataFileName = self.paths['data'] + '%s.csv'
 
@@ -409,12 +437,12 @@ class Task(TrialHandler, _Common):
         latin = []
         col = np.arange(1,n+1)
 
-        firstLine = []
+        first_line = []
         for i in range(n):
-            if i%2 == 0: firstLine.append((n-i/2)%n + 1)
-            else: firstLine.append((i+1)/2+1)
+            if i%2 == 0: first_line.append((n-i/2)%n + 1)
+            else: first_line.append((i+1)/2+1)
 
-        latin = np.array([np.roll(col,i-1) for i in firstLine])
+        latin = np.array([np.roll(col,i-1) for i in first_line])
 
         return latin.T
 
@@ -436,10 +464,10 @@ class Task(TrialHandler, _Common):
         """
         latin = self.latin_square(n=n).tolist()
         out = []
-        for j, thisLatin in enumerate(latin):
-            thisLatin = thisLatin + thisLatin[::-1]
+        for j, this_latin in enumerate(latin):
+            this_latin = this_latin + this_latin[::-1]
             temp = []
-            for i, item in enumerate(thisLatin):
+            for i, item in enumerate(this_latin):
                 if i%4 == 0: temp.append(0)
                 temp.append(item)
             temp.append(0)
@@ -472,7 +500,7 @@ class Task(TrialHandler, _Common):
 
             self.trial = [{'dur': .100,
                            'display': self.s['fix'],
-                           'func': self.waitEvent},
+                           'func': self.idle_event},
 
                            {'dur': .300,
                            'display': self.s['stim1'],
@@ -481,53 +509,53 @@ class Task(TrialHandler, _Common):
         """
         raise NotImplementedError
 
-    def create_trialList(self):
+    def create_trial_list(self):
         """
-        Put together trials into a expPlan.
+        Put together trials into a trialList.
 
         Example::
 
-            expPlan = OrderedDict([
-                ('cond', self.morphInd[mNo]),
-                ('name', self.paraTable[self.morphInd[mNo]]),
+            exp_plan = OrderedDict([
+                ('cond', cond),
+                ('name', names[cond]),
                 ('onset', ''),
-                ('dur', self.trialDur),
-                ('corrResp', corrResp),
-                ('subjResp', ''),
+                ('dur', self.trial_dur),
+                ('corr_resp', corr_resp),
+                ('subj_resp', ''),
                 ('accuracy', ''),
                 ('rt', ''),
                 ])
 
-            self.expPlan = expPlan
+            self.trialList = exp_plan
         """
         raise NotImplementedError
 
-    def idle_event(self, globClock=None, trialClock=None, eventClock=None,
-                  thisTrial=None, thisEvent=None, **kwargs):
+    def idle_event(self, glob_clock=None, trial_clock=None, event_clock=None,
+                  this_trial=None, this_event=None, **kwargs):
         """
         Default idle function for the event.
 
         Sits idle catching key input of default keys (escape and trigger).
 
         :Kwargs:
-            - globClock (:class:`psychopy.core.Clock`, default: None)
+            - glob_clock (:class:`psychopy.core.Clock`, default: None)
                 A clock that started with the experiment (currently does nothing)
-            - trialClock (:class:`psychopy.core.Clock`, default: None)
+            - trial_clock (:class:`psychopy.core.Clock`, default: None)
                 A clock that started with the trial
-            - eventClock (:class:`psychopy.core.Clock`, default: None)
+            - event_clock (:class:`psychopy.core.Clock`, default: None)
                 A clock that started with the event within the trial
-            - thisTrial (dict)
+            - this_trial (dict)
                 A dictionary of trial properties
-            - thisEvent (dict)
+            - this_event (dict)
                 A dictionary with event properties
         """
-        if not isinstance(thisEvent['display'], tuple) and \
-        not isinstance(thisEvent['display'], list):
-            display = [thisEvent['display']]
+        if not isinstance(this_event['display'], tuple) and \
+        not isinstance(this_event['display'], list):
+            display = [this_event['display']]
         else:
-            display = thisEvent['display']
+            display = this_event['display']
 
-        if thisEvent['dur'] == 0:
+        if this_event['dur'] == 0:
             self.last_keypress()
             for stim in display: stim.draw()
             self.win.flip()
@@ -536,24 +564,24 @@ class Task(TrialHandler, _Common):
             for stim in display: stim.draw()
             self.win.flip()
 
-            while eventClock.getTime() < thisEvent['dur'] and \
-            trialClock.getTime() < thisTrial['dur']:# and \
+            while event_clock.getTime() < this_event['dur'] and \
+            trial_clock.getTime() < this_trial['dur']:# and \
             # globClock.getTime() < thisTrial['onset'] + thisTrial['dur']:
                 #self.win.getMovieFrame()
                 self.last_keypress()
 
-    def feedback(self, trialClock=None, eventClock=None,
-        thisTrial=None, thisEvent=None, allKeys=None, *args, **kwargs):
+    def feedback(self, trial_clock=None, event_clock=None,
+        this_trial=None, this_event=None, all_keys=None, *args, **kwargs):
         """
         Gives feedback:
             - correct: fixation change to green
             - wrong: fixation change to red
         """
-        thisResp = allKeys[-1]
-        subjResp = self.validResponses[thisResp[0]]
-        if not isinstance(thisEvent['display'], tuple) and \
-            not isinstance(thisEvent['display'], list):
-                display = [thisEvent['display']]
+        this_resp = all_keys[-1]
+        subj_resp = self.valid_responses[this_resp[0]]
+        if not isinstance(this_event['display'], tuple) and \
+            not isinstance(this_event['display'], list):
+                display = [this_event['display']]
 
         for stim in display:
             if stim.name in ['fixation', 'fix']:
@@ -561,7 +589,7 @@ class Task(TrialHandler, _Common):
                 break
         for stim in display:
             if stim.name in ['fixation', 'fix']:
-                if thisTrial['corrResp'] == subjResp:
+                if this_trial['corr_resp'] == subj_resp:
                     stim.setFillColor('DarkGreen')  # correct response
                 else:
                     stim.setFillColor('DarkRed')  # incorrect response
@@ -569,14 +597,14 @@ class Task(TrialHandler, _Common):
         self.win.flip()
 
         # sit idle
-        while eventClock.getTime() < thisEvent['dur']:
+        while event_clock.getTime() < this_event['dur']:
             self.last_keypress()
 
         for stim in display:  # reset fixation color
             if stim.name == 'fixation':
                 stim.setFillColor(orig_color)
 
-    def set_autorun(self, trialList):
+    def set_autorun(self, trial_list):
         """
         Automatically runs experiment by simulating key responses.
 
@@ -585,33 +613,31 @@ class Task(TrialHandler, _Common):
         hypothesis.
 
         :Args:
-            trialList (list of dict)
+            trial_list (list of dict)
                 A list of trial definitions.
 
         :Returns:
-            trialList with ``autoResp`` and ``autoRT`` columns included.
+            trial_list with ``autoResp`` and ``autoRT`` columns included.
         """
         def rt(mean):
-            add = np.random.normal(mean,scale=.2)/self.runParams['autorun']
+            add = np.random.normal(mean,scale=.2)/self.rp['autorun']
             return self.trial[0]['dur'] + add
 
-        invValidResp = dict([[v,k] for k,v in self.validResponses.items()])
-        sortKeys = sorted(invValidResp.keys())
-        invValidResp = OrderedDict([(k,invValidResp[k]) for k in sortKeys])
+        inverse_resp = invert_dict(self.valid_responses)
         # speed up the experiment
         for ev in self.trial:
-            ev['dur'] /= self.runParams['autorun']
-        self.trialDur /= self.runParams['autorun']
+            ev['dur'] /= self.rp['autorun']
+        self.trial_dur /= self.rp['autorun']
 
-        for trial in trialList:
+        for trial in trial_list:
             # here you could do if/else to assign different values to
             # different conditions according to your hypothesis
-            trial['autoResp'] = random.choice(invValidResp.values())
-            trial['autoRT'] = rt(.5)
-        return trialList
+            trial['autoresp'] = random.choice(inverse_resp.values())
+            trial['autort'] = rt(.5)
+        return trial_list
 
 
-    def set_TrialHandler(self, trialList):
+    def set_TrialHandler(self, trial_list):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
@@ -620,10 +646,10 @@ class Task(TrialHandler, _Common):
         Appends information for autorun.
         """
         TrialHandler.__init__(self,
-            trialList,
+            trial_list,
             nReps=self.nReps,
             method=self.method,
-            extraInfo=self.extraInfo,
+            extraInfo=self.info,
             name=self.name,
             seed=self.seed)
     #def run(self):
@@ -632,18 +658,18 @@ class Task(TrialHandler, _Common):
         #"""
         #self.setup()
         #self.go(
-            #datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv',
-            #noOutput=self.runParams['noOutput'])
-        #if self.runParams['register']:
+            #datafile=self.paths['data'] + self.info['subjid'] + '.csv',
+            #no_output=self.rp['no_output'])
+        #if self.rp['register']:
             #self.register()
-        #elif self.runParams['push']:
+        #elif self.rp['push']:
             #self.commitpush()
 
     def get_breaks(self, breakcol=None):
         if breakcol is not None:
             breaks = []
-            last = self.expPlan[0][breakcol]
-            for n, trial in enumerate(self.expPlan):
+            last = self.trialList[0][breakcol]
+            for n, trial in enumerate(self.trialList):
                 if trial[breakcol] != last:
                     if len(breaks) > 0:
                         breaks.append((breaks[-1][-1], n))
@@ -651,11 +677,11 @@ class Task(TrialHandler, _Common):
                         breaks.append([0,n])
                     last = trial[breakcol]
             try:
-                breaks.append((breaks[-1][-1], len(self.expPlan)))
+                breaks.append((breaks[-1][-1], len(self.trialList)))
             except:
-                breaks = [(0, len(self.expPlan))]
+                breaks = [(0, len(self.trialList))]
         else:
-            breaks = [(0, len(self.expPlan))]
+            breaks = [(0, len(self.trialList))]
         if self.method == 'fullRandom':
             np.random.shuffle(breaks)
         return breaks
@@ -664,21 +690,21 @@ class Task(TrialHandler, _Common):
         """
         Automatically runs the experiment just like it would normally work but
         responding automatically (as defined in :func:`self.set_autorun`) and
-        at the speed specified by `self.runParams['autorun']` parameter. If
+        at the speed specified by `self.rp['autorun']` parameter. If
         speed is not specified, it is set to 100.
         """
-        self.runParams['autorun'] = 100
+        self.rp['autorun'] = 100
         self.run()
 
     def run(self):
-        self.setup()
-        datafile=self.paths['data'] + self.extraInfo['subjID'] + '.csv'
+        self.setup_task()
+        datafile = self.paths['data'] + self.info['subjid'] + '.csv'
         breaks = self.get_breaks(breakcol=None)
         self.show_instructions(**self.instructions)
         pause_instr = self.instructions.copy()
         pause_instr['text'] = '<pause>'
         for i, br in enumerate(breaks):
-            self.set_TrialHandler(self.expPlan[br[0]:br[1]])
+            self.set_TrialHandler(self.trialList[br[0]:br[1]])
             #for rep in range(self.nReps):
             self._loop_trials(datafile=datafile)
             if len(breaks) > 1:
@@ -694,14 +720,14 @@ class Task(TrialHandler, _Common):
         :Kwargs:
             - datafile (str, default: 'data.csv')
                 Data file name to store experiment information and responses.
-            - noOutput (bool, default: False)
+            - no_output (bool, default: False)
                 If True, the data file will not be written. Useful for checking
                 how the experiment looks like and for debugging.
 
         :Raises:
             :py:exc:`IOError` if `datafile` is not found.
         """
-        if not self.runParams['noOutput']:
+        if not self.rp['no_output']:
             try_makedirs(os.path.dirname(datafile))
             try:
                 dfile = open(datafile, 'ab')
@@ -715,60 +741,64 @@ class Task(TrialHandler, _Common):
             write_head = None
 
         # set up clocks
-        globClock = core.Clock()
-        trialClock = core.Clock()
-        eventClock = core.Clock()
-        trialNo = 0
+        glob_clock = core.Clock()
+        trial_clock = core.Clock()
+        event_clock = core.Clock()
+        trialno = 0
         # go over the trial sequence
-        for thisTrial in self:
+        for this_trial in self:
             if self.nReps > 1:
-                thisTrial['session'] = self.thisRepN
-            trialClock.reset()
-            thisTrial['onset'] = globClock.getTime()
-            sys.stdout.write("\rtrial %s" % (trialNo+1))
+                this_trial['session'] = self.thisRepN
+            trial_clock.reset()
+            this_trial['onset'] = glob_clock.getTime()
+            sys.stdout.write('\rtrial %s' % (trialno+1))
             sys.stdout.flush()
 
             # go over each event in a trial
-            allKeys = []
-            for j, thisEvent in enumerate(self.trial):
-                eventClock.reset()
-                eventKeys = thisEvent['func'](globClock=globClock,
-                    trialClock=trialClock, eventClock=eventClock,
-                    thisTrial=thisTrial, thisEvent=thisEvent, j=j, allKeys=allKeys)
-                if eventKeys is not None:
-                    allKeys += eventKeys
+            all_keys = []
+            for j, this_event in enumerate(self.trial):
+                event_clock.reset()
+                event_keys = this_event['func'](glob_clock=glob_clock,
+                    trial_clock=trial_clock, event_clock=event_clock,
+                    this_trial=this_trial, this_event=this_event, j=j,
+                    all_keys=all_keys)
+                if event_keys is not None:
+                    all_keys += event_keys
                 # this is to get keys if we did not do that during trial
-                allKeys += event.getKeys(
-                    keyList = self.validResponses.keys(),
-                    timeStamped = trialClock)
+                all_keys += event.getKeys(
+                    keyList=self.valid_responses.keys(),
+                    timeStamped=trial_clock)
 
-            if len(allKeys) == 0 and self.runParams['autorun'] > 0:
-                allKeys += [(thisTrial['autoResp'], thisTrial['autoRT'])]
+            if len(all_keys) == 0 and self.rp['autorun'] > 0:
+                all_keys += [(this_trial['autoresp'], this_trial['autort'])]
 
-            thisTrial = self.post_trial(thisTrial, allKeys)
-            if self.runParams['autorun'] > 0:  # correct the timing
+            this_trial = self.post_trial(this_trial, all_keys)
+            if self.rp['autorun'] > 0:  # correct the timing
                 try:
-                    thisTrial['autoRT'] *= self.runParams['autorun']
-                    thisTrial['rt'] *= self.runParams['autorun']
+                    this_trial['autort'] *= self.rp['autorun']
+                    this_trial['rt'] *= self.rp['autorun']
                 except:  # maybe not all keys are present
                     pass
-                thisTrial['onset'] *= self.runParams['autorun']
+                this_trial['onset'] *= self.rp['autorun']
 
             if datawriter is not None:
-                header = self.extraInfo.keys() + thisTrial.keys()
+                header = self.info.keys() + this_trial.keys()
                 if write_head:  # will write the header the first time
                     write_head = self._write_header(datafile, header, datawriter)
-                out = self.extraInfo.values() + thisTrial.values()
+                out = self.info.values() + this_trial.values()
                 # cut down floats to 1 ms precision
                 outf = ['%.3f'%i if isinstance(i,float) else i for i in out]
                 datawriter.writerow(outf)
 
-            trialNo += 1
+            trialno += 1
             #if trialNo == self.nTotal/self.nReps:
                 #break
 
-        sys.stdout.write("\n")  # finally jump to the next line in the terminal
-        if not self.runParams['noOutput']: dfile.close()
+        # clear trial counting in the terminal
+        sys.stdout.write('\r          ')
+        sys.stdout.write('\r')
+        sys.stdout.flush()
+        if not self.rp['no_output']: dfile.close()
 
     def _write_header(self, datafile, header, datawriter):
         """Determines if a header should be writen in a csv data file.
@@ -810,36 +840,33 @@ class Task(TrialHandler, _Common):
         return False
 
 
-    def wait_for_response(self, RT_clock=False, fakeKey=None):
+    def wait_for_response(self, rt_clock, this_trial):
         """
         Waits for response. Returns last key pressed, timestamped.
 
-        :Kwargs:
-            - RT_clock (False or `psychopy.core.Clock`, default: False)
+        :Args:
+            - rt_clock (`psychopy.core.Clock`)
                 A clock used as a reference for measuring response time
-
-            - fakeKey (None or a tuple (key pressed, response time), default: None)
-                This is used for simulating key presses in order to test that
-                the experiment is working.
+            - this_trial
+                Current trial from `self.trialList`
 
         :Returns:
             A list of tuples with a key name (str) and a response time (float).
-
         """
-        allKeys = []
+        all_keys = []
         event.clearEvents() # key presses might be stored from before
-        while len(allKeys) == 0: # if the participant did not respond earlier
-            if fakeKey is not None:
-                if RT_clock.getTime() > fakeKey[1]:
-                    allKeys = [fakeKey]
+        while len(all_keys) == 0: # if the participant did not respond earlier
+            if 'autort' in this_trial:
+                if rt_clock.getTime() > this_trial['autort']:
+                    all_keys = [(this_trial['autoresp'], this_trial['autort'])]
             else:
-                allKeys = event.getKeys(
-                    keyList = self.validResponses.keys(),
-                    timeStamped = RT_clock)
+                all_keys = event.getKeys(
+                    keyList=self.valid_responses.keys(),
+                    timeStamped=rt_clock)
             self.last_keypress()
-        return allKeys
+        return all_keys
 
-    def post_trial(self, thisTrial, allKeys):
+    def post_trial(self, this_trial, all_keys):
         """A default function what to do after a trial is over.
 
         It records the participant's response as the last key pressed,
@@ -850,29 +877,29 @@ class Task(TrialHandler, _Common):
         'No response'.
 
         :Args:
-            - thisTrial (dict)
+            - this_trial (dict)
                 A dictionary of trial properties
-            - allKeys (list of tuples)
+            - all_keys (list of tuples)
                 A list of tuples with the name of the pressed key and the time
                 of the key press.
 
         :Returns:
-            thisTrial with ``subjResp``, ``accuracy``, and ``rt`` filled in.
+            this_trial with ``subj_resp``, ``accuracy``, and ``rt`` filled in.
 
         """
-        if len(allKeys) > 0:
-            thisResp = allKeys.pop()
-            thisTrial['subjResp'] = self.validResponses[thisResp[0]]
-            acc = signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
-            thisTrial['accuracy'] = acc
-            thisTrial['rt'] = thisResp[1]
+        if len(all_keys) > 0:
+            this_resp = all_keys.pop()
+            this_trial['subj_resp'] = self.valid_responses[this_resp[0]]
+            acc = signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
+            this_trial['accuracy'] = acc
+            this_trial['rt'] = this_resp[1]
         else:
-            thisTrial['subjResp'] = ''
-            acc = signal_det(thisTrial['corrResp'], thisTrial['subjResp'])
-            thisTrial['accuracy'] = acc
-            thisTrial['rt'] = ''
+            this_trial['subj_resp'] = ''
+            acc = signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
+            this_trial['accuracy'] = acc
+            this_trial['rt'] = ''
 
-        return thisTrial
+        return this_trial
 
     def _astype(self,type='pandas'):
         """
@@ -918,7 +945,7 @@ class Task(TrialHandler, _Common):
                 # now collect the value from each trial of the variables named in the header:
                 for parameterName in header:
                     # the header includes both trial and data variables, so need to check before accessing:
-                    if self.trialList[trialTypeIndex].has_key(parameterName):
+                    if self.trialList[trialTypeIndex] and self.trialList[trialTypeIndex].has_key(parameterName):
                         nextEntry[parameterName] = self.trialList[trialTypeIndex][parameterName]
                     elif self.data.has_key(parameterName):
                         nextEntry[parameterName] = self.data[parameterName][trialTypeIndex][repThisType]
@@ -930,8 +957,8 @@ class Task(TrialHandler, _Common):
 
         # get the extra 'wide' parameter names into the header line:
         header.insert(0,"TrialNumber")
-        if (self.extraInfo != None):
-            for key in self.extraInfo:
+        if (self.info != None):
+            for key in self.info:
                 header.insert(0, key)
 
         if type in [list, 'list']:
@@ -959,7 +986,7 @@ class Task(TrialHandler, _Common):
     def weighted_sample(self, probs):
         warnings.warn("weighted_sample is deprecated; "
                       "use weighted_choice instead")
-        return self.weighted_choice(self, weights=probs)
+        return self.weighted_choice(weights=probs)
 
     def weighted_choice(self, choices=None, weights=None):
         """
@@ -1004,7 +1031,7 @@ class Task(TrialHandler, _Common):
         :Returns:
             A `pandas.DataFrame` of data for the requested participants.
         """
-        return get_behav_df(self.extraInfo['subjID'], pattern=pattern)
+        return get_behav_df(self.info['subjid'], pattern=pattern)
 
 
 class Experiment(ExperimentHandler, Task):
@@ -1013,9 +1040,9 @@ class Experiment(ExperimentHandler, Task):
     def __init__(self,
                  name='',
                  version='0.1',
-                 extraInfo=None,
-                 runParams=None,
-                 instructions={'text': '', 'wait': 0},
+                 info=None,
+                 rp=None,
+                 instructions={'text': None, 'wait': 0},
                  computer=default_computer,
                  paths=set_paths,
                  **kwargs
@@ -1030,13 +1057,23 @@ class Experiment(ExperimentHandler, Task):
         ExperimentHandler.__init__(self,
             name=name,
             version=version,
-            extraInfo=extraInfo,
+            extraInfo=info,
             dataFileName='.empty'
             )
+        _Common.__init__(self)
 
         self.name = name
         self.version = version
+
         self.instructions = instructions
+        if hasattr(self.instructions, 'text'):
+            if self.instructions['text'] is None:
+                self.instructions['text'] = self.__doc__
+        else:
+            self.instructions['text'] = self.__doc__
+        if not hasattr(self.instructions, 'wait'):
+            self.instructions['wait'] = 0
+
         #self.paths = set_paths('.')
 
         #self.nReps = nReps
@@ -1053,22 +1090,32 @@ class Experiment(ExperimentHandler, Task):
         #self.signalDet = {False: 'Incorrect', True: 'Correct'}
 
         # minimal parameters that Experiment expects in extraInfo and runParams
-        self.extraInfo = OrderedDict([('subjID', 'subj')])
-        self.runParams = OrderedDict([  # these control how the experiment is run
-            ('noOutput', False),  # do you want output? or just playing around?
+        self.info = OrderedDict([('subjid', 'subj')])
+        self.rp = OrderedDict([  # these control how the experiment is run
+            ('no_output', False),  # do you want output? or just playing around?
             ('debug', False),  # not fullscreen presentation etc
             ('autorun', 0),  # if >0, will autorun at the specified speed
-            ('unittest', False),
+            ('unittest', False),  # like autorun but no breaks at show_instructions
             ('register', False),  # add and commit changes, like new data files?
             ('push', False),  # add, commit and push to a hg repo?
             ])
-        if extraInfo is not None:
-            self.extraInfo.update(extraInfo)
-        if runParams is not None:
-            self.runParams.update(runParams)
+        if info is not None:
+            if isinstance(info, (list, tuple)):
+                try:
+                    info = OrderedDict(info)
+                except:
+                    info = OrderedDict([info])
+            self.info.update(info)
+        if rp is not None:
+            if isinstance(rp, (list, tuple)):
+                try:
+                    rp = OrderedDict(rp)
+                except:
+                    rp = OrderedDict([rp])
+            self.rp.update(rp)
 
-        if self.runParams['unittest']:
-            self.runParams['autorun'] = 100
+        if self.rp['unittest']:
+            self.rp['autorun'] = 100
 
         #sysinfo = info.RunTimeInfo(verbose=True, win=False,
                 #randomSeed='set:time')
@@ -1094,10 +1141,10 @@ class Experiment(ExperimentHandler, Task):
             task = task()
             task.computer = self.computer
             task.win = self.win
-            if task.extraInfo is not None:
-                task.extraInfo.update(self.extraInfo)
-            if task.runParams is not None:
-                task.runParams.update(self.runParams)
+            if task.info is not None:
+                task.info.update(self.info)
+            if task.rp is not None:
+                task.rp.update(self.rp)
             self.tasks.append(task)
 
     def set_logging(self, logname='log.log', level=logging.WARNING):
@@ -1110,7 +1157,7 @@ class Experiment(ExperimentHandler, Task):
                 The log file name.
         """
 
-        if not self.runParams['noOutput']:
+        if not self.rp['no_output']:
             # add .log if no extension given
             if len(logname.split('.')) < 2: logname += '.log'
 
@@ -1120,15 +1167,15 @@ class Experiment(ExperimentHandler, Task):
                 writesys = False  # we already have sysinfo there
             else:
                 writesys = True
-            self.logFile = logging.LogFile(logname, filemode='a', level=level)
+            self.logfile = logging.LogFile(logname, filemode='a', level=level)
 
             # Write system information first
             if writesys:
-                self.logFile.write('%s\n' % self.runtimeInfo)
-                self.logFile.write('\n\n' + '#'*40 + '\n\n')
-                self.logFile.write('$ python %s\n' % ' '.join(sys.argv))
+                self.logfile.write('%s\n' % self.runtime_info)
+                self.logfile.write('\n\n' + '#'*40 + '\n\n')
+                self.logfile.write('$ python %s\n' % ' '.join(sys.argv))
         else:
-            self.logFile = None
+            self.logfile = None
 
         # output to the screen
         logging.console.setLevel(level)
@@ -1150,7 +1197,7 @@ class Experiment(ExperimentHandler, Task):
         """
         if seed is None:
             try:
-                self.seed = np.sum([ord(d) for d in self.extraInfo['date']])
+                self.seed = np.sum([ord(d) for d in self.info['date']])
             except:
                 self.seed = 1
                 logging.warning('No seed provided. Setting seed to 1.')
@@ -1158,7 +1205,7 @@ class Experiment(ExperimentHandler, Task):
             self.seed = seed
         return self.seed
 
-    def _guess_participant(self, data_path, default_subjID='01'):
+    def _guess_participant(self, data_path, default_subjid='01'):
         """Attempts to guess participant ID (it must be int).
 
         .. :Warning:: Not usable yet
@@ -1180,9 +1227,9 @@ class Experiment(ExperimentHandler, Task):
                 logging.warning('Participant ID %s is invalid.' %partid)
 
         if len(partids) > 0: return '%02d' %(max(partids) + 1)
-        else: return default_subjID
+        else: return default_subjid
 
-    def _guess_runNo(self, data_path, default_runNo = 1):
+    def _guess_runno(self, data_path, default_runno = 1):
         """Attempts to guess run number.
 
         .. :Warning:: Not usable yet
@@ -1191,19 +1238,19 @@ class Experiment(ExperimentHandler, Task):
         Returns maximum+1 or an empty string if nothing is found.
 
         """
-        if not os.path.isdir(data_path): runNo = default_runNo
+        if not os.path.isdir(data_path): runno = default_runno
         else:
-            dataFiles = glob.glob(data_path + '*.csv')
+            datafiles = glob.glob(data_path + '*.csv')
             # Splits file names into ['data', %number%, 'runType.csv']
-            allNums = [int(os.path.basename(thisFile).split('_')[1]) for thisFile in dataFiles]
+            allnums = [int(os.path.basename(thisfile).split('_')[1]) for thisfile in datafiles]
 
-            if allNums == []: # no data files yet
-                runNo = default_runNo
+            if allnums == []: # no data files yet
+                runno = default_runno
             else:
-                runNo = max(allNums) + 1
+                runno = max(allnums) + 1
                 # print 'Guessing runNo: %d' %runNo
 
-        return runNo
+        return runno
 
     def get_mon_sizes(self, screen=None):
         warnings.warn('get_mon_sizes is deprecated; '
@@ -1245,45 +1292,49 @@ class Experiment(ExperimentHandler, Task):
             color = color,
             winType = 'pyglet',
             screen = self.computer.screen,
-            viewScale = self.computer.viewScale
+            viewScale = self.computer.view_scale
         )
 
     def show_intro(self, text, **kwargs):
         #if text is not None:
-        #self.create_win(debug=self.runParams['debug'])
+        #self.create_win(debug=self.rp['debug'])
         self.show_instructions(text=text, **kwargs)
 
     def setup(self):
         try:
-            self.validResponses = self.computer.validResponses
+            self.valid_responses = self.computer.valid_responses
         except:
-            self.validResponses = {'0': 0, '1': 1}
-        if not self.runParams['noOutput']:
-            self.runtimeInfo = info.RunTimeInfo(verbose=True, win=False,
+            self.valid_responses = {'0': 0, '1': 1}
+        if not self.rp['no_output']:
+            self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
                     randomSeed='set:time')
-            self.seed = int(self.runtimeInfo['experimentRandomSeed.string'])
+            self.seed = int(self.runtime_info['experimentRandomSeed.string'])
             np.random.seed(self.seed)
         else:
-            self.runtimeInfo = None
+            self.runtime_info = None
             self.seed = None
 
-        self.set_logging(self.paths['logs'] + self.extraInfo['subjID'])
-        self.create_win(debug=self.runParams['debug'])
+        self.set_logging(self.paths['logs'] + self.info['subjid'])
+        self.create_win(debug=self.rp['debug'])
         self._initialized = True
-        if len(self.tasks) == 0:
-            Task.setup(self)
+        #if len(self.tasks) == 0:
+            ##self.setup = Task.setup
+            #Task.setup(self)
 
     def run(self):
         self.setup()
-        self.show_intro(self, **self.instructions)
-        for task in self.tasks:
-            task.run()
+        if len(self.tasks) == 0:
+            Task.run(self)
+        else:
+            self.show_intro(**self.instructions)
+            for task in self.tasks:
+                task.run()
         text = ('End of Experiment. Thank you!\n\n'
                 'Press space bar to exit.')
         self.show_instructions(text=text)
-        if self.runParams['register']:
+        if self.rp['register']:
             self.register()
-        elif self.runParams['push']:
+        elif self.rp['push']:
             self.commitpush()
         self.quit()
 
@@ -1294,9 +1345,9 @@ class Experiment(ExperimentHandler, Task):
         TODO: How to set this up.
         """
         if message is None:
-            message = 'data for participant %s' % self.extraInfo['subjID']
+            message = 'data for participant %s' % self.info['subjid']
         cmd, out, err = ui._repo_action('commit', message=message)
-        self.logFile.write('\n'.join([cmd, out, err]))
+        self.logfile.write('\n'.join([cmd, out, err]))
 
         return err
 
@@ -1312,10 +1363,10 @@ class Experiment(ExperimentHandler, Task):
         err = self.commit(message=message)
         if err == '':
             out = ui._repo_action('push')
-            self.logFile.write('\n'.join(out))
+            self.logfile.write('\n'.join(out))
 
 
-def get_behav_df(subjID, pattern='%s'):
+def get_behav_df(subjid, pattern='%s'):
     """
     Extracts data from files for data analysis.
 
@@ -1328,14 +1379,14 @@ def get_behav_df(subjID, pattern='%s'):
     :Returns:
         A `pandas.DataFrame` of data for the requested participants.
     """
-    if type(subjID) not in [list, tuple]:
-        subjID_list = [subjID]
+    if type(subjid) not in [list, tuple]:
+        subjid_list = [subjid]
     else:
-        subjID_list = subjID
+        subjid_list = subjid
 
     df_fnames = []
-    for subjID in subjID_list:
-        fnames = glob.glob(pattern % subjID)
+    for subjid in subjid_list:
+        fnames = glob.glob(pattern % subjid)
         fnames.sort()
         df_fnames += fnames
     dfs = []
@@ -1346,7 +1397,7 @@ def get_behav_df(subjID, pattern='%s'):
     if dfs == []:
         print df_fnames
         raise IOError('Behavioral data files not found.\n'
-            'Tried to look for %s' % (pattern % subjID))
+            'Tried to look for %s' % (pattern % subjid))
     df = pandas.concat(dfs, ignore_index=True)
 
     return df
@@ -1776,11 +1827,14 @@ def invert_dict(d):
 
     This is an instance of an OrderedDict, and so the new keys are
     sorted.
+
+    :Args:
+        d: dict
     """
-    invertDict = dict([[v,k] for k,v in d.items()])
-    sortKeys = sorted(invertDict.keys())
-    invertDict = OrderedDict([(k,invertDict[k]) for k in sortKeys])
-    return invertDict
+    inv_dict = dict([[v,k] for k,v in d.items()])
+    sortkeys = sorted(inv_dict.keys())
+    inv_dict = OrderedDict([(k,inv_dict[k]) for k in sortkeys])
+    return inv_dict
 
 def get_mon_sizes(screen=None):
     """Get a list of resolutions for each monitor.
@@ -1806,32 +1860,32 @@ def get_mon_sizes(screen=None):
 def get_para_no(file_pattern, n=6):
     """Looks up used para numbers and returns a new one for this run
     """
-    allData = glob.glob(file_pattern)
-    if allData == []: paraNo = random.choice(range(n))
+    all_data = glob.glob(file_pattern)
+    if all_data == []: paranos = random.choice(range(n))
     else:
-        paraNos = []
-        for thisData in allData:
-            lines = csv.reader( open(thisData) )
+        paranos = []
+        for this_data in all_data:
+            lines = csv.reader( open(this_data) )
             try:
                 header = lines.next()
                 ind = header.index('paraNo')
-                thisParaNo = lines.next()[ind]
-                paraNos.append(int(thisParaNo))
+                this_parano = lines.next()[ind]
+                paranos.append(int(this_parano))
             except: pass
 
-        if paraNos != []:
-            countUsed = np.bincount(paraNos)
-            countUsed = np.hstack((countUsed,np.zeros(n-len(countUsed))))
-            possParaNos = np.arange(n)
-            paraNo = random.choice(possParaNos[countUsed == np.min(countUsed)].tolist())
-        else: paraNo = random.choice(range(n))
+        if paranos != []:
+            count_used = np.bincount(paranos)
+            count_used = np.hstack((count_used,np.zeros(n-len(count_used))))
+            poss_paranos = np.arange(n)
+            paranos = random.choice(poss_paranos[count_used == np.min(count_used)].tolist())
+        else: paranos = random.choice(range(n))
 
-    return paraNo
+    return paranos
 
-def get_unique_trials(trialList, column='cond'):
+def get_unique_trials(trial_list, column='cond'):
     unique = []
     conds = []
-    for trial in trialList:
+    for trial in trial_list:
         if trial[column] not in conds:
             unique.append(OrderedDict(trial))
             conds.append(trial[column])

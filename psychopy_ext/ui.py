@@ -20,7 +20,7 @@ except:
 
 class Control(object):
     def __init__(self, exp_choices,
-                 title='Experiment',
+                 title='Project',
                  size=(500,300),
                  #modcall=False  # Set true when calling a module directly like
                                 # python -m path.to.module
@@ -38,8 +38,10 @@ class Control(object):
                 - a path to a module (str)
                 - a list of tuples (name, path, alias for cmd)
         :Kwargs:
-            title
-            size
+            title: str (default: 'Project')
+                Title of the GUI app window.
+            size: tuple pf two int (default: (500,300))
+                Size of a GUI app.
         """
         # Some basic built-in functions
         try:
@@ -48,25 +50,8 @@ class Control(object):
             pass
         else:
             recognized = ['--commit','--register','--push']
-            if sys.argv[1] in recognized:
-                if sys.argv[1] == '--commit':
-                    try:
-                        message = sys.argv[2]
-                    except:
-                        sys.exit('Please provide a message for committing changes')
-                    else:
-                        _repo_action(action[2:], message=message)
-                elif action == '--register':
-                    try:
-                        tag = sys.argv[2]
-                    except:
-                        sys.exit('Please provide a tag to register')
-                    else:
-                        _repo_action(action[2:], tag=tag)
-                elif action == '--push':
-                    _repo_action(action[2:])
-
-                sys.exit()
+            if action in recognized:
+                self.run_builtin()
 
         # direct path to the experiment
         if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):
@@ -90,11 +75,33 @@ class Control(object):
 
         if len(sys.argv) > 1:  # command line interface desired
             if sys.argv[1] == 'report':
-                report(exp_choices)
+                report(exp_choices, sys.argv)
             else:
                 self.cmd(exp_choices)
         else:
             self.app(exp_choices, title=title, size=size)
+
+    def run_builtin(self, action=None):
+        if action is None:
+            action = sys.argv[1]
+        if action == '--commit':
+            try:
+                message = sys.argv[2]
+            except:
+                sys.exit('Please provide a message for committing changes')
+            else:
+                _repo_action(sys.argv[2:], message=message)
+        elif action == '--register':
+            try:
+                tag = sys.argv[2]
+            except:
+                sys.exit('Please provide a tag to register')
+            else:
+                _repo_action(sys.argv[2:], tag=tag)
+        elif action == '--push':
+            _repo_action(sys.argv[2:])
+
+        sys.exit()
 
     def cmd(self, exp_choices):
         """
@@ -125,7 +132,7 @@ class Control(object):
                 sys.exit('You have to specify the name of the experiment after %s'
                          % sys.argv[0])
         if input_class_alias.startswith('-') or input_func.startswith('-'):
-            sys.exit('You have to specify properly what you want to run. '
+            sys.exit('You have to specify properly the task you want to run. '
                      "Got '%s %s' instead." % (input_class_alias, input_func))
 
         if class_order is not None:
@@ -134,7 +141,8 @@ class Control(object):
                     (input_class_alias, ', '.join(class_order)))
 
         if isinstance(module, str):
-            print 'initializing...'
+            sys.stdout.write('initializing...')
+            sys.stdout.flush()
             try:
                 __import__(module)
             except:
@@ -154,8 +162,8 @@ class Control(object):
             raise #SyntaxError('This module appears to require some arguments but that'
                 #'should not be the case.' )
 
-        extraInfo = {}
-        runParams = {}
+        info = {}
+        rp = {}
         i = arg_start
         if len(sys.argv) > i:
             if sys.argv[i][0] != '-':
@@ -168,16 +176,16 @@ class Control(object):
                     sys.exit("There cannot be any '-' just by themselves "
                                   "in the input")
                 item = None
-                for key, value in class_init.extraInfo.items():
+                for key, value in class_init.info.items():
                     if key == input_key or key[0] == input_key:
                         item = (key, value)
-                        params = extraInfo
+                        params = info
                         break
                 if item is None:
-                    for key, value in class_init.runParams.items():
+                    for key, value in class_init.rp.items():
                         if key == input_key or key[0] == input_key:
                             item = (key, value)
-                            params = runParams
+                            params = rp
                             break
                 if item is None:
                     sys.exit('Argument %s is not recognized' % input_key)
@@ -217,10 +225,12 @@ class Control(object):
                     i += 1
                 i += 1
 
-        class_init.extraInfo.update(extraInfo)
-        class_init.runParams.update(runParams)
-        class_init = class_obj(extraInfo=class_init.extraInfo,
-            runParams=class_init.runParams)
+        class_init.info.update(info)
+        class_init.rp.update(rp)
+        class_init = class_obj(info=class_init.info, rp=class_init.rp)
+        sys.stdout.write('\r               ')
+        sys.stdout.write('\r')
+        sys.stdout.flush()
         try:
             func = getattr(class_init, input_func)
         except AttributeError:
@@ -291,9 +301,9 @@ class Control(object):
             mod_parse = subparsers.add_parser(mod.name)
             action_choices = [a[1] for a in mod.actions]
             mod_parse.add_argument('action', choices=action_choices)
-            for arg, default in mod.extraInfo.items():
+            for arg, default in mod.info.items():
                 add_arg(mod_parse, arg, default)
-            for arg, default in mod.runParams.items():
+            for arg, default in mod.rp.items():
                 add_arg(mod_parse, arg, default)
 
         if raw_args is not None:
@@ -302,55 +312,61 @@ class Control(object):
         module = mods[rp.moduleName]
 
 
-        for key in module.extraInfo.keys():
+        for key in module.info.keys():
             try:
                 value = eval(rp.__dict__[key])
             except:
                 value = rp.__dict__[key]
-            module.extraInfo[key] = value
+            module.info[key] = value
 
-        for key in module.runParams.keys():
+        for key in module.rp.keys():
             if key in rp.__dict__:
-                module.runParams[key] = rp.__dict__[key]
+                module.rp[key] = rp.__dict__[key]
 
             #else:
-                #module.runParams[key] =
+                #module.rp[key] =
         # mod, module = mods[rp.moduleName]
-        # extraInfo = []
-        # runParams = []
-        # for key in mod.extraInfo.keys():
+        # info = []
+        # rp = []
+        # for key in mod.info.keys():
         #     try:
         #         value = eval(rp.__dict__[key])
         #     except:
         #         value = rp.__dict__[key]
-        #     extraInfo.append((key,value))
-        # for key in mod.runParams.keys():
-        #     runParams.append((key,rp.__dict__[key]))
-        # module = module(extraInfo=OrderedDict(extraInfo),
-        #                 runParams=OrderedDict(runParams))
+        #     info.append((key,value))
+        # for key in mod.rp.keys():
+        #     rp.append((key,rp.__dict__[key]))
+        # module = module(info=OrderedDict(info),
+        #                 rp=OrderedDict(rp))
         getattr(module, rp.action)()
         # args.func(args)
 
 
-def report(exp_choices):
+def report(exp_choices, args):
     reports = []
+    if len(args) == 2:
+        argnames = [ch[2] for ch in exp_choices]
+    else:
+        argnames = args[2:]
+
     for ch in exp_choices:
-        choice = ch[1]
-        if isinstance(choice, str):
-            try:
-                __import__(choice)
-            except:
-                module = None
+        if ch[2] in argnames:
+            choice = ch[1]
+            if isinstance(choice, str):
+                try:
+                    __import__(choice)
+                except:
+                    module = None
+                else:
+                    module = sys.modules[choice]
             else:
-                module = sys.modules[choice]
-        else:
-            module = choice
-        if module is not None:
-            functions = inspect.getmembers(module, inspect.isfunction)
-            for name, func in functions:
-                if name == 'report':
-                    reports.append((ch[0], func))
-                    break
+                module = choice
+            if module is not None:
+                functions = inspect.getmembers(module, inspect.isfunction)
+                for name, func in functions:
+                    if name == 'report':
+                        reports.append((ch[0], func))
+                        break
     Report().make(reports)
 
 def _get_classes(module, input_class_alias=None, class_order=None):
@@ -360,7 +376,7 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     'Usable' means the ones that are not private
     (class name does not start with '_').
 
-    TODO: maybe alse check if upon initialization has extraInfo and runParams
+    TODO: maybe alse check if upon initialization has info and rp
     """
     if class_order is None:
         class_aliases = []
@@ -371,8 +387,8 @@ def _get_classes(module, input_class_alias=None, class_order=None):
     for name, obj in found_classes:
         init_vars = inspect.getargspec(obj.__init__)
         try:
-            #init_vars.args.index('extraInfo')
-            #init_vars.args.index('runParams')
+            #init_vars.args.index('info')
+            #init_vars.args.index('rp')
             init_vars.args.index('name')
         except:
             pass
@@ -401,7 +417,7 @@ def _get_class_alias(module, obj):
         except:
             pass
         else:
-            try:  # must have a name, extraInfo, and runParams
+            try:  # must have a name, info, and rp
                 nameidx = init_vars.args.index('name')
             except:
                 pass
@@ -472,19 +488,19 @@ class StaticBox(wx.StaticBox):
 class Page(wx.Panel):
     """
     Creates a page inside a Notebook with two boxes, Information and Parameters,
-    corresponding to extraInfo and runParams in :class:`exp.Experiment`, and
+    corresponding to info and rp in :class:`exp.Experiment`, and
     buttons which, when clicked, runs a corresponding method.
     """
     def __init__(self, parent, class_obj):
         wx.Panel.__init__(self, parent, -1)
         self.class_obj = class_obj
         class_init = class_obj()
-        if class_init.extraInfo is not None:
+        if class_init.info is not None:
             self.sb1 = StaticBox(self, label="Information",
-                content=class_init.extraInfo)
-        if class_init.runParams is not None:
+                content=class_init.info)
+        if class_init.rp is not None:
             self.sb2 = StaticBox(self, label="Parameters",
-                content=class_init.runParams)
+                content=class_init.rp)
 
         # generate buttons
         # each button launches a function in a given class
@@ -504,17 +520,17 @@ class Page(wx.Panel):
             if add:
                 run = wx.Button(self, label=label, size=(150, 30))
                 buttons.Add(run, 1)
-                run.extraInfo = class_init.extraInfo  # when clicked, what to do
-                run.runParams = class_init.runParams
+                run.info = class_init.info  # when clicked, what to do
+                run.rp = class_init.rp
                 run.action = label
                 run.Bind(wx.EVT_BUTTON, self.OnButtonClick)
                 if i==0: run.SetFocus()
 
         pagesizer = wx.BoxSizer(wx.VERTICAL)
         # place the two boxes for entering information
-        if class_init.extraInfo is not None:
+        if class_init.info is not None:
             pagesizer.Add(self.sb1.sizer)
-        if class_init.runParams is not None:
+        if class_init.rp is not None:
             pagesizer.Add(self.sb2.sizer)
         # put the buttons in the bottom
         pagesizer.Add(buttons, 1, wx.ALL|wx.ALIGN_LEFT)
@@ -523,15 +539,15 @@ class Page(wx.Panel):
 
     def OnButtonClick(self, event):
         #module = event.GetEventObject().module
-        ## first update extraInfo and runParams
+        ## first update info and rp
         button = event.GetEventObject()
-        for key, field in zip(button.extraInfo.keys(), self.sb1.inputFields):
-            button.extraInfo[key] = field.GetValue()
-        for key, field in zip(button.runParams.keys(), self.sb2.inputFields):
-            button.runParams[key] = field.GetValue()
+        for key, field in zip(button.info.keys(), self.sb1.inputFields):
+            button.info[key] = field.GetValue()
+        for key, field in zip(button.rp.keys(), self.sb2.inputFields):
+            button.rp[key] = field.GetValue()
 
-        class_init = self.class_obj(extraInfo=button.extraInfo,
-            runParams=button.runParams)
+        class_init = self.class_obj(info=button.info,
+            rp=button.rp)
         func = getattr(class_init, button.action)
         func()  # FIX: would be nice to keep it open at the end of the exp
 
@@ -665,9 +681,9 @@ class Report(object):
         self.path = path+'/'
         #if not os.path.isdir(self.paths['report']):
             #os.makedirs(self.paths['report'])
-        #self.runParams['plot'] = False
-        #self.runParams['saveplot'] = True
-        #self.runParams['html'] = True
+        #self.rp['plot'] = False
+        #self.rp['saveplot'] = True
+        #self.rp['html'] = True
 
     def write(self, text):
         self.htmlfile.write(text)
@@ -677,14 +693,14 @@ class Report(object):
             os.makedirs(self.path)
         else:
             for root, dirs, files in os.walk(self.path):
-                for f in files:
-                    try:
-                	os.unlink(os.path.join(root, f))
-                    except:
-                        pass
+                #for f in files:
+                    #try:
+                	      #os.unlink(os.path.join(root, f))
+                    #except:
+                        #pass
                 for d in dirs:
                     try:
-                	shutil.rmtree(os.path.join(root, d))
+                	      shutil.rmtree(os.path.join(root, d))
                     except:
                         pass
 
@@ -719,7 +735,7 @@ class Report(object):
             if not os.path.isdir(imgdir):
                 os.makedirs(imgdir)
             if plt is not None:
-                plt.savefig(imgdir + fname)
+                plt.savefig(imgdir + fname, bbox_inches='tight')
             elif win is not None:
                 win.saveMovieFrames(imgdir + fname)
         if caption is None:

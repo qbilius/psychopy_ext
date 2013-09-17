@@ -23,15 +23,15 @@ recognized = True
 # computer defaults
 root = '.'  # means store output files here
 stereo = False  # not like in Psychopy; this merely creates two Windows
-trigger = 'space'  # hit to start the experiment
-defaultKeys = ['escape', trigger]  # "special" keys
-validResponses = {'0': 0, '1': 1}  # organized as input value: output value
+default_keys = {'exit': ('lshift', 'escape'),  # key combination to exit
+                'trigger': 'space'}  # hit to start the experiment
+valid_responses = {'0': 0, '1': 1}  # organized as input value: output value
 # monitor defaults
 distance = 80
 width = 37.5
 # window defaults
 screen = 0  # default screen is 0
-viewScale = (1, 1)
+view_scale = (1, 1)
 
 # Get computer properties
 # Computer is recognized by its mac address
@@ -50,7 +50,7 @@ elif mac == 153254424819 and system == 'Windows':  # Lab computer, Windows boote
 elif mac == 145320949993177:  # fMRI computer
     distance = 127
     width = 60
-    viewScale = [1,-1]  # top-bottom inverted
+    view_scale = [1,-1]  # top-bottom inverted
     trigger = 5
     defaultKeys = ['escape', trigger]
     validResponses = {'9': 0, '8': 1, '7': 2, '6': 3}
