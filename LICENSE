@@ -2,12 +2,12 @@
 Copyright and Licenses
 **********************
 
-Twolines
+psychopy_ext
 =========
 
-Copyright 2010-2012 Jonas Kubilius
+Copyright 2010-2013 Jonas Kubilius
 
-Twolines is free software: you can redistribute it and/or modify
+psychopy_ext is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
@@ -18,16 +18,23 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with Twolines.  If not, see <http://www.gnu.org/licenses/>.
+along with psychopy_ext.  If not, see <http://www.gnu.org/licenses/>.
 
 
 3rd Party Code
 ==============
 
 Some code distributed with this package was developed by other projects. This 
-code is distributed under its respective licenses that are listed below.
+code is distributed under its respective licenses that are listed below:
 
-** For argparse.py and exp.py > itertools functions **
+- itertools and collections.OrderedDict: Python Software Foundation License v2
+- HMAX: rewritten for Python using MATLAB code, currently distirbuted under GNU GPL v3. 
+Original VTU implementation copyright 2007 Hans P. Op de Beeck. 
+Original MatLab implementation copyright 2004 Minjoon Kouh
+- GaborJet: rewritten for Python using code at http://geon.usc.edu/GWTgrid_simple.m. 
+Original implementation copyright 2004 Xiaomin Yue.
+
+** For itertools functions and collections.OrderedDict **
 
 PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2
 --------------------------------------------
@@ -242,44 +249,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
 SOFTWARE.
-
-
-** For images in loc from ImageAfter **
-
-ImageAfter License
-(http://imageafter.com/terms.php)
-
-WHAT CAN YOU DO WITH IMAGE*AFTER IMAGES AND TEXTURES?
-* you CAN modify our images and textures in any way you see fit
-* you CAN use our images and textures in your own work, whether it be for 
-personal or commercial use
-* you CAN redistribute or sell our images and textures ALTERED OR UNALTERED as 
-part of printed work (e.g. posters, cd-covers, postcards etc)
-
-WHAT CAN'T YOU DO WITH IMAGE*AFTER IMAGES AND TEXTURES?
-* you CANNOT REDISTRIBUTE our images and textures as part of an online 
-resource site like our own, i.e. use them to directly compete with us.
-
-
-** For images in loc from morgueFile **
-
-morgueFile Free License
-(http://morguefile.com/license/morguefile/)
-
-You are free:
-
-Remix - to adapt the work.
-Commercial - to use this work for commercial purposes.
-Without Attribution - to use without attributing the original author.
-Under the following conditions:
-
-Stand alone basis - You can not sell, license, sublicense, rent, transfer or 
-distribute this image exactly as it is without alteration.
-
-Ownership - You may not claim ownership of this image in its original state.
-
-Any of the above conditions can be waived if you get permission from the 
-contributor.
-Nothing in this license impairs or restricts the author's moral rights.
-This is a human-readable summary of the Legal Code (the full license)
-<http://morguefile.com/license/morguefile/free_photo.html>.
