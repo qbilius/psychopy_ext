@@ -170,6 +170,8 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     if isinstance(incorrect, str):
         incorrect = [incorrect]
     corr = df[df[values].isin(correct)]
+    if len(corr) == 0:
+        raise Exception('There are no %s responses' % correct)
     agg_corr = aggregate(corr, aggfunc=np.size, values=values, **kwargs)
     df_all = df[df[values].isin(correct + incorrect)]
     agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
