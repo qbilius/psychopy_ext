@@ -13,11 +13,12 @@ from psychopy_ext.ui import Control
 __author__ = "Jonas Kubilius"
 __version__ = "0.1"
 exp_choices = [
-    ('Experiment1',  # experiment name, optional
+    ('Configural Superiority Exp',  # experiment name, optional
      'scripts.main',  # path to the experimental script
      'main',  # alias for calling it via the command-line inteface, optional
      ['exp','analysis']),  # order of classes in the experimental script, optional
-    ('fMRI', 'scripts.fmri', 'fmri')
+    ('fMRI', 'scripts.fmri', 'fmri'),
+    ('Minimal', 'scripts.minimal', 'minimal')
     ]
 # other exp_choices formats also accepted:
 # exp_choices = 'scripts.main'  # if you've got a single experiment
