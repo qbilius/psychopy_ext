@@ -20,7 +20,7 @@ import scipy.ndimage
 
 class Model(object):
 
-    def get_testim(self, size=(256, 256)):
+    def get_teststim(self, size=(256, 256)):
         """
         Opens Lena image and resizes it to the specified size ((256, 256) by
         default)
@@ -150,7 +150,8 @@ class Model(object):
             array = names
         else:
             raise ValueError('input type not recognized')
-
+        if array.ndim == 2:
+            array = np.reshape(array, (1,) + array.shape)
         array = array.astype(float)
         return array
 
@@ -319,7 +320,21 @@ class GaborJet(Model):
         self.nScale = nScale
         self.nOrientation = nOrientation
 
-    def run(self, ims=None, oneval=False):
+    def run(self, ims, oneval=False):
+        """
+        Run GaborJet model.
+
+        :Args:
+            ims: str or list of str
+                Image(s) to process witht he model.
+        :Kwargs:
+            oneval: bool (default: False)
+                Whether only magnitude should be returned. If True, then also
+                phase and gird positions are returned.
+
+        :Returns:
+            Magnitude and, depending on 'oneval', phase and grid positions.
+        """
         ims = self.input2array(ims)
         JetsMagnitudes = []
         JetsPhases = []
@@ -562,7 +577,7 @@ class HMAX(Model):
         if train_ims is not None:
             self.train(train_ims)
         if test_ims is None:
-            test_ims = [self.get_testim()]
+            test_ims = [self.get_teststim()]
         output = self.test(test_ims, oneval=oneval)
         if oneval:
             return output['C2']
@@ -1026,12 +1041,11 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         m = HMAX()
     else:
-        # import pdb; pdb.set_trace()
         model_name = sys.argv[1]
         if model_name in models: m = models[model_name]()
     if len(sys.argv) > 2:  # give image file names using glob syntax
         ims = sys.argv[2:]
     else:
-        ims = [m.get_testim(), m.get_testim().T]
+        ims = [m.get_teststim(), m.get_teststim().T]
 
     output = m.compare(ims)
