@@ -28,7 +28,7 @@ class TestHMAX(unittest.TestCase):
 class TestGaborJets(unittest.TestCase):
     def setUp(self):
         m = models.GaborJet()
-        self.mag, self.phase, self.grid = m.run()
+        self.mag, self.phase, self.grid = m.run(m.get_teststim())
 
     def test_mag(self):
         mag_matlab = np.genfromtxt('psychopy_ext/tests/jet_mag.txt', delimiter=',')
