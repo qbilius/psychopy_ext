@@ -116,6 +116,7 @@ def aggregate(df, rows=None, cols=None, values=None,
             agg = pandas.DataFrame(agg).T
 
     if order != 'sorted':
+        names = agg.columns.names  # store it; will need it later
         if isinstance(order, dict):
             items = order
         else:
@@ -129,6 +130,7 @@ def aggregate(df, rows=None, cols=None, values=None,
             else:
                 thisord = level_ord
             agg = reorder(agg, level=level, order=thisord)
+            agg.columns.names = names  # buggy pandas
 
     if not add_names:
         names = []
@@ -137,6 +139,8 @@ def aggregate(df, rows=None, cols=None, values=None,
             if spl[0] in ['cols','rows','subplots']:
                 names.append('.'.join(spl[1:]))
         agg.columns.names = names
+
+    agg.names = values
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
@@ -176,6 +180,7 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     df_all = df[df[values].isin(correct + incorrect)]
     agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
     agg = agg_corr.astype(float) / agg_all
+    agg.names = values
     return agg
 
 def confidence(agg, kind='sem', nsamples=None, skipna=True):
@@ -632,6 +637,7 @@ def mds(mean, ndim=2):
     else:
         columns = ['x%d' % i for i in range(ndim)]
     res = pandas.DataFrame(res, index=mean.index, columns=columns[:ndim])
+    res.columns.names = ['cols.mds']
     return res
 
 def classical_mds(d, ndim=2):
