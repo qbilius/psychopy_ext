@@ -88,14 +88,12 @@ s = {'axes.facecolor': '#eeeeee',
 
 class Plot(object):
 
-    def __init__(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
-                 cbar_mode='single', squeeze=False, **kwargs):
+    def __init__(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
         plt.rcParams.update(s)
         self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
-    def _create_subplots(self, kind='', figsize=None, nrows=1, ncols=1, rect=111,
-        cbar_mode='single', squeeze=False, **kwargs):
+    def _create_subplots(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
         """
         :Kwargs:
             - kind (str, default: '')
@@ -104,8 +102,10 @@ class Plot(object):
                 blank.
             - figsize (tuple, defaut: None)
                 Size of the figure.
-            - nrows_ncols (tuple, default: (1, 1))
-                Shape of subplot arrangement.
+            - nrows (int, default: 1)
+                Number of subplots vertically.
+            - ncols (int, default: 1)
+                Number of subplots horizontally.
             - **kwargs
                 A dictionary of keyword arguments that `matplotlib.ImageGrid`
                 or `matplotlib.pyplot.suplots` accept. Differences:
@@ -115,6 +115,8 @@ class Plot(object):
         :Returns:
             `matplotlib.pyplot.figure` and a grid of axes.
         """
+        self._subplots_kwargs = kwargs  # save the original
+        self.figsize = figsize
 
         if 'nrows_ncols' not in kwargs:
             nrows_ncols = (nrows, ncols)
@@ -143,6 +145,11 @@ class Plot(object):
             if kwargs['share_all']:
                 if 'cbar_mode' not in kwargs:
                     kwargs['cbar_mode'] = "single"
+            if 'rect' in kwargs:
+                rect = kwargs['rect']
+                del kwargs['rect']
+            else:
+                rect = 111
             self.axes = ImageGrid(self.fig, rect,
                                   nrows_ncols=nrows_ncols,
                                   **kwargs
@@ -154,15 +161,18 @@ class Plot(object):
                 nrows=nrows_ncols[0],
                 ncols=nrows_ncols[1],
                 figsize=figsize,
-                squeeze=squeeze,
                 num=num,
                 **kwargs
                 )
-            self.axes = self.axes.ravel()  # turn axes into a list
+            try:
+                self.axes = self.axes.ravel()  # turn axes into a list
+            except:
+                self.axes = [self.axes]
             self.naxes = len(self.axes)
         self.kind = kind
         self.subplotno = -1  # will get +1 after the plot command
-        self.nrows_ncols = nrows_ncols
+        self.nrows = nrows_ncols[0]
+        self.ncols = nrows_ncols[1]
         try:
             self.sharex = kwargs['sharex']
         except:
@@ -333,6 +343,10 @@ class Plot(object):
         """
         #if isinstance(agg, (list, tuple)):
             #agg = np.array(agg)
+        try:
+            values_name = agg.names
+        except:
+            values_name = ''
         if len(self.get_fignums()) == 0:
             self.draw()
         if not isinstance(agg, pandas.DataFrame):
@@ -366,6 +380,7 @@ class Plot(object):
 
         if sbp is None:
             axes = self._plot_ax(agg, kind=kind, **kwargs)
+            agg.names = values_name
             axes.agg = agg
             #axes, xmin, xmax, ymin, ymax = self._label_ax(agg, mean, p_yerr, axes, kind=kind,
                                     #autoscale=autoscale, **kwargs)
@@ -384,7 +399,12 @@ class Plot(object):
                 num_subplots = len(sbp)
                 # ...can still adjust the number of subplots
                 if num_subplots > self.naxes:
-                    self._create_subplots(ncols=num_subplots, kind=kind)
+                    if 'sharex' not in self._subplots_kwargs:
+                        self._subplots_kwargs['sharex'] = True
+                    if 'sharey' not in self._subplots_kwargs:
+                        self._subplots_kwargs['sharey'] = True
+                    self._create_subplots(ncols=num_subplots, kind=kind,
+                        figsize=self.figsize, **self._subplots_kwargs)
 
             #if 'share_all' in kwargs:
                 #if kwargs['share_all']:
@@ -403,6 +423,7 @@ class Plot(object):
                                         #mean, p_yerr, ax, kind=kind,
                                         #legend=legend, autoscale=autoscale, **kwargs)
                 ax.agg = agg[subname]
+                ax.agg.names = values_name
                 ax.set_title(title)
                 #ax.mean = mean
 
@@ -411,7 +432,8 @@ class Plot(object):
                 #ymins.append(ymin)
                 #ymaxs.append(ymax)
                 axes.append(ax)
-
+        #if 'ylabel' not in kwargs:
+            #kwargs['ylabel'] = values_name
         self.decorate(axes, kind=kind, **kwargs)
         if len(axes) == 1:
             return axes[0]
@@ -419,18 +441,26 @@ class Plot(object):
             return axes
 
     def decorate(self, axes, kind='bar', **kwargs):
-        lims = np.zeros((len(axes),3,2))
+        if kind == 'matrix':
+            lims = np.zeros((len(axes),3,2))
+        else:
+            lims = np.zeros((len(axes),2,2))
 
         for i, ax in enumerate(axes):
-            #if kind in ['scatter', 'mds']:
-                #lims[i,0,0] = ax.mean.min().min()
-                #lims[i,0,1] = ax.mean.max().max()
-                #lims[i,1,0] = ax.mean.min().min()
-                #lims[i,1,1] = ax.mean.max().max()
-            if kind in ['histogram']:
+            if kind in ['scatter', 'mds']:
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_ylim()
-                #import pdb; pdb.set_trace()
+                xran = lims[i,0,1] - lims[i,0,0]
+                yran = lims[i,1,1] - lims[i,1,0]
+                if xran > yran:
+                    lims[i,1,0] -= (xran-yran)/2 + xran/10.
+                    lims[i,1,1] += (xran-yran)/2 + xran/10.
+                else:
+                    lims[i,0,0] -= (yran-xran)/2 + yran/10.
+                    lims[i,0,1] += (yran-xran)/2 + yran/10.
+            elif kind in ['histogram', 'bean']:
+                lims[i,0] = ax.get_xlim()
+                lims[i,1] = ax.get_ylim()
             elif kind == 'matrix':
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_xlim()
@@ -438,6 +468,9 @@ class Plot(object):
                 lims[i,2,1] = ax.mean.max().max()
             else:
                 lims[i,0] = ax.get_xlim()
+                if kind == 'bar':
+                    lims[i,0,0] -= .25  # add some padding from both sides
+                    lims[i,0,1] += .25
                 lims[i,1] = self._autoscale(ax.mean, ax.p_yerr, kind=kind)
 
         if 'xlim' in kwargs:
@@ -446,7 +479,6 @@ class Plot(object):
         if 'ylim' in kwargs:
             for lim in lims:
                 lim[1,:] = kwargs['ylim']
-        #if kind=='matrix': import pdb; pdb.set_trace()
 
         if kind == 'matrix':
             for ax in axes:
@@ -455,41 +487,61 @@ class Plot(object):
                                                 np.max(lims[:,2,1]))
                     im.set_norm(norm)
 
-        elif kind not in ['scatter', 'mds']:
-            if self.sharex:
-                #if kind in ['scatter', 'mds']: # set y-axis limits globally
-                #if 'xlim' in kwargs:
-                    #axes[0].set_xlim(kwargs['xlim'])
+        else:
+            xlim = [np.min(lims[:,0,0]), np.max(lims[:,0,1])]
+            ylim = [np.min(lims[:,1,0]), np.max(lims[:,1,1])]
+
+            #if kind in ['scatter', 'mds']:
+                #if ((self.sharex and not self.sharey) or
+                #(not self.sharex and self.sharey)):
+                    #raise Exception('%s plot must either share both x and y axes,'
+                        #'or not share them at all.' % kind)
                 #else:
-                #for ax in axes:
-                    #ax.set_xlim(np.min(lims[:,0], 0))
-                axes[0].set_xlim([np.min(lims[:,0,0]), np.max(lims[:,0,1])])
+                    #xran = xlim[1] - xlim[0]
+                    #yran = ylim[1] - ylim[0]
+                    #if xran > yran:
+                        #ylim[0] -= (xran-yran)/2
+                        #ylim[1] += (xran-yran)/2
+                    #else:
+                        #xlim[0] -= (yran-xran)/2
+                        #xlim[1] += (yran-xran)/2
+
+            if self.sharex:
+                axes[0].set_xlim(xlim)
+                majorLocator = self._space_ticks(axes[0].get_xticks(),
+                                                 xlim, kind)
+                if majorLocator is not None:
+                    axes[0].xaxis.set_major_locator(majorLocator)
             else:
                 for i, ax in enumerate(axes):
                     ax.set_xlim(lims[i,0])
-                #self._label_x(mean, p_yerr, ax, kind=kind, **kwargs)
+                    majorLocator = self._space_ticks(ax.get_xticks(),
+                                                     lims[i,0], kind)
+                    if majorLocator is not None:
+                        ax.xaxis.set_major_locator(majorLocator)
 
             if self.sharey: # set y-axis limits globally
-                #if 'ylim' in kwargs:
-                    #ax.set_ylim(kwargs['ylim'])
-                #elif autoscale and kind in ['line', 'bar', 'scatter', 'mds']:
-                    #ax.set_ylim([np.min(ymins), np.max(ymaxs)])
-                axes[0].set_ylim([np.min(lims[:,1,0]), np.max(lims[:,1,1])])
+                axes[0].set_ylim(ylim)
+                majorLocator = self._space_ticks(axes[0].get_yticks(),
+                                                 ylim)
+                if majorLocator is not None:
+                    axes[0].yaxis.set_major_locator(majorLocator)
             else:
                 for i, ax in enumerate(axes):
                     ax.set_ylim(lims[i,1])
+                    majorLocator = self._space_ticks(ax.get_yticks(),
+                                                     lims[i,1])
+                    if majorLocator is not None:
+                        ax.yaxis.set_major_locator(majorLocator)
 
 
         for axno, ax in enumerate(axes):
-            if kind not in ['scatter', 'mds']:
-                #import pdb; pdb.set_trace()
-                #print axno / self.nrows_ncols[1]
-                #print self.nrows_ncols[1]
-                if axno / self.nrows_ncols[1] == self.nrows_ncols[0]-1 \
-                or not self.sharex:
-                    self._label_x(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
-                if axno % self.nrows_ncols[1] == 0 or not self.sharey:
-                    self._label_y(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
+            #if kind not in ['scatter', 'mds']:
+            # put x labels only at the bottom of the subplots figure
+            if axno / self.ncols == self.nrows-1 or not self.sharex:
+                self._label_x(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
+            if axno % self.ncols == 0 or not self.sharey:
+                self._label_y(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
 
             if kind == 'bar':
                 self.draw_sig(ax.agg, ax, **kwargs)
@@ -511,6 +563,8 @@ class Plot(object):
             if 'numb' in kwargs:
                 if kwargs['numb'] == True:
                     self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
+            if kind in ['scatter', 'mds']:
+                ax.set_aspect('equal')
 
             #self._label_ax(ax.agg, ax.mean, ax.p_yerr, ax, kind=kind, legend=legend, **kwargs)
         if self.sharex or len(axes) == 1:
@@ -522,6 +576,24 @@ class Plot(object):
             except:
                 pass
         return axes
+
+    def _space_ticks(self, ticks, lim, kind=None):
+        if len(ticks) <= 5:
+            tickpos = 1# len(ticks)
+        else:
+            largest = [fractions.gcd(len(ticks)-1,i+1) for i in range(5)]
+            tickpos = (len(ticks) - 1) / np.max(largest)
+            if np.max(largest) == 1:
+                largest = [fractions.gcd(len(ticks),i+1) for i in range(5)]
+                tickpos = len(ticks) / np.max(largest)# np.argsort(largest)[-1] + 1
+
+        try:
+            majorLocator = MultipleLocator(ticks[tickpos] - ticks[0])
+        except:
+            majorLocator = None
+        if kind == 'bar':
+            majorLocator = None
+        return majorLocator
 
     def printfig(self):
         try:
@@ -539,8 +611,14 @@ class Plot(object):
         mean, p_yerr = stats.confidence(agg)
 
         if mean.index.nlevels == 1:  # oops, nothing to unstack
-            mean = pandas.DataFrame(mean)  # assume rows are rows
+            mean = pandas.DataFrame(mean)
             p_yerr = pandas.DataFrame(p_yerr)
+            try:  # rows are cols?
+                if mean.index.names[0].startswith('cols.'):
+                    mean = mean.T
+                    p_yerr = p_yerr.T
+            except:
+                pass  # assume rows are rows
         else:
             # make columns which will turn into legend entries
             mean = self._unstack_levels(mean, 'cols')
@@ -573,10 +651,9 @@ class Plot(object):
     def _label_ax_old(self, agg, mean, p_yerr, ax, title='', kind='bar', legend=None,
                    autoscale=True, **kwargs):
         if kind not in ['scatter', 'mds']:
-            if self.subplotno / self.nrows_ncols[1] == self.nrows_ncols[1] \
-            or not self.sharex:
+            if self.subplotno / self.ncols == self.ncols or not self.sharex:
                 self._label_x(mean, p_yerr, ax, kind=kind, **kwargs)
-            if self.subplotno % self.nrows_ncols[1] == 0 or not self.sharey:
+            if self.subplotno % self.ncols == 0 or not self.sharey:
                 self._label_y(mean, p_yerr, ax, kind=kind, **kwargs)
 
         if kind == 'bar':
@@ -609,15 +686,16 @@ class Plot(object):
     def _label_x(self, mean, p_yerr, ax, kind='bar', xtickson=True,
                    rotate=True, **kwargs):
 
-        if kind not in ['line', 'histogram']:
+        if kind not in ['line', 'histogram', 'scatter', 'mds']:
             ax.set_xticklabels(self._format_labels(labels=mean.index))
         labels = ax.get_xticklabels()
         if len(labels) > 0:
             max_len = max([len(label.get_text()) for label in labels])
-            if max_len > 10 and rotate:  #FIX to this: http://stackoverflow.com/q/5320205
-                for label in labels:
-                    label.set_ha('right')
-                    label.set_rotation(30)
+            if max_len > 10 or kind == 'matrix':
+                if rotate :  #FIX to this: http://stackoverflow.com/q/5320205
+                    for label in labels:
+                        label.set_ha('right')
+                        label.set_rotation(30)
             else:
                 for label in labels:
                     label.set_rotation(0)
@@ -627,14 +705,15 @@ class Plot(object):
         else:
             xlabel = None
         if xlabel is None:
-            xlabel = self._get_title(mean, 'rows')
+            if kind in ['scatter', 'mds']:
+                xlabel = mean.columns[0] #'.'.join(mean.columns.names[0].split('.')[1:])
+            else:
+                xlabel = self._get_title(mean, 'rows')
         ax.set_xlabel(xlabel)
 
         return ax
 
-    def _label_y(self, mean, p_yerr, ax, kind='bar', ytickson=True,
-                   **kwargs):
-
+    def _label_y(self, mean, p_yerr, ax, kind='bar', ytickson=True, **kwargs):
         if kind == 'matrix':
             ax.set_yticklabels(self._format_labels(labels=mean.columns))
         if not ytickson:
@@ -645,7 +724,15 @@ class Plot(object):
         else:
             ylabel = None
         if ylabel is None:
-            ylabel = ''
+            if kind == 'matrix':
+                ylabel = self._get_title(mean, 'cols')
+            elif kind in ['scatter', 'mds']:
+                ylabel = mean.columns[1] #'.'.join(mean.columns.names[0].split('.')[1:])
+            else:
+                try:
+                    ylabel = ax.agg.names
+                except:
+                    ylabel = ''
         ax.set_ylabel(ylabel)
 
         return ax
@@ -655,7 +742,7 @@ class Plot(object):
         r = mean.max().max() - mean.min().min()
         ebars = np.where(np.isnan(p_yerr), 0, p_yerr)
         if np.all(ebars == 0):  # basically no error bars
-            ebars = r/3.  # so give so space above the bars
+            ebars = r/3.  # so give some space above the bars
         ymin = (mean - ebars).min().min()
         ymax = (mean + ebars).max().max()
         if kind == 'bar':  # for barplots, 0 must be included
@@ -693,6 +780,7 @@ class Plot(object):
 
     def draw_sig(self, agg, ax, popmean=0, **kwargs):
 
+        # find out how many columns per group there are
         try:
             cols = [i for i,n in enumerate(agg.columns.names) if n.startswith('cols.')]
         except:
@@ -703,12 +791,11 @@ class Plot(object):
             except:
                 vals_len = len(agg.columns)
 
-        if vals_len <= 2:
+        if vals_len <= 2:  # if >2, cannot compute stats
             if isinstance(agg, pandas.DataFrame):
                 mean, p_yerr = stats.confidence(agg)
             else:
                 mean = agg
-            #import pdb; pdb.set_trace()
             r = mean.max().max() - mean.min().min()
             ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
             #eb = np.max([r/6., 1.5*np.max(ebars)/2])
@@ -729,7 +816,7 @@ class Plot(object):
                         #rlabels = agg.columns
                     #else:
                         #rlabels = 1
-                #import pdb; pdb.set_trace()
+
                 # all columns names start with 'row.'
                 if len(inds) == len(agg.columns.names):
                     rlabels = agg.columns
@@ -742,28 +829,38 @@ class Plot(object):
             sig_t = []
             sig_p = []
             for rno, rlab in enumerate(rlabels):
-                #import pdb; pdb.set_trace()
-                #rlab = rlabel[:rlevel]
                 if len(inds) == 0:  # no rows at all
                     d = agg
+                    m = mean
+                    e = ebars
                 else:
-                    d = agg.copy()
-                    for r in rlab:
-                        d = d[r]
+                    d = self._get_multi(agg, rlab, dim='columns')
+                    m = self._get_multi(mean, rlab, dim='rows')
+                    e = self._get_multi(ebars, rlab, dim='rows')
+
+                    #d = agg.copy()
+                    #m = mean.copy()
+                    #e = ebars.copy()
+                    #for r in rlab:
+                        #d = d[r]
+                        #m = m[r]
+                        #e = e[r]
 
                 if d.ndim == 1:
                     d = d.dropna() #d[pandas.notnull(d)]
                     t, p = scipy.stats.ttest_1samp(d, popmean=popmean)
-                    ypos = mean[rlab] + np.sign(mean[rlab]) * (ebars[rlab] + eb_gap)
+                    ypos = m + np.sign(m) * (e + eb_gap)
                     ax.text(ticks[rno], ypos,
                             stats.get_star(p), ha='center')
                 elif d.ndim == 2 and d.shape[1] == 2:
                     d1 = d.iloc[:,0].dropna()
                     d2 = d.iloc[:,1].dropna()
-                    #import pdb; pdb.set_trace()
                     t, p = scipy.stats.ttest_rel(d1, d2)
-                    mn = mean[rlab] + np.sign(mean[rlab]) * (ebars[rlab] + eb_gap)
+                    mn = m + np.sign(m) * (e + eb_gap)
+                    #import pdb; pdb.set_trace()
                     ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
+                if rlab is None:
+                    rlab = ''
                 try:
                     sig_t.append((rlab, t))
                     sig_p.append((rlab, p))
@@ -875,10 +972,18 @@ class Plot(object):
         width = .75 / n
         rects = []
         for i, (label, column) in enumerate(data.iteritems()):
-            rect = ax.bar(idx + i*width - .75/2, column, width, label=str(label),
-                yerr=yerr[label].tolist(), color = colors[i], ecolor='black')
+            rect = ax.bar(idx + i*width - .75/2, column, width,
+                label=str(label), yerr=yerr[label].tolist(),
+                color = colors[i], ecolor='black')
             # TODO: yerr indexing might need fixing
             rects.append(rect)
+
+        #gap = .25
+        #xlim = ax.get_xlim()
+        #if xlim[0] != np.min(idx) - gap:  # if sharex, this might have been set
+            #import pdb; pdb.set_trace()
+            #ax.set_xlim((xlim[0] - gap, xlim[1] + gap))
+            #ax.set_xticks(idx)
         ax.set_xticks(idx)# + width*n/2 + width/2)
         ax.legend(rects, data.columns.tolist())
         ax.axhline(color=s['axes.edgecolor'])
@@ -1100,7 +1205,7 @@ class Plot(object):
         if pos is None:
             pos = [0,1]
         dist = np.max(pos)-np.min(pos)
-        w = min(0.15*max(dist,1.0),0.5) * .5
+        w = .75/4# min(0.15*max(dist,1.0),0.5) * .5
 
         #for major_xs in range(data.shape[1]):
         for rno, rlabel in enumerate(rlabels):
@@ -1113,7 +1218,16 @@ class Plot(object):
             #else:
                 #k1 = None
             #import pdb; pdb.set_trace()
-            d = data.loc[:,rlabel]
+            if rlabel is None:
+                d = data
+            else:
+                if not isinstance(rlabel, (tuple, list)):
+                    rlabel = [rlabel]
+                d = data.copy()
+                #gg
+                for r in rlabel:
+                    d = d.loc[:,r]
+                #d = data.loc[:,rlabel]
 
             if d.ndim == 1:
                 d1 = d
@@ -1211,11 +1325,11 @@ class Plot(object):
             if median and len(d) > 1:  # puts a white dot
                 ax.plot(p, np.median(d), 'x', color='white', mew=2)
 
-        if width:
+        if width is not None:
             w = width
         else:
-            dist = np.max(pos)-np.min(pos)
-            w = min(0.15*max(dist,1.0),0.5) * .5
+            #dist = np.max(pos)-np.min(pos)
+            w = .75/4 #len(pos) # min(0.15*max(dist,1.0),0.5) * .5
 
         ## put rows and cols in cols, yerr in rows (original format)
         #data = self._stack_levels(data, 'cols')
@@ -1235,21 +1349,33 @@ class Plot(object):
             #hists.iloc[p] = hist  # hists is Series
         maxcount = np.max(hists)
         #import pdb; pdb.set_trace()
+        #gg
 
         for rno, rlab in enumerate(rlabels):
-            d = data.loc[:,rlab]
+
+            if rlab is None:
+                d = data
+            else:
+                d = self._get_multi(data, rlab, dim='columns')
+                #if not isinstance(rlab, (tuple, list)):
+                    #rlab = [rlab]
+                #d = data.copy()
+                ##gg
+                #for r in rlab:
+                    #d = d.loc[:,r]
             # awful repetition of hist
             # until I figure out something better
             if d.ndim == 1:
                 d = d[pandas.notnull(d)]
-                hist, bin_edges = np.histogram(pos[rno], d, bins=bins, range=rng)
-                draw_lines(d, maxcount, hist, bin_edges, sides=[-1,1])
+                #import pdb; pdb.set_trace()
+                hist, bin_edges = np.histogram(d, bins=bins, range=rng)
+                draw_lines(pos[rno], d, maxcount, hist, bin_edges, sides=[-1,1])
             elif d.ndim == 2:
                 #import pdb; pdb.set_trace()
-                d1 = d.iloc[pandas.notnull(d.iloc[:,0]),0]
+                d1 = d[pandas.notnull(d.iloc[:,0])].iloc[:,0]
                 hist, bin_edges = np.histogram(d1, bins=bins, range=rng)
                 draw_lines(pos[rno], d1, maxcount, hist, bin_edges, sides=[-1,0])
-                d2 = d.iloc[pandas.notnull(d.iloc[:,1]),1]
+                d2 = d[pandas.notnull(d.iloc[:,1])].iloc[:,1]
                 hist, bin_edges = np.histogram(d2, bins=bins, range=rng)
                 draw_lines(pos[rno], d2, maxcount, hist, bin_edges, sides=[ 0,1])
             else:
@@ -1292,24 +1418,30 @@ class Plot(object):
         #data_mean = self._unstack_levels(data_mean, 'yerr')
         #data_mean = data_mean.mean(1)
 
-        try:  # not guaranteed that columns have names
+        try:  # not guaranteed that columns have names and levels
             len(data.columns.names)
         except:
             rlabels = data.columns
         else:
-            inds = [i for i,n in enumerate(agg.columns.names) if n.startswith('rows.')]
-            if len(inds) == 0:
-                rlabels = agg.columns.levels
-            elif len(inds) == 1:
-                rlabels = agg.columns.levels[inds[-1]]
+            rowdata = self._stack_levels(data, 'cols')
+            if rowdata.shape[1] > 1:
+                inds = [i for i,n in enumerate(rowdata.columns.names) if n.startswith('rows.')]
             else:
-                rlabels = 1
+                inds = []
+            if len(inds) == 0:
+                rlabels = [None]  # no rows
+            else:#elif len(inds) >= 1:
+                labs = [rowdata.columns.get_level_values(i) for i in inds]
+                rlabels = list(zip(*labs))
         pos = range(len(rlabels))
+        #import pdb; pdb.set_trace()
 
         dist = np.max(pos) - np.min(pos)
-        w = min(0.15*max(dist,1.0),0.5) * .5
+        #w = min(0.15*max(dist,1.0),0.5) * .5
+        w = .75/4 #dist * .75/4
+        #import pdb; pdb.set_trace()
         ax = self._stripchart(data, pos, rlabels, ax=ax, mean=mean, median=median,
-            width=0.8*w, discrete=discrete)
+            width=w, discrete=discrete)
         ax = self._violin_plot(data, pos, rlabels, ax=ax, bp=False, cut=cut)
         #ax = self._stripchart(data_tr, pos, rlabels, sel, ax=ax, mean=mean, median=median,
             #width=0.8*w, discrete=discrete)
@@ -1327,17 +1459,35 @@ class Plot(object):
                 unstacked = pandas.DataFrame(data)
             else:
                 try:
-                    levs = data.columns.names + levels
+                    clevs = data.columns.names + levels
                 except:
-                    levs = levels
+                    clevs = levels
+                try:
+                    rlevs = [n for n in data.index.names if n not in levels]
+                except:
+                    rlevs = None #['']#levels
+
                 if len(levels) == 1:
-                    levels = levels[0]
-                unstacked = data.unstack(levels)
-                unused = [n for n in data.index.names if not n.startswith(pref+'.')]
-                for lev in unused:
+                    unstacked = data.unstack(levels[0])
+                else:
+                    unstacked = data.unstack(levels)
+                #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
+                for lev in clevs:
+                    try:
+                        order = data.columns.get_level_values(lev).unique()
+                    except:
+                        pass
+                    else:
+                        unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+                for lev in rlevs:
                     order = data.index.get_level_values(lev).unique()
                     unstacked = stats.reorder(unstacked, order=order, level=lev, dim='index')
-                unstacked.columns.names = levs
+                for lev in levels:
+                    order = data.index.get_level_values(lev).unique()
+                    unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+                unstacked.columns.names = clevs
+                if rlevs is not None:
+                    unstacked.index.names = rlevs
         return unstacked
 
     def _stack_levels(self, data, pref):
@@ -1346,10 +1496,57 @@ class Plot(object):
         except:
             stacked = data
         else:
-            if len(levels) == 1:
-                levels = levels[0]
-            stacked = data.stack(levels)
+            if len(levels) == 0:
+                stacked = pandas.DataFrame(data)
+            else:
+                try:
+                    clevs = [n for n in data.columns.names if n not in levels]
+                except:
+                    clevs = None #levels
+                try:
+                    rlevs = data.index.names + levels #[n for n in data.index.names if n not in levels]
+                except:
+                    rlevs = levels
+
+                if len(levels) == 1:
+                    stacked = data.stack(levels)
+                else:
+                    stacked = data.stack(levels)
+                stacked = pandas.DataFrame(stacked)
+                #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
+                if clevs is not None:
+                    for lev in clevs:
+                        order = data.columns.get_level_values(lev).unique()
+                        stacked = stats.reorder(stacked, order=order, level=lev, dim='columns')
+                for lev in rlevs:
+                    try:
+                        order = data.index.get_level_values(lev).unique()
+                    except:
+                        pass
+                    else:
+                        stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
+                for lev in levels:
+                    order = data.columns.get_level_values(lev).unique()
+                    stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
+                if clevs is not None and len(clevs) != 0:
+                    stacked.columns.names = clevs
+                stacked.index.names = rlevs
+                #stacked = data.stack(levels)
         return stacked
+
+    def _get_multi(self, data, labels, dim='columns'):
+        #if labels is None:
+            #d = data
+        #else:
+        if not isinstance(labels, (tuple, list)):
+            labels = [labels]
+        d = data.copy()
+        for label in labels:
+            if dim == 'columns':
+                d = d.loc[:,label]
+            else:
+                d = d.loc[label]
+        return d
 
     def _beanlike_setup(self, data, ax, order=None):
         if self._stack_levels(data, 'rows').shape[1] > 2:  # more than 2 columns
@@ -1399,6 +1596,11 @@ class Plot(object):
         pos = range(len(rlabels))
 
         return data, pos, rlabels, sel
+
+    def show(self, tight=True):
+        if tight and self.kind != 'matrix':
+            self.tight_layout()
+        plt.show()
 
 
 if __name__ == '__main__':
