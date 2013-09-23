@@ -23,6 +23,25 @@ class TestAgg(unittest.TestCase):
         df['accuracy'] = ['correct','correct','incorrect','incorrect']*k*9
         return df
 
+    def test_df_fromdict(self):
+        n = 8
+        nsampl = 10
+        df = self.get_df(n=n, nsampl=nsampl)
+        k = n * nsampl
+        data = {
+            'subplots': ['session1']*k*18 + ['session2']*k*18,
+            'cond': [1]*k*9 + [2]*k*9 + [1]*k*9 + [2]*k*9,
+            'name': (['one', 'one', 'one']*k + ['two', 'two', 'two']*k +
+                    ['three', 'three', 'three']*k) * 4,
+            'levels': (['small']*k + ['medium']*k + ['large']*k)*12,
+            'subjID': ['subj%d' % (i+1) for i in np.repeat(range(n),nsampl)] * 36,
+            'rt': range(k)*36,
+            'accuracy': ['correct','correct','incorrect','incorrect']*k*9
+            }
+        df_manual = pandas.DataFrame(data, columns = ['subplots','cond','name',
+            'levels','subjID','rt','accuracy'])
+        self.assertEqual(df.to_string(), df_manual.to_string())
+
     def test_aggregate_random(self):
         df = self.get_df()
         df.rt = df.rt.astype(float)
