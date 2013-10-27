@@ -40,9 +40,10 @@ class Mock(object):
             return Mock()
 
 MOCK_MODULES = ['wx', 'numpy',
-    'psychopy', 'psychopy.data', 'pandas', 'matplotlib',
-    'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1',
-    'matplotlib.patches', 'matplotlib.ticker',
+    'psychopy', 'psychopy.data', 'pandas',
+    #'matplotlib',
+    #'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1',
+    #'matplotlib.patches', 'matplotlib.ticker',
     'scipy', 'scipy.stats', 'scipy.misc', 'scipy.ndimage',
     'mvpa2', 'mvpa2.suite', 'nibabel']
 
@@ -55,8 +56,8 @@ if on_rtd:
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #docs_basepath = os.path.abspath(os.path.dirname(__file__))
 #sys.path.insert(0, os.path.abspath(os.path.join(docs_basepath, '../..')))
-sys.path.insert(0, os.path.abspath('../../'))
-sys.path.append(os.path.abspath('sphinxext'))  # for matplotlib
+#sys.path.insert(0, os.path.abspath('../../'))
+#sys.path.append(os.path.abspath('sphinxext'))  # for matplotlib
 
 # -- General configuration -----------------------------------------------------
 
