@@ -10,6 +10,11 @@
 import wx, sys, os, inspect, shutil
 from types import ModuleType
 
+try:
+    from agw import advancedsplash as AS
+except ImportError: # if it's not there locally, try the wxPython lib.
+    import wx.lib.agw.advancedsplash as AS
+
 from psychopy import core
 
 # some modules are only available in Python 2.6
@@ -21,26 +26,22 @@ except:
 class Control(object):
     def __init__(self, exp_choices,
                  title='Project',
-                 size=(500,300),
-                 #modcall=False  # Set true when calling a module directly like
-                                # python -m path.to.module
+                 size=(550,400)
                  ):
-        #if modcall:
-            #if len(sys.argv) > 1:
-                #self.cmd(exp_choices[1])
-            #else:
-                #self.app(exp_choices)
-        #else:
         """
+        Initializes user control interface.
+
+        Determines automatically whether to open a Graphic User Interface (GUI)
+        or operate in a Command Line Interface (CLI) based on the number of
+        arguments in ``sys.argv``.
+
         :Args:
-            exp_choices: could be one of the following
-                - `module`
-                - a path to a module (str)
-                - a list of tuples (name, path, alias for cmd)
+            exp_choices
+                :class:`~psychopy_ext.ui.Choices`
         :Kwargs:
-            title: str (default: 'Project')
+            title (str, default: 'Project')
                 Title of the GUI app window.
-            size: tuple pf two int (default: (500,300))
+            size (tuple of two int, default: (350,400))
                 Size of a GUI app.
         """
         # Some basic built-in functions
@@ -53,25 +54,8 @@ class Control(object):
             if action in recognized:
                 self.run_builtin()
 
-        # direct path to the experiment
-        if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):
-            exp_choices = [('Experiment', exp_choices, 'main')]
-        elif len(exp_choices) == 0:
-            sys.exit('exp_choices is not supposed to be empty')
-
-        choices = []
-        for choice in exp_choices:
-            if len(choice) == 0:
-                sys.exit('Please give at least a path to the experiment')
-            elif len(choice) == 1:  # path to experiment is given
-                choices.append(('Experiment', choice, choice[1], None))
-            elif len(choice) == 2:  # if 'scripts.main', then cli call alias is 'main'
-                choices.append(choice + (choice[1].split('.',1)[1], None))
-            elif len(choice) == 3:
-                choices.append(choice + (None,))
-            else:
-                choices.append(choice)
-        exp_choices = choices
+        if not isinstance(exp_choices, (list, tuple)):
+            exp_choices = [exp_choices]
 
         if len(sys.argv) > 1:  # command line interface desired
             if sys.argv[1] == 'report':
@@ -111,21 +95,21 @@ class Control(object):
             input_mod_alias = None
             input_class_alias = sys.argv[1]
             input_func = sys.argv[2]
-            module = exp_choices[0][1]
-            class_order = exp_choices[0][3]
+            module = exp_choices[0].module
+            class_order = exp_choices[0].order
             arg_start = 3
         else:
             input_mod_alias = sys.argv[1]
             input_class_alias = sys.argv[2]
             input_func = sys.argv[3]
-            class_order = exp_choices[0][3]
+            class_order = exp_choices[0].order
             arg_start = 4
-            avail_mods = [e[2] for e in exp_choices]
+            avail_mods = [e.alias for e in exp_choices]
             try:
                 idx = avail_mods.index(input_mod_alias)
             except:
                 sys.exit("module '%s' not recognized" % input_mod_alias)
-            module = exp_choices[idx][1]
+            module = exp_choices[idx].module
 
         if input_mod_alias is not None:
             if input_mod_alias.startswith('-'):
@@ -176,58 +160,91 @@ class Control(object):
                     sys.exit("There cannot be any '-' just by themselves "
                                   "in the input")
                 item = None
-                for key, value in class_init.info.items():
-                    if key == input_key or key[0] == input_key:
-                        item = (key, value)
-                        params = info
-                        break
-                if item is None:
+                print input_key
+                # is input_key among info?
+                if hasattr(class_init, 'info'):
+                    for key, value in class_init.info.items():
+                        if key == input_key or key[0] == input_key:
+                            item = (key, value)
+                            params = info
+                            break
+                # is input_key among rp then?
+                if item is None and hasattr(class_init, 'rp'):
                     for key, value in class_init.rp.items():
                         if key == input_key or key[0] == input_key:
                             item = (key, value)
                             params = rp
                             break
-                if item is None:
-                    sys.exit('Argument %s is not recognized' % input_key)
-
-                key = item[0]
-                if isinstance(value, bool):
-                    try:
-                        if sys.argv[i+1][0] != '-':
-                            input_value = eval(sys.argv[i+1])
-                            if not isinstance(input_value, bool):
-                                sys.exit('Expected True/False after %s' %
-                                         input_key)
+                # not found?
+                if item is None and (hasattr(class_init, 'info') or
+                    hasattr(class_init, 'rp')):
+                        sys.exit('Argument %s is not recognized' % input_key)
+                else: # found!
+                    key, value = item
+                    if isinstance(value, bool):
+                        try:
+                            if sys.argv[i+1][0] != '-':
+                                input_value = eval(sys.argv[i+1])
+                                if not isinstance(input_value, bool):
+                                    sys.exit('Expected True/False after %s' %
+                                             input_key)
+                                else:
+                                    params[key] = input_value
+                                i += 1
                             else:
-                                params[key] = input_value
-                            i += 1
-                        else:
+                                params[key] = True
+                        except IndexError:  # this was the last argument
                             params[key] = True
-                    except IndexError:  # this was the last argument
-                        params[key] = True
 
-                else:
-                    try:
-                        input_value = sys.argv[i+1]
-                    except IndexError:
-                        sys.exit('Expected a value after %s but got nothing'
-                             % input_key)
+                    else:
+                        try:
+                            input_value = sys.argv[i+1]
+                        except IndexError:
+                            sys.exit('Expected a value after %s but got nothing'
+                                 % input_key)
 
-                    try:
-                        ## not safe but fine in this context
-                        params[key] = eval(input_value)
-                    except:
-                        if input_value[0] == '-':
-                            sys.exit('Expected a value after %s but got '
-                                        'another argument' % input_key)
+                        if isinstance(value, tuple):
+                            if input_value in value:
+                                params[key] = input_value
+                            else:
+                                sys.exit('Value %s is not possible for %s.\n'
+                                         'Choose from: %s'
+                                         % (input_value, key, value))
                         else:
-                            params[key] = input_value
-                    i += 1
+                            try:
+                                ## not safe but fine in this context
+                                params[key] = eval(input_value)
+                            except:
+                                if input_value[0] == '-':
+                                    sys.exit('Expected a value after %s but got '
+                                                'another argument' % input_key)
+                                else:
+                                    params[key] = input_value
+                        i += 1
                 i += 1
 
-        class_init.info.update(info)
-        class_init.rp.update(rp)
-        class_init = class_obj(info=class_init.info, rp=class_init.rp)
+        if hasattr(class_init, 'info'):
+            class_init.info.update(info)
+            for key, value in class_init.info.items():
+                if isinstance(value, tuple):
+                    class_init.info[key] = value[0]
+        if hasattr(class_init, 'rp'):
+            class_init.rp.update(rp)
+            for key, value in class_init.rp.items():
+                if isinstance(value, tuple):
+                    class_init.rp[key] = value[0]
+        if hasattr(class_init, 'info') and hasattr(class_init, 'rp'):
+            class_init = class_obj(info=class_init.info, rp=class_init.rp)
+        elif hasattr(class_init, 'info'):
+            class_init = class_obj(info=class_init.info)
+            class_init.rp = None
+        elif hasattr(class_init, 'rp'):
+            class_init = class_obj(rp=class_init.rp)
+            class_init.info = None
+        else:
+            class_init = class_obj()
+            class_init.info = None
+            class_init.rp = None
         sys.stdout.write('\r               ')
         sys.stdout.write('\r')
         sys.stdout.flush()
@@ -244,16 +261,19 @@ class Control(object):
                                 input_func)
 
     def app(self, exp_choices=[], title='Experiment', size=(400,300)):
-        app = wx.App()
+        app = MyApp()
+
+        # initial frame with a gauge on it
         frame = wx.Frame(None, title=title, size=size)
-        # Here we create a panel and a listbook on the panel
+        ## Here we create a panel and a listbook on the panel
         panel = wx.Panel(frame)
+
         if len(exp_choices) > 1:
             lb = Listbook(panel, exp_choices)
             # add pages to the listbook
             for num, choice in enumerate(exp_choices):
                 pagepanel = wx.Panel(lb)
-                lb.AddPage(pagepanel, choice[0], select=num==0)
+                lb.AddPage(pagepanel, choice.name, select=num==0)
             lb.ChangeSelection(0)
             booktype = lb
             panelsizer = wx.BoxSizer()
@@ -262,9 +282,12 @@ class Control(object):
         else:  # if there's only one Notebook, don't create a listbook
             setup_page(exp_choices[0], panel)
         # nicely size the entire window
-        frame.Layout()
+        app.splash.Close()
+        panel.Fit()
+        frame.Fit()
         frame.Centre()
         frame.Show()
+
         app.MainLoop()
 
     def _type(self, input_key, input_value, value, exp_type):
@@ -340,6 +363,7 @@ class Control(object):
         #                 rp=OrderedDict(rp))
         getattr(module, rp.action)()
         # args.func(args)
+
 
 
 def report(exp_choices, args):
@@ -438,6 +462,43 @@ def _get_methods(myclass):
                     methods.append((name, method))
     return methods
 
+def _get_methods_byname(myclass):
+    if hasattr(myclass, 'actions'):
+        if myclass.actions is not None:
+            if isinstance(myclass.actions, str):
+                actions = [myclass.actions]
+            else:
+                actions = myclass.actions
+            methods = []
+            for action in actions:
+                try:
+                    func = getattr(myclass, action)
+                except AttributeError:
+                    pass
+                else:
+                    methods.append([action, func])
+            if len(methods) == 0:
+                return _get_methods(myclass)
+            else:
+                return methods
+        else:
+            return _get_methods(myclass)
+    else:
+        return _get_methods(myclass)
+
+
+class MyApp(wx.App):
+
+    def __init__(self):
+        super(MyApp, self).__init__()
+        path = os.path.join(os.path.dirname(__file__), 'importing.png')
+        image = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
+        self.splash = AS.AdvancedSplash(None, bitmap=image,
+                                        style=AS.AS_NOTIMEOUT|wx.FRAME_SHAPED)
+        self.splash.SetText(' ')  # bitmap doesn't show up without this
+        wx.Yield()  # linux wants this line
+
+
 class StaticBox(wx.StaticBox):
     def __init__(self, parent, label='', content=None):
         """
@@ -446,7 +507,6 @@ class StaticBox(wx.StaticBox):
         wx.StaticBox.__init__(self, parent, label=label)
         self.sizer = wx.StaticBoxSizer(self)
         grid = wx.GridSizer(rows=len(content), cols=2)
-        choices=False
         self.inputFields = []
         for label, initial in content.items():
             #import pdb; pdb.set_trace()
@@ -458,25 +518,26 @@ class StaticBox(wx.StaticBox):
             #if len(color): inputLabel.SetForegroundColour(color)
             grid.Add(inputLabel, 1, wx.ALIGN_LEFT)
             #create input control
-            if type(initial)==bool:
+            if isinstance(initial, bool):
                 inputBox = wx.CheckBox(parent, -1)
                 inputBox.SetValue(initial)
-            elif type(initial)==int:
+            elif isinstance(initial, int):
                 inputBox = wx.SpinCtrl(parent, size=(60, -1), initial=initial)
-            elif not choices:
+            elif isinstance(initial, tuple):
+                inputBox = wx.Choice(parent, -1,
+                            choices=[str(option) for option in initial])
+                ## Somewhat dirty hack that allows us to treat the choice just like
+                ## an input box when retrieving the data
+                inputBox.GetValue = inputBox.GetStringSelection
+                #if initial in choices:
+                    #initial = choices.index(initial)
+                #else:
+                    #initial = 0
+                inputBox.SetSelection(0)
+            else:
                 inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
                 inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
-            else:
-                inputBox = wx.Choice(parent, -1,
-                            choices=[str(option) for option in list(choices)])
-                # Somewhat dirty hack that allows us to treat the choice just like
-                # an input box when retrieving the data
-                inputBox.GetValue = inputBox.GetStringSelection
-                if initial in choices:
-                    initial = choices.index(initial)
-                else:
-                    initial = 0
-                inputBox.SetSelection(initial)
+                
             #if len(color): inputBox.SetForegroundColour(color)
             #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
             self.inputFields.append(inputBox)#store this to get data back on button click
@@ -491,10 +552,17 @@ class Page(wx.Panel):
     corresponding to info and rp in :class:`exp.Experiment`, and
     buttons which, when clicked, runs a corresponding method.
     """
-    def __init__(self, parent, class_obj):
+    def __init__(self, parent, class_obj, alias, class_alias):
         wx.Panel.__init__(self, parent, -1)
         self.class_obj = class_obj
+        self.alias = alias
+        self.class_alias = class_alias
+
         class_init = class_obj()
+        if not hasattr(class_init, 'info'):
+            class_init.info = None
+        if not hasattr(class_init, 'rp'):
+            class_init.rp = None
         if class_init.info is not None:
             self.sb1 = StaticBox(self, label="Information",
                 content=class_init.info)
@@ -504,9 +572,10 @@ class Page(wx.Panel):
 
         # generate buttons
         # each button launches a function in a given class
-        actions = _get_methods(class_init)
-        # buttons will sit on a grid of 3 columns and as many rows as necessary
-        buttons = wx.GridSizer(rows=0, cols=3)
+        #actions = _get_methods(class_init)
+        actions = _get_methods_byname(class_init)
+        # buttons will sit on a grid of 2 columns and as many rows as necessary
+        buttons = wx.GridSizer(rows=0, cols=2)
         add = False
         for i, (label, action) in enumerate(actions):
             if hasattr(class_init, 'actions'):
@@ -534,37 +603,71 @@ class Page(wx.Panel):
             pagesizer.Add(self.sb2.sizer)
         # put the buttons in the bottom
         pagesizer.Add(buttons, 1, wx.ALL|wx.ALIGN_LEFT)
-
         self.SetSizer(pagesizer)
 
     def OnButtonClick(self, event):
         #module = event.GetEventObject().module
         ## first update info and rp
         button = event.GetEventObject()
-        for key, field in zip(button.info.keys(), self.sb1.inputFields):
-            button.info[key] = field.GetValue()
-        for key, field in zip(button.rp.keys(), self.sb2.inputFields):
-            button.rp[key] = field.GetValue()
+        if button.info is not None:
+            for key, field in zip(button.info.keys(), self.sb1.inputFields):
+                button.info[key] = field.GetValue()
+        if button.rp is not None:
+            for key, field in zip(button.rp.keys(), self.sb2.inputFields):
+                button.rp[key] = field.GetValue()
 
-        class_init = self.class_obj(info=button.info,
-            rp=button.rp)
-        func = getattr(class_init, button.action)
-        func()  # FIX: would be nice to keep it open at the end of the exp
+        # taken from PsychoPy's builder.py
+        #scriptProcess = wx.Process(self) #self is the parent (which will receive an event when the process ends)
+        #scriptProcess.Redirect()#builder will receive the stdout/stdin
+        opts = [self.alias, self.class_alias, button.GetLabelText()]
+        info = []
+        for k,v in button.info.items():
+            try:
+                gaps = len(v.split(' '))
+            except:
+                info.append('--%s %s' %(k,v))
+            else:
+                if gaps > 1:
+                    info.append('--%s "%s"' %(k,v))
+                else:
+                    info.append('--%s %s' %(k,v))                
+        rp=[]
+        for k,v in button.rp.items():
+            try:
+                gaps = len(v.split(' '))
+            except:
+                rp.append('--%s %s' %(k,v))
+            else:
+                if len(v.split(' ')) > 1:
+                    rp.append('--%s "%s"' %(k,v))
+                else:
+                    rp.append('--%s %s' %(k,v))
+        argv = ' '.join(sys.argv + opts + info + rp)
 
-class Notebook(wx.Notebook):
-    """
-    Notebook class
-    """
-    def __init__(self, parent):
-        wx.Notebook.__init__(self, parent, id=wx.ID_ANY, style=
-                             wx.BK_DEFAULT)
-        self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGING, self.OnPageChanging)
+        if sys.platform=='win32':
+            # the quotes allow file paths with spaces
+            command = '"%s" -u %s' % (sys.executable, argv)
+            wx.Execute(command, wx.EXEC_SYNC | wx.EXEC_NOHIDE)
+        else:
+            # for unix this signifies a space in a filename
+            python_exec = sys.executable.replace(' ','\ ')
+            # the quotes would break a unix system command
+            command = '%s -u %s' %(python_exec, argv)
+            wx.Execute(command, wx.EXEC_SYNC| wx.EXEC_MAKE_GROUP_LEADER)
 
-    def OnPageChanging(self, event):
-        old = event.GetOldSelection()
-        new = event.GetSelection()
-        if old != -1:
-            setup_page(self.exp_choices[new], self.GetPage(new))
+        #try:
+            #class_init = self.class_obj(info=button.info, rp=button.rp)
+        #except:
+            #try:
+                #class_init = self.class_obj(info=button.info)
+            #except:
+                #try:
+                    #class_init = self.class_obj(rp=button.rp)
+                #except:
+                    #class_init = self.class_obj()
+        #func = getattr(class_init, button.action)
+        #func()  # FIX: would be nice to keep it open at the end of the exp
+
 
 class Listbook(wx.Listbook):
     """
@@ -573,13 +676,16 @@ class Listbook(wx.Listbook):
     def __init__(self, parent, exp_choices):
         wx.Listbook.__init__(self, parent, id=wx.ID_ANY, style=wx.BK_DEFAULT)
         self.exp_choices = exp_choices
+        self.ready = []
         self.Bind(wx.EVT_LISTBOOK_PAGE_CHANGING, self.OnPageChanging)
 
     def OnPageChanging(self, event):
-        old = event.GetOldSelection()
         new = event.GetSelection()
-        if old != -1:
+        if new not in self.ready:
             setup_page(self.exp_choices[new], self.GetPage(new))
+            self.ready.append(new)
+        #wx.SetCursor(wx.StockCursor(wx.CURSOR_WAIT))
+        #wx.SetCursor(wx.StockCursor(wx.CURSOR_ARROW))
 
 def setup_page(choice, pagepanel):
     """
@@ -590,19 +696,20 @@ def setup_page(choice, pagepanel):
             A tuple of (name, module path, module alias)
         - pagepanel
     """
-    label, mod_path, alias, order = choice
-    if isinstance(mod_path, str):
-        __import__(mod_path)
-        class_aliases, class_obj = _get_classes(sys.modules[mod_path],
-            class_order=order)
+    if isinstance(choice.module, str):
+        __import__(choice.module)
+        class_aliases, class_obj = _get_classes(sys.modules[choice.module],
+            class_order=choice.order)
     else:
-        class_aliases, class_obj = _get_classes(mod_path, class_order=order)
+        class_aliases, class_obj = _get_classes(choice.module, class_order=choice.order)
     nb = wx.Notebook(pagepanel)
     for class_alias, class_obj in class_aliases:
-        nb.AddPage(Page(nb, class_obj), class_alias)
+        nb.AddPage(Page(nb, class_obj, choice.alias, class_alias), class_alias)
     panelsizer = wx.BoxSizer()
     panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)
     pagepanel.SetSizer(panelsizer)
+    pagepanel.Layout()
+    pagepanel.Fit()
 
 def _detect_rev():
     """
@@ -675,6 +782,66 @@ def _repo_action(cmd, **kwargs):
     return call, out, err
 
 
+class Choices(object):
+
+    def __init__(self, module, name='', alias=None, order=None):
+        """
+        Holds choices for calling experiments.
+
+        :Args:
+            module (str or module)
+                The module you want to call. If your script is in
+                'scripts/main.py', then module should be 'scripts.main'.
+                You can also give the module itself if you already have
+                it imported::
+
+                    import scripts.main
+                    exp_choices = Choices(scripts.main)
+
+        :Kwargs:
+            - name (str, default: '')
+                Name of the experiment.
+            - alias (str, default: None)
+                For CLI: alias for calling this experiment. If *None*,
+                will be inferred from ``module``.
+            - order (list, default: None)
+                For GUI: Order of tabs (classes).
+        """
+        ## if direct path to the experiment
+        #if isinstance(exp_choices, str) or isinstance(exp_choices, ModuleType):
+            #exp_choices = [('Experiment', exp_choices, 'main')]
+        #elif len(exp_choices) == 0:
+            #sys.exit('exp_choices is not supposed to be empty')
+
+        #choices = []
+        #for choice in exp_choices:
+            #if len(choice) == 0:
+                #sys.exit('Please give at least a path to the experiment')
+            #elif len(choice) == 1:  # path to experiment is given
+                #choices.append(('Experiment', choice, choice[1], None))
+            #elif len(choice) == 2:  # if 'scripts.main', then cli call alias is 'main'
+                #choices.append(choice + (choice[1].split('.',1)[1], None))
+            #elif len(choice) == 3:
+                #choices.append(choice + (None,))
+            #else:
+                #choices.append(choice)
+        #exp_choices = choices
+
+        self.module = module
+        self.name = name
+
+        if alias is None:
+            try:
+                self.alias = module.split('.',1)[1]
+            except:
+                import pdb; pdb.set_trace()
+                self.alias = module.__name__
+        else:
+            self.alias = alias
+
+        self.order = order
+
+
 class Report(object):
 
     def __init__(self, output='html', path='report'):
@@ -695,12 +862,12 @@ class Report(object):
             for root, dirs, files in os.walk(self.path):
                 #for f in files:
                     #try:
-                	      #os.unlink(os.path.join(root, f))
+                          #os.unlink(os.path.join(root, f))
                     #except:
                         #pass
                 for d in dirs:
                     try:
-                	      shutil.rmtree(os.path.join(root, d))
+                          shutil.rmtree(os.path.join(root, d))
                     except:
                         pass
 
@@ -749,3 +916,5 @@ class Report(object):
 
     def writeh(self, text, h='h1'):
         self.htmlfile.write('<%s>%s</%s>\n' % (h, text, h))
+
+
