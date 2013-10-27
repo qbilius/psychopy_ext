@@ -1,4 +1,4 @@
-import sys, os, shutil
+import sys, os, shutil, urllib2, tarfile, gzip, glob
 import cPickle as pickle
 
 import numpy as np
@@ -25,123 +25,181 @@ import computer  # for monitor size, paths etc settings across computers
 # folder where the 'run.py' file is, for example
 # if you have more than one experiment, 'confsup' would be better -- data for
 # this experiment will be in the 'data' folder inside the 'confsup' folder
-computer.root = '/home/qbilius/Atsiuntimai/tutorial_data/data/'
-PATHS = exp.set_paths('.', computer, fmri_rel='%s/')
+
+# store fmri data in the Download folder in your home folder
+computer.root = os.path.join(os.path.expanduser('~'), 'Downloads', 'fmri_demo/')
+PATHS = exp.set_paths('fmri', computer, fmri_rel='%s/')
 
 class Analysis(fmri.Analysis):
     def __init__(self,
                  name='analysis',
-                 extraInfo=OrderedDict([
-                    ('subjID', 'twolines_'),
-                    ('runType', 'main'),
-                    ('runNo', 1),
+                 info=OrderedDict([
+                    ('subjid', 'subj_'),
+                    ('runtype', 'main'),
+                    ('runno', 1),
                     ]),
-                 runParams=OrderedDict([
-                    ('noOutput', False),
+                 rp=OrderedDict([
+                    ('no_output', False),
                     ('force', False),
                     ('all', True),
-                    ('rois', ['vt', (['random1','random2'],'random')]),
-                    ('method', 'corr'),
-                    ('values', 'raw'),
-                    ('set_size', 'subset'),
-                    ('degree', 'normal'),
-                    ('plot', False),
-                    ('saveplot', False),
-                    ('visualize', False),
-                    ])
+                    ('rois', [(['rh_V1d','rh_V1v'],'V1'), 'rh_LO']),
+                    ('reuserois', False),
+                    ('method', ('timecourse', 'corr', 'svm')),
+                    ('values', ('raw', 'other')),
+                    ('plot', True),
+                    ]),
+                 actions=['prepare_data', 'run']
                  ):
-        super(Analysis, self).__init__(PATHS, tr=2.5,
-            extraInfo=extraInfo, runParams=runParams, fmri_prefix='a*',
-            fix='rest', dur=None, offset=0)
-        if self.runParams['values'] == 'raw':
-            if self.runParams['method'] == 'timecourse':
+        super(Analysis, self).__init__(PATHS, tr=2,
+            info=info, rp=rp, fmri_prefix='swa*',
+            fix=0, dur=None, offset=0)
+        if self.rp['values'] == 'raw':
+            if self.rp['method'] == 'timecourse':
                 self.offset = 0
-                self.dur = 9
+                self.dur = 6
             else:
-                self.offset = 1
-                self.dur = 4
+                self.offset = 3
+                self.dur = 3
         self.name = name
-        if self.runParams['all']: self.set_all_subj()
+        self.actions = actions
+        if self.rp['all']: self._set_all_subj()
 
-    def set_all_subj(self):
-        self.extraInfo['subjID'] = ['subj_01', 'subj_02']
+    def _set_all_subj(self):
+        self.info['subjid'] = ['subj_01', 'subj_02']
+
+    def _download_data(self):
+        """From http://stackoverflow.com/a/22776
+        """
+        url = 'http://download.klab.lt/fmri-demo.php'
+        file_name = url.split('/')[-1].split('.')[0]
+        file_name = os.path.join(self.paths['root'], file_name) + '.tar.gz' 
+        u = urllib2.urlopen(url)
+        try: # if this fails (e.g. permissions) we will get an error
+            os.makedirs(self.paths['root'])
+        except:
+            pass#raise Exception('Path for data (%) already exists.' % self.paths['root'])
+
+        f = open(file_name, 'wb')
+        meta = u.info()
+        file_size = int(meta.getheaders("Content-Length")[0])
+        print "Downloading fmri data (%s bytes) to %s" % (file_size, self.paths['root'])
+
+        file_size_dl = 0
+        block_sz = 32*1024
+        while True:
+            buffer = u.read(block_sz)
+            if not buffer:
+                break
+
+            file_size_dl += len(buffer)
+            f.write(buffer)
+            status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
+            status = status + chr(8)*(len(status)+1)
+            print status,
+
+        f.close()
+
+        # untar data                
+        try:            
+            tfile = tarfile.open(file_name)
+            tfile.extractall(self.paths['root'])
+        except:
+            raise Exception('Cannot unpack tutorial data. Try downloading ' 
+                            'it again using the same command.')
 
     def prepare_data(self):
         """
         Renames data files from PyMVPA2 in the expected format.
         """
-        print 'preparing tutorial data... this will take a while...'
-        attr = mvpa2.suite.SampleAttributes(self.paths['root'] + \
-                                            'attributes.txt')
-        ds = mvpa2.suite.fmri_dataset(samples=self.paths['root'] + 'bold.nii.gz',
-                          targets=attr.targets, chunks=attr.chunks)
-        for subjID in self.extraInfo['subjID']:
+        nchunks=2
+        
+        print        
+        self._download_data()        
+        print 'preparing demo data...'
+
+        ds_path = os.path.join(self.paths['root'], 'bold.nii')
+        ds = mvpa2.suite.fmri_dataset(samples=ds_path)
+
+        for subjid in self.info['subjid']:
+            print subjid,
             try:
-                os.makedirs(self.paths['data_behav'] % subjID)
-                os.makedirs(self.paths['data_fmri'] % subjID)
-                os.makedirs(self.paths['rois'] % subjID)
+                os.makedirs(self.paths['data_behav'] % subjid)
+                os.makedirs(self.paths['data_fmri'] % subjid)
+                os.makedirs(self.paths['rois'] % subjid)
             except:
                 pass
 
-            for chunk in ds.UC:
-                saveds = ds[ds.sa.chunks == chunk]
+            for chunk in range(nchunks):
                 # add a bit of noise so that participants are not identical
-                noise = np.random.random_sample(saveds.samples.shape) * \
-                        np.mean(ds.samples) / 10
-                saveds.samples += noise
-                n = len(saveds)
-                df = pandas.DataFrame(OrderedDict([
-                        ('subjID', [subjID] * n),
-                        ('runNo', saveds.sa.chunks.astype(int) + 1),
-                        ('runType', [self.extraInfo['runType']] * n),
-                        ('cond', saveds.sa.targets),
-                        ('dur', [self.tr] * n)
-                        ]))
-                df.to_csv(self.paths['data_behav'] % subjID + \
-                          'data_%02d_%s.csv' %
-                          (chunk + 1, self.extraInfo['runType']), index=False)
-                nb.save(mvpa2.suite.map2nifti(saveds),
-                    self.paths['data_fmri'] % subjID + 'afunc_%02d_%s.nii.gz' %
-                    (chunk + 1, self.extraInfo['runType']))
+                noise = (np.random.random_sample(ds.samples.shape) *
+                         np.mean(ds.samples) / 10)
 
-            shutil.copy(self.paths['root'] + 'mask_vt.nii.gz',
-                self.paths['rois'] % subjID + 'vt.nii.gz')
+                fname = 'swafunc_%02d_%s.nii' % (chunk + 1, self.info['runtype'])
+                ds.samples += noise
+                nb.save(mvpa2.suite.map2nifti(ds),
+                        self.paths['data_fmri'] % subjid + fname)
+                df = pandas.read_csv(os.path.join(self.paths['root'], 'behav.csv'))
+                df.subjid = subjid
+                df.runtype = self.info['runtype']
+                df.runno = chunk + 1
+                df.rt += np.random.random_sample(len(df)) * np.mean(df.rt) / 10
+                df.to_csv(self.paths['data_behav'] % subjid + 'data_%02d_%s.csv' %
+                          (chunk + 1, self.info['runtype']), index=False,
+                          float_format='%.3f')
 
-            # make some random mask; code adjusted from mvpa2
-            nimg = nb.load(self.paths['root'] + 'mask_vt.nii.gz')
-            tmpmask1 = nimg.get_data() < 0
-            tmpmask2 = nimg.get_data() < 0
-            slices = np.array(tmpmask1.shape)/2
-            slices1 = slices - 4
-            slices2 = slices + 4
-            tmpmask1[slices1[0]:slices[0], slices1[1]:slices[1],
-                    slices1[2]:slices[2]] = True
-            mask1 = nb.Nifti1Image(tmpmask1.astype(int), None, nimg.get_header())
-            nb.save(mask1, self.paths['rois'] % subjID + 'random1.nii.gz')
-            tmpmask2[slices[0]:slices2[0], slices[1]:slices2[1],
-                    slices[2]:slices2[2]] = True
-            mask2 = nb.Nifti1Image(tmpmask2.astype(int), None, nimg.get_header())
-            nb.save(mask2, self.paths['rois'] % subjID + 'random2.nii.gz')
+            rois = glob.glob(self.paths['root'] + 'rh_*.nii')
 
-        sys.exit()
+            for roi in rois:
+                shutil.copy(roi, self.paths['rois'] % subjid + os.path.basename(roi))
 
+        print 'done'
+        
     def run(self):
-        df, df_fname = self.get_df()
-        if self.runParams['plot']:
-            self.plot(df, cols='cond')
-        return df, df_fname
+        if not os.path.isdir(self.paths['root']) or len(os.listdir(self.paths['root'])) == 0:
+            raise Exception('You must get the data first using "prepare_data"')
+        else:
+            super(Analysis, self).run()
+
+#    def run(self):
+#        df, df_fname, loaded = super(Analysis, self).run()
+#        if self.method == 'timecourse':
+#            plt = fmri.plot_timecourse(df, cols=['cond'])
+#        else:
+#            if self.runParams['method'] == 'svm':
+#                popmean = .5
+#                ylabel = 'dissimilarity'
+#            else:
+#                popmean = 0
+#                ylabel = self.runParams['values'] + ' values'
+#
+#            #if self.runParams['set_size'] != 'degree':
+#            xlabel = ''
+#
+#            axes = plt.plot(agg, kind=self.runParams['plotkind'],
+#                            popmean=popmean, xlabel=xlabel, ylabel=ylabel,
+#                            title=title)
+#
+#            if self.runParams['method'] == 'svm' and\
+#            self.runParams['plotkind'] == 'bar':
+#                if len(axes) > 1:
+#                    sel_axes = axes[2:]  # skip behavioral and SVM
+#                else:
+#                    sel_axes = axes
+#                for ax in sel_axes:
+#                    ax.axhline(.5, linestyle='-', color='0.2')
+#        plt.show()
 
     def get_data(self, df, kind='abs'):
         if kind == 'matrix':
-            agg = stats.aggregate(df, values='subjResp', yerr='subjID',
-                                  subplots='ROI', rows='stim1.cond',
+            agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
+                                  subplots='roi', rows='stim1.cond',
                                   cols='stim2.cond')
         elif kind == 'corr':
             df['same_diff'] = 'between'
             df['same_diff'][df['stim1.cond'] == df['stim2.cond']] = 'within'
-            agg = stats.aggregate(df, values='subjResp', yerr='subjID',
-                                  rows=['ROI', 'stim1.cond'], cols='same_diff')
+            agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
+                                  rows=['roi', 'stim1.cond'], cols='same_diff')
         else:
-            agg = stats.aggregate(df, values='subjResp', yerr='subjID',
-                                  rows='ROI', cols='stim1.cond')
+            agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
+                                  rows='roi', cols='cond')
         return agg

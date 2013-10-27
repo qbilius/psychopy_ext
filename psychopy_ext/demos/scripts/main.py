@@ -19,7 +19,7 @@ try:
 except:
     pass
 
-from psychopy_ext import exp, ui, stats, plot
+from psychopy_ext import exp, stats, plot
 
 # some modules are only available in Python 2.6
 try:
@@ -33,23 +33,28 @@ import computer  # for monitor size, paths etc settings across computers
 # folder where the 'run.py' file is, for example
 # if you have more than one experiment, 'confsup' would be better -- data for
 # this experiment will be in the 'data' folder inside the 'confsup' folder
-PATHS = exp.set_paths('', computer)
+PATHS = exp.set_paths(exp_root='confsup', computer=computer)
 
 class Confsup(exp.Experiment):
     """
     The configural superiority effect experiment
+    ============================================
 
-    Task:
+    Task
+    ----
 
     Indicate which shape is different. Use the numeric pad to respond:
-        Top left: 4
-        Top right: 5
-        Bottom left: 1
-        Bottom right: 2
+    
+    - Top left: 4
+    - Top right: 5
+    - Bottom left: 1
+    - Bottom right: 2
 
     Please remember to fixate on the central dot.
-    Please press spacebar to begin.
-    (Use Left Shift + Esc to exit.)
+    
+    **Please press spacebar to begin.**
+    
+    *(Use Left Shift + Esc to exit.)*
     """
     def __init__(self,
             name='exp',
@@ -60,24 +65,23 @@ class Confsup(exp.Experiment):
                 ('no_output', False),  # do you want output? or just playing around?
                 ('debug', False),  # not fullscreen presentation etc
                 ('autorun', 0),  # if >0, will autorun at the specified speed
-                ('commit', False),  # add and commit changes, like new data files?
+                ('register', False),  # add and commit changes, like new data files?
                 ('push', False),  # add, commit and push to a hg repo?
-                ])
+                ]),
+            actions='run',
             ):
         # initialize the default Experiment class with our parameters
         super(Confsup, self).__init__(
             name=name,
             info=info,
             rp=rp,
-            instructions={'text': self.__doc__,  # instructions
-                'wait': 0},  # how long to wait before showing the first trial
-            method='random',  # order of trials; check `psychopy.TrialHandler` for acceptable formats
-            computer=computer
+            actions=actions,
+            method='random',  # order of trials; check `psychopy.TrialHandler` for acceptable formats            
+            computer=computer,
+            paths=PATHS,
+            blockcol='rep',  # experiment will be divided into blocks
+            #dataFilename=PATHS['data'] + info['subjid'] + '.csv'
             )
-
-        self.paths = PATHS
-        self.computer = computer
-
         self.computer.valid_responses = {'num_4': 0, 'num_5': 1, 'num_1': 2, 'num_2': 3}
         self.stim_size = 3.  # in deg
         self.stim_width = .3  # px; the weight of the line
@@ -145,71 +149,67 @@ class Confsup(exp.Experiment):
     def create_trial(self):
         """Create trial structure
         """
-        self.trial = [{'dur': 0.300,  # in seconds
-                       'display': self.s['fix'],
-                       'func': self.idle_event},
-
-                      {'dur': 0,  # this means present until response
-                       'display': None,  # we'll select which condition to
-                                         # present during the runtime with
-                                         # :func:`set_stimuli`
-                       'func': self.during_trial},
-
-                      {'dur': .300,
-                       'display': self.s['fix'],
-                       'func': self.feedback}
+        self.trial = [exp.Event(self,
+                                dur=0.300,  # in seconds
+                                display=self.s['fix'],
+                                func=self.idle_event),
+                      exp.Event(self,
+                                dur=0,  # this means present until response
+                                display=None,  # we'll select which condition to
+                                               # present during the runtime with
+                                               # :func:`set_stimuli`
+                                func=self.show_stim),
+                      exp.Event(self,
+                                dur=.300,
+                                display=self.s['fix'],
+                                func=self.feedback)
                      ]
 
-    def create_trial_list(self):
+    def create_exp_plan(self):
         """Define each trial's parameters
         """
-        self.trial_dur = sum(event['dur'] for event in self.trial)
         exp_plan = []
         for rep in range(self.nreps):  # repeat the defined number of times
             for cond, (context, posname) in self.paratable.items():
                 pos = (cond - 1) % 4
                 exp_plan.append(OrderedDict([
+                    ('rep', rep),
                     ('cond', cond),
                     ('context', context),
                     ('posname', posname),
                     ('pos', pos),
                     ('onset', ''),
-                    ('dur', self.trial_dur),
+                    ('dur', ''),
                     ('corr_resp', pos),
                     ('subj_resp', ''),
                     ('accuracy', ''),
                     ('rt', ''),
                     ]))
-        self.trialList = exp_plan
+        self.exp_plan = exp_plan
 
-    def set_autorun(self, trial_list):
-        def rt(mean):
+    def set_autorun(self, exp_plan):
+        def rt(mean, trialno):
             add = np.random.normal(mean,scale=.2) / self.rp['autorun']
-            return self.trial[0]['dur'] + add
+            return self.trial[0].dur + add
 
         invert_resp = exp.invert_dict(self.computer.valid_responses)
 
-        # speed up the experiment
-        for event in self.trial:
-            event['dur'] /= self.rp['autorun']
-        self.trial_dur /= self.rp['autorun']
-
-        for trial in trial_list:
+        for trialno, trial in enumerate(exp_plan):
             if trial['context'] == 'parts':
                 acc = [.1,.1,.1,.1]
                 acc[trial['pos']] = .7
-                resp = self.weighted_choice(choices=invert_resp, weights=acc)
+                resp = exp.weighted_choice(choices=invert_resp, weights=acc)
                 trial['autoresp'] = resp  # poor accuracy
-                trial['autort'] = rt(1.)  # slow responses
+                trial['autort'] = rt(1., trialno)  # slow responses
             elif trial['context'] == 'whole':  # lower accuracy for morphed
                 acc = [.05,.05,.05,.05]
                 acc[trial['pos']] = .85
-                resp = self.weighted_choice(choices=invert_resp, weights=acc)
+                resp = exp.weighted_choice(choices=invert_resp, weights=acc)
                 trial['autoresp'] = resp  # good accuracy
-                trial['autort'] = rt(.8)  # fast responses
-        return trial_list
+                trial['autort'] = rt(.8, trialno)  # fast responses
+        return exp_plan
 
-    def draw_stimuli(self, this_trial, *args):
+    def show_stim(self):
         """
         Fully prepare the display but don't flip yet:
             - Determine which context is shown (parts or whole)
@@ -218,31 +218,32 @@ class Confsup(exp.Experiment):
         presentation events (called by :func:`during_trial`).
         """
         # first draw regular stimuli
-        odd_pos = this_trial['pos']
-        stim = self.s[this_trial['context']]
+        odd_pos = self.this_trial['pos']
+        stim = self.s[self.this_trial['context']]
         for pos in range(4):
             if pos != odd_pos:
                 stim.setPos(self.pos[pos])
                 stim.draw()  # draw now because in the next iteration we'll change pos
 
         # now draw the odd (target) stimulus
-        stim = self.s[this_trial['context'] + '_odd']
+        stim = self.s[self.this_trial['context'] + '_odd']
         stim.setPos(self.pos[odd_pos])
         stim.draw()
 
         # finally, draw the fixation
         self.s['fix'].draw()
-
-    def during_trial(self, trial_clock=None, this_trial=None, *args, **kwargs):
-        self.draw_stimuli(this_trial)
         self.win.flip()
-        if self.rp['autorun']:
-            #print '%.2f' % thisTrial['autoRT'],
-            event_keys = self.wait_for_response(rt_clock = trial_clock,
-                fake_key=[this_trial['autoresp'],this_trial['autort']])
-        else:
-            event_keys = self.wait_for_response(rt_clock = trial_clock)
+        
+        event_keys = self.wait_until_response(draw_stim=False)
         return event_keys
+        
+    def after_exp(self):
+        """
+        This is almost identical to the default `after` function.        
+        The point is to show how it looks like in case you want to
+        modify it.
+        """
+        self.show_text(text='Thank you!', auto=1)
 
 
 class Analysis(object):
@@ -250,42 +251,35 @@ class Analysis(object):
                  name='analysis',
                  info=OrderedDict([('subjid', 'confsup_')]),
                  rp=OrderedDict([('no_output', False),
-                                        ('plot', True),
-                                        ('saveplot', False),
-                                        ('subj', 'one'),
-                                        ])
+                                 ('all', False),
+                                ])
                  ):
         self.name = name
         self.info = info
         self.rp = rp
-        if self.rp['subj'] == 'all':
+        if self.rp['all']:
             self._set_all_subj()
-        self.exp = exp.Experiment(info=self.info,
-            rp=self.rp)
+        self.exp = exp.Experiment(info=self.info, rp=self.rp)
 
     def _set_all_subj(self):
-        self.info['subjid'] = ['confsup_%02d' % i for i in range(1,9)]
+        self.info['subjid'] = ['subj_%02d' % i for i in range(1,9)]
 
-    def behav(self):
+    def run(self):
         pattern = PATHS['data'] + '%s.csv'
         df = self.exp.get_behav_df(pattern=pattern)
-        agg_acc = stats.accuracy(df, cols='context', values='accuracy', yerr='subjid')
+        agg_acc = stats.accuracy(df, cols='context', values='accuracy',
+                                 yerr='subjid', order='sorted')
         agg_rt = stats.aggregate(df[df.accuracy=='correct'], cols='context',
-                                 values='rt', yerr='subjid')
-
-        if self.rp['plot'] or self.rp['saveplot']:
-            plt = plot.Plot(ncols=2)
-            plt.plot(agg_acc, kind='bar')
-            plt.plot(agg_rt, kind='bar')
-
-            if self.rp['plot']:
-                plt.show()
-            else:
-                print agg_acc
-                print agg_rt
-            if self.rp['saveplot']:
-                plt.savefig(PATHS['analysis'] + 'behav.svg')
-
-
-if __name__ == '__main__':
-    ui.Control(__name__)
+                                 values='rt', yerr='subjid', order='sorted')
+        
+        plt = plot.Plot(ncols=2)
+        if len(df.subjid.unique()) == 1:
+            kind = 'bar'
+        else:
+            kind = 'bean'
+        plt.plot(agg_acc, kind=kind, title='accuracy', ylabel='% correct')
+        plt.plot(agg_rt, kind=kind, title='response time', ylabel='seconds')
+        
+        print agg_acc
+        print agg_rt
+        plt.show()

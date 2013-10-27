@@ -9,8 +9,8 @@ as a monitor size or root path to storing data. This is intended as a more
 portable and extended version of PsychoPy's MonitorCenter.
 
 A computer is recognized by its mac address which is dependent on its
-hardware and by its name. If anything in the hardware changes, you'll see a
-warning.
+hardware and by its name. In the future versions of psychopy_ext,
+if anything in the hardware changes, you'll see a warning.
 
 # TODO: split computer configuration and defaults possibly by moving to a
 config file
@@ -51,9 +51,8 @@ elif mac == 145320949993177:  # fMRI computer
     distance = 127
     width = 60
     view_scale = [1,-1]  # top-bottom inverted
-    trigger = 5
-    defaultKeys = ['escape', trigger]
-    validResponses = {'9': 0, '8': 1, '7': 2, '6': 3}
+    default_keys['trigger'] = 5
+    valid_responses = {'9': 0, '8': 1, '7': 2, '6': 3}
 
 else:
     recognized = False
