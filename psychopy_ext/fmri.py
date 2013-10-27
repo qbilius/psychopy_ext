@@ -34,52 +34,6 @@ import exp, plot, stats
 
 
 class Analysis(object):
-    """
-    For conducting functional magnetic resonance imaging analyses.
-
-    Assumptions:
-        1. For beta- and t-values, analyses were done is SPM.
-        2. Functional runs named as `func_<runno>`, anatomicals named as
-           `struct<optional extra stuff>`, behavioral data files (or files with
-           condition assignments) as `<something>_<runno>_<runtype>.csv`
-        3. Beta-values model every condition, including fixation. But
-           t-values are computed as each conditions versus a fixation.
-        #4. Conditions are in the 'cond' column of data files, trial
-        #   duration is in 'dur'
-        5. Fixation condition is 0 (an int).
-
-    :Args:
-        - paths (dict of str:str pairs)
-            A dictionary of paths where data is stored. Expected to have at
-            least the following keys:
-                - 'analysis' (for storing analysis outputs),
-                - 'data_behav' (behavioral data with condition labels),
-                - 'data_fmri',
-                - 'rec' (for ROIs from surface reconstruction in Caret or so),
-                - 'data_rois' (for storing the extracted signals in these ROIs),
-        - tr (int or float)
-            Time of repetition during the fMRI scan. Usually 1, 2, or 3 seconds.
-
-    :Kwargs:
-        - info (dict, default: None)
-            All parameters related to participant information
-        - rp (dict, default: None)
-            All runtime parameters that you want to be able to access from GUI
-            or CLI. Expected to have at least:
-                - no_output
-                - verbose
-                - force
-        - tr (int, default: None)
-            Time of repetition of your fMRI scans. This information is not
-            reliably coded in NIfTI files, so you need to define it yourself.
-        - fmri_prefix (str, default: 'swa*')
-            Prefix of SPM output functional scans that you want to analyze.
-        - fix (int or str, default: 0)
-            Label to identify fixation condition.
-        - rois (list of str)
-            A list of ROIs to analyze. See :func:`make_roi_pattern` for
-            accepted formats.
-    """
 
     def __init__(self,
                  paths,
@@ -94,17 +48,71 @@ class Analysis(object):
                  condlabel='cond',
                  durlabel='dur'
                  ):
+        """
+        For conducting functional magnetic resonance imaging analyses.
+
+        Assumptions:
+            1. For beta- and t-values, analyses were done is SPM.
+            2. Functional runs named as `func_<runno>`, anatomicals named as
+               `struct<optional extra stuff>`, behavioral data files (or files with
+               condition assignments) as `<something>_<runno>_<runtype>.csv`
+            3. Beta-values model every condition, including fixation. But
+               t-values are computed as each conditions versus a fixation.
+
+        :Args:
+            - paths (dict of str:str pairs)
+                A dictionary of paths where data is stored. Expected to have at
+                least the following keys:
+                    - 'analysis' (for storing analysis outputs),
+                    - 'data_behav' (behavioral data with condition labels),
+                    - 'data_fmri',
+                    - 'rec' (for ROIs from surface reconstruction in Caret or so),
+                    - 'data_rois' (for storing the extracted signals in these ROIs),
+            - tr (int or float)
+                Time of repetition during the fMRI scan. Usually 1, 2, or 3 seconds.
+                This information is not
+                reliably coded in NIfTI files, so you need to define it yourself.
+
+        :Kwargs:
+            - info (dict, default: None)
+                All parameters related to participant information
+            - rp (dict, default: None)
+                All runtime parameters that you want to be able to access from GUI
+                or CLI. Expected to have at least:
+                    - no_output
+                    - verbose
+                    - force
+            - fmri_prefix (str, default: 'swa*')
+                Prefix of SPM output functional scans that you want to analyze.
+            - fix (int or str, default: 0)
+                Label to identify fixation condition.
+            - rois (list of str)
+                A list of ROIs to analyze. See :func:`make_roi_pattern` for
+                accepted formats.
+            - offset (int or dict)
+                E.g., {'V1': 4, 'V2': 4, 'V3': 4, 'LO': 3, 'pFs': 3}
+            - dur (int or dict)
+                Same format as 'offset'.
+            - condlabel (str, default: 'cond')
+                Name of the column in your data file where condition number of
+                each trial is kept.
+            - durlabel (str, default: 'dur')
+                Name of the column in your data file where duration  of each trial
+                is kept.
+        """
+
         # minimal parameters that Analysis expects in info and rp
         self.info = OrderedDict([
             ('subjid', 'subj'),
-            ('runtype', 'main'),
+            ('runtype', ('main', 'loc')),
             ])
         self.rp = OrderedDict([
-            ('method', 'timecourse'),
-            ('values', 'raw'),
+            ('method', ('timecourse', 'corr', 'svm')),
+            ('values', ('raw', 'beta', 't')),
             ('no_output', False),
             ('debug', False),
             ('verbose', True),
+            ('plot', True),
             ('visualize', False),
             ('force', False),
             ('dry', False),
@@ -145,7 +153,7 @@ class Analysis(object):
 
         :Returns:
             A DataFrame with the output of a particular analysis in the
-            `subjResp` column, and a file name where that data is stored.
+            `subj_resp` column, and a file name where that data is stored.
 
         """
         df, df_fname, loaded = self.get_fmri_df()
@@ -222,7 +230,7 @@ class Analysis(object):
             agg = self.get_agg(df, **kwargs)
             #agg = 1 - 2*agg
             plt = plot.Plot()
-            axes = plt.plot(agg, subplots='ROI', kind='bar',
+            axes = plt.plot(agg, subplots='roi', kind='bar',
                             ylabel='dissimilarity')
             # mark chance level
             if self.rp['method'] == 'svm':
@@ -237,7 +245,7 @@ class Analysis(object):
             if self.rp['method'] in ['corr','svm']:
                 #matrix = self.get_data(df, kind='matrix')
                 mtx = plot.Plot(kind='matrix')
-                axes = mtx.plot(agg, subplots='ROI', kind='matrix')
+                axes = mtx.plot(agg, subplots='roi', kind='matrix')
                 for ax in axes:
                     ax.set_xlabel('')
                     ax.set_ylabel('')
@@ -294,7 +302,8 @@ class Analysis(object):
                 that in the value parameter like ``values='raw_3'`` which will
                 be useful in order not to confuse output files (they get
                 prefixes based on the value name).
-                e.g.:
+                e.g.::
+
                     offset = {'V1': 4, 'V2': 4, 'V3': 4, 'LO': 3, 'pFs': 3}
                     dur = 1
         """
@@ -375,7 +384,7 @@ class Analysis(object):
                         raise NotImplementedError('Analysis for %s values is not '
                                                   'implemented')
 
-                    header = ['subjid', 'ROI'] + header
+                    header = ['subjid', 'roi'] + header
                     for line in result:
                         line = [subjid, ROI_list[1]] + line
                         temp_res.append(line)
@@ -553,8 +562,6 @@ class Analysis(object):
                 chunks = np.tile(np.arange(nruns), len(labels)).tolist(),
                 mask = thismask
                 )
-            #ds2 = mvpa2.suite.h5load('/media/qbilius/backup/D/data/twolines/fmri2/twolines2_03/data_rois/V1_t.gz.hdf5')
-            #import pdb; pdb.set_trace()
         else:
             raise Exception('values %s are not recognized' % values)
         if not self.rp['no_output']:  # save the extracted data
@@ -763,7 +770,7 @@ class Analysis(object):
         if np.any(baseline<0):
             warnings.warn('Some baseline values are negative')
         # now plot the mean timeseries and standard error
-        header = ['cond', 'time', 'subjResp']
+        header = ['cond', 'time', 'subj_resp']
         results = []
         for cond in conds.UT:
             evds_mean = conds[np.array([t == cond for t in conds.sa.targets])].samples
@@ -790,7 +797,7 @@ class Analysis(object):
         :Returns:
             fMRI signal for each condition (against the fixation condition)
         """
-        header = ['cond', 'subjResp']
+        header = ['cond', 'subj_resp']
         #results = []
 
         # calculate the mean per target per chunk (across trials)
@@ -857,7 +864,7 @@ class Analysis(object):
                 - iter: iteration number
                 - stim1.cond: first condition
                 - stim2.cond: second condition
-                - subjResp: one minus the correlation value over two
+                - subj_resp: one minus the correlation value over two
                     (0: patterns identical, 1: patterns have nothing in common)
         """
 
@@ -877,7 +884,7 @@ class Analysis(object):
                    [-1] * (len(evds_avg.UC)%2)
                    # for odd number of chunks (will get rid of one)
         targets = evds_avg.UT
-        header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
+        header = ['iter', 'stim1.cond', 'stim2.cond', 'subj_resp']
         results = []
         for n in range(nIter):
             np.random.shuffle(runtype)
@@ -929,7 +936,7 @@ class Analysis(object):
                 - iter: iteration number
                 - stim1.cond: first condition
                 - stim2.cond: second condition
-                - subjResp: one minus the correlation value
+                - subj_resp: one minus the correlation value
         """
         # calculate the mean per target per chunk (across trials)
         run_averager = mvpa2.suite.mean_group_sample(['targets','chunks'])
@@ -959,7 +966,7 @@ class Analysis(object):
         ###
 
         #targets = evds_avg.UT
-        header = ['iter', 'stim1.cond', 'stim2.cond', 'subjResp']
+        header = ['iter', 'stim1.cond', 'stim2.cond', 'subj_resp']
         results = []
         for n in range(nIter):
             print n,
@@ -1128,7 +1135,7 @@ class Analysis(object):
 
     def searchlight(self, ds):
         """ Basic searchlight analysis
-        
+
         .. warning:: does not work yet
         """
         run_averager = mvpa2.suite.mean_group_sample(['targets', 'chunks'])
@@ -1365,8 +1372,8 @@ class Analysis(object):
 
         """
 
-        if subROIs: names = ['subjid','ROI','subROI','x','y','z','numVoxels']
-        else: names = ['subjid','ROI','x','y','z','numVoxels']
+        if subROIs: names = ['subjid','roi','subROI','x','y','z','numVoxels']
+        else: names = ['subjid','roi','x','y','z','numVoxels']
         recs = []
 
         # allCoords = np.zeros((1,4))
@@ -1462,30 +1469,31 @@ class Analysis(object):
 
 
 class Preproc(object):
-    """
-    Generates batch scripts from SPM preprocessing.
 
-    .. note:: Presently, only batch scripts for statistical analyses in SPM
-              are available.
-
-    :Args:
-        paths (dict of str:str pairs)
-            A dictionary of paths where data is stored. Expected to have at
-            least the following keys:
-                - 'fmri_root' for moving the original realignment parameter
-                  (prefix `rp`) file
-                - 'data_behav' - where to find behavioral data with condition
-                  labels (passed`condcol` variable), onsets, and durations
-                - 'data_fmri' - where to find fMRI functional data
-                - 'rec' (for ROIs from surface reconstruction in Caret or so)
-                - 'data_rois' (for storing the extracted signals in these ROIs)
-
-    """
     def __init__(self,
                  paths,
                  info=None,
                  rp=None
                  ):
+        """
+        Generates batch scripts from SPM preprocessing.
+
+        .. note:: Presently, only batch scripts for statistical analyses in SPM
+                  are available.
+
+        :Args:
+            paths (dict of str:str pairs)
+                A dictionary of paths where data is stored. Expected to have at
+                least the following keys:
+                    - 'fmri_root' for moving the original realignment parameter
+                      (prefix `rp`) file
+                    - 'data_behav' - where to find behavioral data with condition
+                      labels (passed`condcol` variable), onsets, and durations
+                    - 'data_fmri' - where to find fMRI functional data
+                    - 'rec' (for ROIs from surface reconstruction in Caret or so)
+                    - 'data_rois' (for storing the extracted signals in these ROIs)
+
+        """
         self.info = OrderedDict([
             ('subjid', 'subj'),
             ('runtype', 'main'),
@@ -1737,7 +1745,7 @@ def plot_timecourse(df, plt=None, cols='name', **kwargs):
     #axes = axes.ravel()
     #for i, ax in enumerate(plt.axes):
         #ax.plot(range(5), np.arange(5)*i)
-    agg = stats.aggregate(df, subplots='ROI', values='subjResp', rows='time',
+    agg = stats.aggregate(df, subplots='roi', values='subj_resp', rows='time',
                           cols=cols, yerr='subjid')
     ax = plt.plot(agg, kind='line',
         xlabel='Time since trial onset, s',
