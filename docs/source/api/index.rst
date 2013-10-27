@@ -1,80 +1,291 @@
+.. currentmodule:: psychopy_ext
+
+.. _api:
+
 API reference
 =============
 
+----------
 Experiment
 ----------
+.. automodule:: psychopy_ext.exp
 
-.. currentmodule:: psychopy_ext.exp
+Experiment
+~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
 
-   Experiment
+   Experiment.__init__
+   Experiment.set_logging
+   Experiment.create_win
+   Experiment.setup
+   Experiment.before_exp
+   Experiment.run
+   Experiment.run_exp
+   Experiment.after_exp
+   Experiment.autorun
+   Experiment.commit
+   Experiment.commitpush
+
+Task
+~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Task.__init__
+   Task.setup_task
+   Task.create_fixation
+   Task.create_stimuli
+   Task.create_trial
+   Task.create_exp_plan
+   Task.wait_until_response
+   Task.idle_event
+   Task.feedback
+   Task.wait
+   Task.check_continue
+   Task.set_autorun
+   Task.set_TrialHandler
+   Task.show_text
+   Task.setup_task
+   Task.get_blocks
+   Task.before_task
+   Task.run_task
+   Task.after_task
+   Task.before_block
+   Task.run_block
+   Task.after_block
+   Task.run_trial
+   Task.run_event
+   Task.last_keypress
+   Task.post_trial
+   Task.get_behav_df
+   Task.quit   
+
+Helper classes
+~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Datafile
+   Event
    ThickShapeStim
    GroupStim
-   default_computer
-   run_tests
-   set_paths
    OrderedDict
-   combinations
-   combinations_with_replacement
 
-
-fMRI
-----
-.. currentmodule:: psychopy_ext.fmri
+Helper functions
+~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
 
-   Analysis
-   Preproc
+   default_computer
+   set_paths
+   get_behav_df
+   combinations
+   combinations_with_replacement
+   try_makedirs
+   signal_det
+   invert_dict
+   get_mon_sizes
+   get_para_no
+   get_unique_trials   
+   latin_square
+   make_para
+
+
+--------------------
+fMRI analyses (beta)
+--------------------
+.. automodule:: psychopy_ext.fmri
+
+Preproc
+~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Preproc.__init__
+   Preproc.split_rp
+   Preproc.gen_stats_batch
+
+Analysis
+~~~~~~~~
+.. Analysis.plot_chunks
+.. Analysis.genFakeData
+
+.. autosummary::
+   :toctree: generated/
+
+   Analysis.__init__
+   Analysis.run
+   Analysis.get_fmri_df
+   Analysis.get_behav_df
+   Analysis.plot
+   Analysis.run_method
+   Analysis.get_mri_data
+   Analysis.extract_samples
+   Analysis.extract_labels
+   Analysis.fmri_dataset
+   Analysis.detrend
+   Analysis.ds2evds
+   Analysis.timecourse
+   Analysis.signal
+   Analysis.univariate
+   Analysis.correlation
+   Analysis.svm
+   Analysis.plot_roi
+   Analysis.read_csvs
+
+Helper functions
+~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
    plot_timecourse
-   plot_psc
+   make_roi_pattern
 
 
+------
 Models
 ------
 
-.. currentmodule:: psychopy_ext.models
+.. automodule:: psychopy_ext.models
+
 .. autosummary::
    :toctree: generated/
 
-    Model
-    Pixelwise
-    GaborJet
-    HMAX
+Base Model class
+~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
 
+   Model.get_teststim
+   Model.train
+   Model.test
+   Model.dissimilarity
+   Model._dis_simple
+   Model._dis_gj_simple
+   Model._dis_fast
+   Model.input2array
+   Model._prepare_im
+   Model.compare
+
+Pixel-wise model
+~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Pixelwise.run
+
+GaborJet model
+~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   GaborJet.__init__
+   GaborJet.run
+   GaborJet.test
+   GaborJet.dissimilarity
+   GaborJet.compare
+
+HMAX model
+~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   HMAX.__init__
+   HMAX.run
+   HMAX.train
+   HMAX.test
+   HMAX.get_gaussians
+   HMAX.get_gaussians_matlab
+   HMAX.get_gabors
+   HMAX.get_circle
+   HMAX.addZeros
+   HMAX.get_S1
+   HMAX.get_C1
+   HMAX.get_S2
+   HMAX.get_C2
+   HMAX.get_VTU
+   HMAX.compare
+
+Helper functions
+~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+    get_model
+
+--------------------
 Statistical analyses
 --------------------
-.. currentmodule:: psychopy_ext.stats
+.. automodule:: psychopy_ext.stats
+
 .. autosummary::
    :toctree: generated/
 
    aggregate
    accuracy
    confidence
+   get_star
+   reorder
+   df_fromdict
    nan_outliers
-   stats_test
-   p_corr
    oneway_anova
+   p_corr
    reliability
    mds
+   classical_mds
 
 
-
+---------------
 Pretty plotting
 ---------------
 
-.. currentmodule:: psychopy_ext.plot
+.. automodule:: psychopy_ext.plot
+
+
+Plotting
+~~~~~~~~
 .. autosummary::
    :toctree: generated/
 
-   Plot
+   Plot.__init__
+   Plot.plot
+   Plot.bar_plot
+   Plot.line_plot
+   Plot.scatter_plot
+   Plot.histogram
+   Plot.matrix_plot
+   Plot.mds_plot
+   Plot.bean_plot
 
+Helper functions
+~~~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Plot.get_ax
+   Plot.next
+   Plot.sample_paired
+   Plot.get_colors
+   Plot.hide_plots
+   Plot.add_inner_title
+   Plot.set_legend_pos
+   Plot.show
+   Plot.printfig
+
+
+--------------
 User interface
 --------------
 
-.. currentmodule:: psychopy_ext.ui
+.. automodule:: psychopy_ext.ui
+
 .. autosummary::
    :toctree: generated/
 
-    Control
+   Choices
+   Control.__init__
+   Control.run_builtin
+   Control.cmd
+   Control.app
+   

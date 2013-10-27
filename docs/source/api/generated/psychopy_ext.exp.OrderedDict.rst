@@ -5,11 +5,14 @@ psychopy_ext.exp.OrderedDict
 
 .. autoclass:: OrderedDict
 
+   
+   .. automethod:: __init__
 
+   
    .. rubric:: Methods
 
    .. autosummary::
-
+   
       ~OrderedDict.__init__
       ~OrderedDict.clear
       ~OrderedDict.copy
@@ -29,8 +32,9 @@ psychopy_ext.exp.OrderedDict
       ~OrderedDict.viewitems
       ~OrderedDict.viewkeys
       ~OrderedDict.viewvalues
+   
+   
 
-
-
-
-
+   
+   
+   

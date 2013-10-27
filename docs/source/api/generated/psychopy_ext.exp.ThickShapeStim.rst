@@ -5,11 +5,14 @@ psychopy_ext.exp.ThickShapeStim
 
 .. autoclass:: ThickShapeStim
 
+   
+   .. automethod:: __init__
 
+   
    .. rubric:: Methods
 
    .. autosummary::
-
+   
       ~ThickShapeStim.__init__
       ~ThickShapeStim.contains
       ~ThickShapeStim.draw
@@ -32,8 +35,9 @@ psychopy_ext.exp.ThickShapeStim
       ~ThickShapeStim.setSize
       ~ThickShapeStim.setUseShaders
       ~ThickShapeStim.setVertices
+   
+   
 
-
-
-
-
+   
+   
+   

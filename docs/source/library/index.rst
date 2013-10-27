@@ -1,3 +1,7 @@
+=============
+Documentation
+=============
+
 .. toctree::
    :maxdepth: 3
 
@@ -5,6 +9,8 @@
    project
    computer
    experiment
+   stats
    plot
+   models
    ui
 

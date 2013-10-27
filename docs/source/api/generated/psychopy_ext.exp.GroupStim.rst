@@ -5,14 +5,18 @@ psychopy_ext.exp.GroupStim
 
 .. autoclass:: GroupStim
 
+   
+   .. automethod:: __init__
 
+   
    .. rubric:: Methods
 
    .. autosummary::
-
+   
       ~GroupStim.__init__
+   
+   
 
-
-
-
-
+   
+   
+   
