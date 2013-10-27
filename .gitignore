@@ -1,6 +1,7 @@
 *.py[cod]
 *.py~
 *.pkl
+*.xlsx
 
 # temporary rst files
 *.rst~

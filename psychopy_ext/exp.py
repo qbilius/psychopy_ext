@@ -790,7 +790,7 @@ class Task(TrialHandler):
             - wait_stim (stimulus or a list of stimuli, default: None)
                 During this waiting, which stimuli should be shown.
                 Usually, it would be a fixation spot.
-            - **kwargs
+            - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         if len(self.parent.tasks) > 1:
@@ -839,7 +839,7 @@ class Task(TrialHandler):
             - auto (float, default: 1)
                 Duration of time-out of the instructions screen,
                 in seconds.
-            - **kwargs
+            - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         if text is not None:
@@ -903,7 +903,7 @@ class Task(TrialHandler):
             - text (str, default: None)
                 Text to show. If None, will default to 
                 'Pause. Hit ``trigger`` to continue.'
-            - **kwargs
+            - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         # clear trial counting in the terminal
@@ -1475,7 +1475,7 @@ class Experiment(ExperimentHandler, Task):
             - wait_stim (stimulus or a list of stimuli, default: None)
                 During this waiting, which stimuli should be shown.
                 Usually, it would be a fixation spot.
-            - **kwargs
+            - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         if wait_stim is None:
@@ -1531,7 +1531,7 @@ class Experiment(ExperimentHandler, Task):
             - auto (float, default: 1)
                 Duration of time-out of the instructions screen,
                 in seconds.   
-            - **kwargs
+            - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         if text is None:

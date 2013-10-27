@@ -52,22 +52,25 @@ class Analysis(object):
         For conducting functional magnetic resonance imaging analyses.
 
         Assumptions:
-            1. For beta- and t-values, analyses were done is SPM.
-            2. Functional runs named as `func_<runno>`, anatomicals named as
-               `struct<optional extra stuff>`, behavioral data files (or files with
-               condition assignments) as `<something>_<runno>_<runtype>.csv`
-            3. Beta-values model every condition, including fixation. But
-               t-values are computed as each conditions versus a fixation.
+        
+        1. For beta- and t-values, analyses were done is SPM.
+        2. Functional runs named as `func_<runno>`, anatomicals named as
+           `struct<optional extra stuff>`, behavioral data files (or files with
+           condition assignments) as `<something>_<runno>_<runtype>.csv`
+        3. Beta-values model every condition, including fixation. But
+           t-values are computed as each conditions versus a fixation.
 
         :Args:
             - paths (dict of str:str pairs)
                 A dictionary of paths where data is stored. Expected to have at
                 least the following keys:
-                    - 'analysis' (for storing analysis outputs),
-                    - 'data_behav' (behavioral data with condition labels),
-                    - 'data_fmri',
-                    - 'rec' (for ROIs from surface reconstruction in Caret or so),
-                    - 'data_rois' (for storing the extracted signals in these ROIs),
+                
+                - 'analysis' (for storing analysis outputs),
+                - 'data_behav' (behavioral data with condition labels),
+                - 'data_fmri',
+                - 'rec' (for ROIs from surface reconstruction in Caret or so),
+                - 'data_rois' (for storing the extracted signals in these ROIs)
+                    
             - tr (int or float)
                 Time of repetition during the fMRI scan. Usually 1, 2, or 3 seconds.
                 This information is not
@@ -79,9 +82,11 @@ class Analysis(object):
             - rp (dict, default: None)
                 All runtime parameters that you want to be able to access from GUI
                 or CLI. Expected to have at least:
-                    - no_output
-                    - verbose
-                    - force
+                
+                - no_output
+                - verbose
+                - force
+                    
             - fmri_prefix (str, default: 'swa*')
                 Prefix of SPM output functional scans that you want to analyze.
             - fix (int or str, default: 0)
@@ -1485,13 +1490,14 @@ class Preproc(object):
             paths (dict of str:str pairs)
                 A dictionary of paths where data is stored. Expected to have at
                 least the following keys:
-                    - 'fmri_root' for moving the original realignment parameter
-                      (prefix `rp`) file
-                    - 'data_behav' - where to find behavioral data with condition
-                      labels (passed`condcol` variable), onsets, and durations
-                    - 'data_fmri' - where to find fMRI functional data
-                    - 'rec' (for ROIs from surface reconstruction in Caret or so)
-                    - 'data_rois' (for storing the extracted signals in these ROIs)
+                
+                - 'fmri_root' for moving the original realignment parameter
+                  (prefix `rp`) file
+                - 'data_behav' - where to find behavioral data with condition
+                  labels (passed`condcol` variable), onsets, and durations
+                - 'data_fmri' - where to find fMRI functional data
+                - 'rec' (for ROIs from surface reconstruction in Caret or so)
+                - 'data_rois' (for storing the extracted signals in these ROIs)
 
         """
         self.info = OrderedDict([
