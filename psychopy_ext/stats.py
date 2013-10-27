@@ -15,6 +15,8 @@ import numpy as np
 import scipy.stats
 import pandas
 
+import plot
+
 try:
     import OrderedDict
 except:
@@ -56,12 +58,14 @@ def aggregate(df, rows=None, cols=None, values=None,
     :Returns:
         A `pandas.DataFrame` where data has been aggregated in the following
         MultiIndex format:
-            - columns:
-                - level 0: subplots
-                - level 1 to n-2: rows
-                - level n-1: column
-            - rows:
-                yerr
+        - columns:
+        
+          - level 0: subplots
+          - level 1 to n-2: rows
+          - level n-1: column
+          
+        - rows:
+            yerr
 
         This format makes it easy to do further computations such as mean over
         `yerr`: a simple `df.mean()` will do the trick.
@@ -89,14 +93,16 @@ def aggregate(df, rows=None, cols=None, values=None,
             raise
     agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
-    g = 0
     groups = [('subplots', [subplots]), ('rows', rows), ('cols', cols),
               ('yerr', yerr)]
+    index_names = agg.index.names
+    g = 0
     for group in groups:
         for item in group[1]:
             if item is not None:
-                agg.index.names[g] = group[0] + '.' + item
+                index_names[g] = group[0] + '.' + item
                 g += 1
+    agg.index.names = index_names
 
     if yerr[0] is not None:  # if yerr present, yerr is in rows, the rest in cols
         for yr in yerr:
@@ -104,24 +110,15 @@ def aggregate(df, rows=None, cols=None, values=None,
         # seems like a pandas bug here for not naming levels properly
         agg.columns.names = ['yerr.'+yr for yr in yerr]
         agg = agg.T
-    else:  # then rows should become rows, and cols should be cols :)
-        if unstack:
-            names = []
-            for name in agg.index.names:
-                if name.startswith('cols.'):
-                    agg = agg.unstack(level=name)
-                    names.append(name)
-            agg.columns.names = names
-        else:
-            agg = pandas.DataFrame(agg).T
-
+    else:
+        agg = pandas.DataFrame(agg).T
+        
     if order != 'sorted':
         names = agg.columns.names  # store it; will need it later
         if isinstance(order, dict):
             items = order
         else:
             items = dict([(col, order) for col in agg.columns.names])
-
         for level, level_ord in items.items():
             if isinstance(level_ord, str):
                 if level_ord == 'natural':
@@ -130,8 +127,12 @@ def aggregate(df, rows=None, cols=None, values=None,
             else:
                 thisord = level_ord
             agg = reorder(agg, level=level, order=thisord)
-            agg.columns.names = names  # buggy pandas
-
+            agg.columns.names = names  # buggy pandas        
+        
+    # rows should become rows, and cols should be cols if so desired
+    if yerr[0] is None and unstack:
+        agg = plot._stack_levels(agg, 'rows.')
+            
     if not add_names:
         names = []
         for name in agg.columns.names:
@@ -154,9 +155,9 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     :Kwargs:
         - values (str or list of str, default: None)
             Name(s) of the column(s) that is aggregated
-        - correct (str or list of str, default: None)
+        - correct (str or a number or list of str or numbers, default: None)
             Labels that are treated as correct responses.
-        - incorrect (str or list of str, default: None)
+        - incorrect (str or a number or list of str or numbers, default: None)
             Labels that are treated as incorrect responses.
         - kwargs
             Anything else you want to pass to :func:`aggregate`. Note that
@@ -175,7 +176,7 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
         incorrect = [incorrect]
     corr = df[df[values].isin(correct)]
     if len(corr) == 0:
-        raise Exception('There are no %s responses' % correct)
+        raise Exception('There are no %s responses' % correct[0])
     agg_corr = aggregate(corr, aggfunc=np.size, values=values, **kwargs)
     df_all = df[df[values].isin(correct + incorrect)]
     agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
