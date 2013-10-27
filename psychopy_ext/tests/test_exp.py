@@ -55,8 +55,7 @@ class TestExp(unittest.TestCase):
         
     def test_other(self):
         self.assertEqual(exp.signal_det('5', '5'), 'correct')
-        exp.get_mon_sizes()
-        
+        exp.get_mon_sizes()        
 
 
 class MyExp(exp.Experiment):
@@ -65,8 +64,8 @@ class MyExp(exp.Experiment):
     """
     def __init__(self, name='exp', **kwargs):
         # initialize the default Experiment class with our parameters
-        super(MyExp, self).__init__(name=name, **kwargs)
-        self.paths = PATHS
+        super(MyExp, self).__init__(name=name, paths=PATHS,
+                                    computer=exp.default_computer, **kwargs)
         self.computer.valid_responses = {'1': 0, 'd': 1}
 
     def create_stimuli(self):
@@ -85,43 +84,35 @@ class MyExp(exp.Experiment):
     def create_trial(self):
         """Create trial structure
         """
-        self.trial = [{'dur': 0.300,  # in seconds
-                       'display': self.s['fix'],
-                       'func': self.idle_event},
-
-                      {'dur': 0,  # this means present until response
-                       'display': [self.s['stim1'], self.s['both']],
-                       'func': self.during_trial},
-
-                      {'dur': .300,
-                       'display': self.s['fix'],
-                       'func': self.feedback}
+        self.trial = [exp.Event(self,
+                                dur=0.300,  # in seconds
+                                display=self.s['fix'],
+                                func=self.idle_event),
+                      exp.Event(self,
+                                dur=0,  # this means present until response
+                                display=[self.s['stim1'], self.s['both']],
+                                func=self.wait_until_response),
+                      exp.Event(self,
+                                dur=.300,
+                                display=self.s['fix'],
+                                func=self.feedback)
                      ]
 
-    def create_trial_list(self):
+    def create_exp_plan(self):
         """Define each trial's parameters
         """
-        self.trial_dur = sum(event['dur'] for event in self.trial)
         exp_plan = []
         for cond in range(8):
             exp_plan.append(OrderedDict([
                 ('cond', cond),
                 ('onset', ''),
-                ('dur', self.trial_dur),
+                ('dur', ''),
                 ('corr_resp', 1),
                 ('subj_resp', ''),
                 ('accuracy', ''),
                 ('rt', ''),
                 ]))
-        self.trialList = exp_plan
-        
-    def during_trial(self, trial_clock=None, this_trial=None, 
-                     this_event=None, **kwargs):
-        for stim in this_event['display']:
-            stim.draw()
-        self.win.flip()
-        resp = self.wait_for_response(trial_clock, this_trial)
-        return resp
+        self.exp_plan = exp_plan
 
 
 if __name__ == '__main__':

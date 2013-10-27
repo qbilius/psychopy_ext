@@ -16,8 +16,14 @@ from UserDict import DictMixin
 
 import numpy as np
 import wx
+
+# for HTML rendering
+import pyglet
+import textwrap
+from HTMLParser import HTMLParser
+
 import psychopy.info
-from psychopy import visual, core, event, logging, misc, monitors
+from psychopy import visual, core, event, logging, misc, monitors, data
 from psychopy.data import TrialHandler, ExperimentHandler
 
 import ui
@@ -74,7 +80,6 @@ def set_paths(exp_root='.', computer=default_computer, fmri_rel=''):
         paths (dict):
             A dictionary of paths.
     """
-    run_tests(computer)
     fmri_root = os.path.join(computer.root, fmri_rel)
     if exp_root != '':
         exp_root += '/'
@@ -133,160 +138,85 @@ def run_tests(computer):
                    #"file to " % mac
 
 
-class _Common(object):
-
-    def __init__(self):
-        self.can_exit = 0
-
-    def show_instructions(self, text='', wait=0, wait_stim=None, auto=0):
-        """
-        Displays instructions on the screen.
-
-        :Kwargs:
-            - text (str, default: '')
-                Text to be displayed
-            - wait (int, default: 0)
-                Seconds to wait after removing the text from the screen after
-                hitting a spacebar (or a `computer.default_keys['trigger']`)
-            - wait_stim (a psychopy stimuli object or their list, default: None)
-                Stimuli to show while waiting after the trigger. This is used
-                for showing a fixation spot for people to get used to it.
-        """
-        # for some graphics drivers (e.g., mine:)
-        # draw() command needs to be invoked once
-        # before it can draw properly
-        visual.TextStim(self.win, text='').draw()
-        self.win.flip()
-
-        instructions = visual.TextStim(self.win, text=text,
-            color='white', height=20, units='pix', pos=(0,0),
-            wrapWidth=30*20)
-        instructions.draw()
-        self.win.flip()
-
-        if auto > 0:  # show text and blank out
-            if self.rp['autorun']:
-                auto /= self.rp['autorun']
-            core.wait(auto)
-        elif not self.rp['autorun'] or not self.rp['unittest']:
-            this_key = None
-            while this_key != self.computer.default_keys['trigger']:
-                this_key = self.last_keypress()
-            if self.rp['autorun']:
-                wait /= self.rp['autorun']
-        self.win.flip()
-
-        if wait_stim is not None:
-            if not isinstance(wait_stim, tuple) and not isinstance(wait_stim, list):
-                wait_stim = [wait_stim]
-            for stim in wait_stim:
-                stim.draw()
-            self.win.flip()
-        core.wait(wait)  # wait a little bit before starting the experiment
-
-    def last_keypress(self, keylist=None):
-        """
-        Extract the last key pressed from the event list.
-
-        If escape is pressed, quits.
-
-        :Kwargs:
-            keylist (list of str, default: `self.computer.default_keys`)
-                A list of keys that are recognized. Any other keys pressed will
-                not matter.
-
-        :Returns:
-            An str of a last pressed key or None if nothing has been pressed.
-        """
-        if keylist is None:
-            keylist = self.computer.default_keys.values()
-        else:
-            keylist.extend(self.computer.default_keys.values())
-        keys = []
-        for key in keylist:
-            if isinstance(key, (tuple, list)):
-                keys.append(key)
-            else:
-                keys.append([key])
-        # keylist might have key combinations; get rid of them for now
-        keylist_flat = []
-        for key in keys:
-            keylist_flat.extend(key)
-
-        this_keylist = event.getKeys(keyList=keylist_flat)
-        if len(this_keylist) > 0:
-            this_key = this_keylist.pop()
-            exit_keys = self.computer.default_keys['exit']
-            if this_key in exit_keys:
-                if self.can_exit < len(exit_keys):
-                    if exit_keys[self.can_exit] == this_key:
-                        if self.can_exit == len(exit_keys) - 1:
-                            print  # in case there was anything without \n
-                            self.quit()
-                        else:
-                            self.can_exit += 1
-                    else:
-                        self.can_exit = 0
-                else:
-                    self.can_exit = 0
-            else:
-                self.can_exit = 0
-                return this_key
-        else:
-            return None
-
-    def quit(self):
-        """What to do when exit is requested.
-        """
-        logging.warning('Premature exit requested by user.')
-        self.win.close()
-        core.quit()
-        # redefine core.quit() so that an App window would not be killed
-        #logging.flush()
-        #for thisThread in threading.enumerate():
-            #if hasattr(thisThread,'stop') and hasattr(thisThread,'running'):
-                ##this is one of our event threads - kill it and wait for success
-                #thisThread.stop()
-                #while thisThread.running==0:
-                    #pass#wait until it has properly finished polling
-        #sys.exit(0)
-
-class Task(TrialHandler, _Common):
+class Task(TrialHandler):
 
     def __init__(self,
-                 #win,
-                 #log=None,
-                 #computer=default_computer,
-                 parent,
-                 info=None,
-                 #extraInfo=None,
-                 rp=None,
-                 instructions={'text': '', 'wait': 0},
-
-                 #parent=None,
+                 parent,                 
                  name='',
                  version='0.1',
-                 nreps=1,
                  method='random',
+                 data_fname=None,
+                 blockcol=None
                  ):
-        _Common.__init__(self)
+        """
+        An extension of TrialHandler with many useful functions.
+        
+        :Args:
+            parent (:class:`Experiment`)
+                The Experiment to which this Tast belongs.
+                
+        :Kwargs:
+            - name (str, default: '')
+                Name of the task. Currently not used anywhere.
+            - version (str, default: '0.1')
+                Version of your experiment.
+            - method ({'sequential', 'random'}, default: 'random')
+                Order of trials:
+                
+                    - sequential: trials and blocks presented sequentially
+                    - random: trials presented randomly, blocks sequentially
+                    - fullRandom: converted to 'random'
+                    
+                Note that there is no explicit possibility to randomize
+                the order of blocks. This is intentional because you
+                in fact define block order in the `blockcol`.
+                    
+            - data_fname (str, default=None)
+                The name of the main data file for storing output. If None,
+                reuses :class:`~psychopy_ext.exp.Datafile` instance from
+                its parent; otherwise, a new one is created 
+                (stored in ``self.datafile``).
+            - blockcol (str, default: None)
+                Column name in `self.exp_plan` that defines which trial
+                should be presented during which block.
+        """
         self.parent = parent
         self.computer = self.parent.computer
         self.paths = self.parent.paths
 
         self.name = name
         self.version = version
-        self.instructions = instructions
-        self.nReps = nreps
-        self.method = method
+        self.nReps = 1  # fixed
+        
+        self.method = method        
+        if method == 'randomFull':
+            self.method = 'random'
+            
+        if data_fname is None:
+            self.datafile = parent.datafile
+        else:
+            self.datafile = Datafile(data_fname)
+        self.blockcol = blockcol        
+        self.computer.valid_responses = parent.computer.valid_responses
+        
+        self._exit_key_no = 0
+        self.blocks = []
 
-        self.info = parent.info
+        #self.info = parent.info                
         #self.extraInfo = self.info  # just for compatibility with PsychoPy
-        self.rp = parent.rp
-        if info is not None:
-            self.info.update(info)
-        if rp is not None:
-            self.rp.update(rp)
+        #self.rp = parent.rp        
+            
+    def __str__(self, **kwargs):
+        """string representation of the object"""
+        return 'psychopy_ext.exp.Task'
+
+    def quit(self, message=''):
+        """What to do when exit is requested.
+        """        
+        print  # in case there was anything without \n
+        logging.warning(message)
+        self.win.close()
+        core.quit()
 
     def setup_task(self):
         """
@@ -309,36 +239,132 @@ class Task(TrialHandler, _Common):
                 presented on that window without closing and reopening it
                 between the sessions.
         """
-        if self.parent._initialized:
-            self.win = self.parent.win
-            self.logfile = self.parent.logfile
-            self.info = self.parent.info
-            self.rp = self.parent.rp
-            self.seed = self.parent.seed
-            try:
-                self.valid_responses = self.computer.valid_responses
-            except:
-                self.valid_responses = self.parent.valid_responses
-
-            self.create_stimuli()
-            self.create_trial()
-            self.create_trial_list()
-            if not hasattr(self, 'trial_dur'):
-                self.trial_dur = sum(ev['dur'] for ev in self.trial)
-            if self.rp['autorun']:
-                self.trialList = self.set_autorun(self.trialList)
-
-            #self.set_TrialHandler()
-        else:
+        if not self.parent._initialized:
             raise Exception('You must first call Experiment.setup()')
-        #dataFileName=self.paths['data']%self.info['subjid'])
+            
+        self.win = self.parent.win
+        self.logfile = self.parent.logfile            
+        self.info = self.parent.info
+        self.rp = self.parent.rp 
+        self.datafile.writeable = not self.rp['no_output']       
 
-        ## guess participant ID based on the already completed sessions
-        #self.info['subjid'] = self.guess_participant(
-            #self.paths['data'],
-            #default_subjid=self.info['subjid'])
+        self.create_stimuli()
+        self.create_trial()
+        if not hasattr(self, 'trial'):
+            raise Exception('self.trial variable must be created '
+                            'with the self.create_trial() method')
+        # for backward compatibility: convert event dict into Event
+        if isinstance(self.trial[0], dict):
+            self.trial = [Event._fromdict(self, ev) for ev in self.trial]   
+                     
+        self.create_exp_plan()
+        if not hasattr(self, 'exp_plan'):
+            raise Exception('self.exp_plan variable must be created '
+                            'with the self.create_exp_plan() method')
+            
+        ## convert Event.dur to a list of exp_plan length
+        #for ev in self.trial:
+            #if isinstance(ev.dur, (int, float)):
+                #ev.dur = [ev.dur] * len(self.exp_plan)        
+            
+        # determine if syncing to global time is necessary
+        self.global_timing = True
+        for ev in self.trial:
+            # if event sits there waiting, global time does not apply
+            if np.any(ev.dur == 0) or np.any(np.isinf(ev.dur)):
+                self.global_timing = False
+                break
+                
+        if self.rp['autorun']:
+            # speed up the experiment
+            for ev in self.trial:  # speed up each event
+                #ev.dur = map(lambda x: float(x)/self.rp['autorun'], ev.dur)
+                ev.dur /= self.rp['autorun']
+            self.exp_plan = self.set_autorun(self.exp_plan)
+            
+        self.get_blocks()
+            
+    def show_text(self, text='', wait=0, wait_stim=None, auto=0):
+        """
+        Presents an instructions screen.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show.
+            - wait (float, default: 0)
+                How long to wait after the end of showing instructions,
+                in seconds.
+            - wait_stim (stimulus or a list of stimuli, default: None)
+                During this waiting, which stimuli should be shown.
+                Usually, it would be a fixation spot.
+            - auto (float, default: 0)
+                Duration of time-out of the instructions screen,
+                in seconds.
+        """
+        # for some graphics drivers (e.g., mine:)
+        # draw() command needs to be invoked once
+        # before it can draw properly
+        visual.TextStim(self.win, text='').draw()
+        self.win.flip()
+        
+        #instructions = visual.TextStim(self.win, text=text,
+                                    #color='white', height=20, units='pix',
+                                    #pos=(0, 0),  # don't know why
+                                    #wrapWidth=40*20)
+        
+        text = textwrap.dedent(text)
+        if text.find('\n') < 0:  # single line, no formatting
+            html = '<h2><font face="sans-serif">%s</font></h2>' % text
+            instr = visual.TextStim(self.win, units='pix')
+            instr._pygletTextObj = pyglet.text.HTMLLabel(html)
+            width = instr._pygletTextObj.content_width
+            multiline = False
+        else:
+            try:            
+                import docutils.core
+            except:  # will make plain formatting
+                html = '<p><font face="sans-serif">%s</font></p>' % text
+                text.replace('\n\n', '</font></p><p><font face="sans-serif">')                
+                width = 40*12
+                multiline = True                
+            else:
+                html = docutils.core.publish_parts(text,
+                                        writer_name='html')['html_body']
+                html = _HTMLParser().feed(html)
+                width = 40*12
+                multiline = True
+        instructions = visual.TextStim(self.win, units='pix',
+                                       wrapWidth=width)   
+        instructions._pygletTextObj = pyglet.text.HTMLLabel(html,
+                                  width=width, multiline=multiline,
+                                  x=0, anchor_x='left', anchor_y='center')
+                
+        instructions.draw()
+        self.win.flip()
+        
+        if self.rp['unittest']:
+            print text
 
-        #self.dataFileName = self.paths['data'] + '%s.csv'
+        if auto > 0:  # show text and blank out
+            if self.rp['autorun']:
+                auto = auto / self.rp['autorun']
+            core.wait(auto)
+        elif not self.rp['autorun'] or not self.rp['unittest']:
+            this_key = None
+            while this_key != self.computer.default_keys['trigger']:
+                this_key = self.last_keypress()
+            if self.rp['autorun']:
+                wait /= self.rp['autorun']
+        self.win.flip()
+
+        if wait_stim is not None:
+            if not isinstance(wait_stim, (tuple, list)):
+                wait_stim = [wait_stim]
+            for stim in wait_stim:
+                stim.draw()            
+            self.win.flip()
+        core.wait(wait)  # wait a little bit before starting the experiment
+        event.clearEvents()  # clear keys 
 
     def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
@@ -411,69 +437,7 @@ class Task(TrialHandler, _Common):
                     mask   = 'circle',
                     size   = size,
                 ),
-                name='fixation')
-
-    def latin_square(self, n=6):
-        """
-        Generates a Latin square of size n. n must be even.
-
-        Based on
-        <http://rintintin.colorado.edu/~chathach/balancedlatinsquares.html>_
-
-        :Kwargs:
-            n (int, default: 6)
-                Size of Latin square. Should be equal to the number of
-                conditions you have.
-
-        .. :note: n must be even. For an odd n, I am not aware of a
-                  general method to produce a Latin square.
-
-        :Returns:
-            A `numpy.array` with each row representing one possible ordering
-            of stimuli.
-        """
-        if n%2 != 0: sys.exit('n is not even!')
-
-        latin = []
-        col = np.arange(1,n+1)
-
-        first_line = []
-        for i in range(n):
-            if i%2 == 0: first_line.append((n-i/2)%n + 1)
-            else: first_line.append((i+1)/2+1)
-
-        latin = np.array([np.roll(col,i-1) for i in first_line])
-
-        return latin.T
-
-    def make_para(self, n=6):
-        """
-        Generates a symmetric para file with fixation periods approximately 25%
-        of the time.
-
-        :Kwargs:
-            n (int, default: 6)
-                Size of Latin square. Should be equal to the number of
-                conditions you have.
-                :note: n must be even. For an odd n, I am not aware of a
-                general method to produce a Latin square.
-
-        :Returns:
-            A `numpy.array` with each row representing one possible ordering
-            of stimuli (fixations are coded as 0).
-        """
-        latin = self.latin_square(n=n).tolist()
-        out = []
-        for j, this_latin in enumerate(latin):
-            this_latin = this_latin + this_latin[::-1]
-            temp = []
-            for i, item in enumerate(this_latin):
-                if i%4 == 0: temp.append(0)
-                temp.append(item)
-            temp.append(0)
-            out.append(temp)
-
-        return np.array(out)
+                name='fixation')    
 
     def create_stimuli(self):
         """
@@ -494,117 +458,233 @@ class Task(TrialHandler, _Common):
 
     def create_trial(self):
         """
-        Create a list of events that constitute a trial.
+        Create a list of events that constitute a trial (``self.trial``).
 
         Example::
 
-            self.trial = [{'dur': .100,
-                           'display': self.s['fix'],
-                           'func': self.idle_event},
-
-                           {'dur': .300,
-                           'display': self.s['stim1'],
-                           'func': self.during_trial},
+            self.trial = [exp.Event(self,
+                                    dur=.100,
+                                    display=self.s['fix'],
+                                    func=self.idle_event),
+                          exp.Event(self,
+                                    dur=.300,
+                                    display=self.s['stim1'],
+                                    func=self.during_trial),
                            ]
         """
         raise NotImplementedError
 
-    def create_trial_list(self):
+    def create_exp_plan(self):
         """
-        Put together trials into a trialList.
+        Put together trials into ``self.exp_plan``.
 
         Example::
 
-            exp_plan = OrderedDict([
-                ('cond', cond),
-                ('name', names[cond]),
-                ('onset', ''),
-                ('dur', self.trial_dur),
-                ('corr_resp', corr_resp),
-                ('subj_resp', ''),
-                ('accuracy', ''),
-                ('rt', ''),
-                ])
-
-            self.trialList = exp_plan
+            self.exp_plan = []
+            for ...:
+                exp_plan.append([
+                    OrderedDict([
+                        ('cond', cond),
+                        ('name', names[cond]),
+                        ('onset', ''),
+                        ('dur', trial_dur),
+                        ('corr_resp', corr_resp),
+                        ('subj_resp', ''),
+                        ('accuracy', ''),
+                        ('rt', ''),
+                        ])
+                    ])
         """
         raise NotImplementedError
-
-    def idle_event(self, glob_clock=None, trial_clock=None, event_clock=None,
-                  this_trial=None, this_event=None, **kwargs):
+        
+    def last_keypress(self):
         """
-        Default idle function for the event.
+        Extract the last key pressed from the event list.
 
-        Sits idle catching key input of default keys (escape and trigger).
+        If exit key is pressed (default: 'Left Shift + Esc'), quits.
 
-        :Kwargs:
-            - glob_clock (:class:`psychopy.core.Clock`, default: None)
-                A clock that started with the experiment (currently does nothing)
-            - trial_clock (:class:`psychopy.core.Clock`, default: None)
-                A clock that started with the trial
-            - event_clock (:class:`psychopy.core.Clock`, default: None)
-                A clock that started with the event within the trial
-            - this_trial (dict)
-                A dictionary of trial properties
-            - this_event (dict)
-                A dictionary with event properties
+        :Returns:
+            An str of the last pressed key or None if nothing has been 
+            pressed.
         """
-        if not isinstance(this_event['display'], tuple) and \
-        not isinstance(this_event['display'], list):
-            display = [this_event['display']]
-        else:
-            display = this_event['display']
+        #if keylist is None:
+        keylist = self.computer.default_keys.values()
+        #else:
+            #keylist.extend(self.computer.default_keys.values())
+        keys = []
+        for key in keylist:
+            if isinstance(key, (tuple, list)):
+                keys.append(key)
+            else:
+                keys.append([key])
+        # keylist might have key combinations; get rid of them for now
+        keylist_flat = []
+        for key in keys:
+            keylist_flat.extend(key)
 
-        if this_event['dur'] == 0:
-            self.last_keypress()
-            for stim in display: stim.draw()
-            self.win.flip()
-
-        else:
-            for stim in display: stim.draw()
-            self.win.flip()
-
-            while event_clock.getTime() < this_event['dur'] and \
-            trial_clock.getTime() < this_trial['dur']:# and \
-            # globClock.getTime() < thisTrial['onset'] + thisTrial['dur']:
-                #self.win.getMovieFrame()
-                self.last_keypress()
-
-    def feedback(self, trial_clock=None, event_clock=None,
-        this_trial=None, this_event=None, all_keys=None, *args, **kwargs):
-        """
-        Gives feedback:
-            - correct: fixation change to green
-            - wrong: fixation change to red
-        """
-        this_resp = all_keys[-1]
-        subj_resp = self.valid_responses[this_resp[0]]
-        if not isinstance(this_event['display'], tuple) and \
-            not isinstance(this_event['display'], list):
-                display = [this_event['display']]
-
-        for stim in display:
-            if stim.name in ['fixation', 'fix']:
-                orig_color = stim.color
-                break
-        for stim in display:
-            if stim.name in ['fixation', 'fix']:
-                if this_trial['corr_resp'] == subj_resp:
-                    stim.setFillColor('DarkGreen')  # correct response
+        this_keylist = event.getKeys(keyList=keylist_flat)        
+        if len(this_keylist) > 0:
+            this_key = this_keylist.pop()
+            exit_keys = self.computer.default_keys['exit']
+            if this_key in exit_keys:
+                if self._exit_key_no < len(exit_keys):
+                    if exit_keys[self._exit_key_no] == this_key:
+                        if self._exit_key_no == len(exit_keys) - 1:
+                            self.quit('Premature exit requested by user.')
+                        else:
+                            self._exit_key_no += 1
+                    else:
+                        self._exit_key_no = 0
                 else:
-                    stim.setFillColor('DarkRed')  # incorrect response
+                    self._exit_key_no = 0
+            else:
+                self._exit_key_no = 0
+                return this_key   
+        
+    def before_event(self):
+        for stim in self.this_event.display:
+            stim.draw()
+        self.win.flip()
+        
+    def after_event(self):
+        pass
+    
+    def wait_until_response(self, draw_stim=True):        
+        """
+        Waits until a response key is pressed.
+        
+        Returns last key pressed, timestamped.
+        
+        :Kwargs:
+            draw_stim (bool, default: True)
+                Controls if stimuli should be drawn or have already 
+                been drawn (useful if you only want to redefine
+                the drawing bit of this function).
+
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
+        """ 
+        if draw_stim:
+            self.before_event()
+            
+        event_keys = []
+        event.clearEvents() # key presses might be stored from before
+        while len(event_keys) == 0: # if the participant did not respond earlier
+            if 'autort' in self.this_trial:
+                if self.trial_clock.getTime() > self.this_trial['autort']:
+                    event_keys = [(self.this_trial['autoresp'], self.this_trial['autort'])]
+            else:
+                event_keys = event.getKeys(
+                    keyList=self.computer.valid_responses.keys(),
+                    timeStamped=self.trial_clock)
+            self.last_keypress()
+        return event_keys
+    
+    def idle_event(self, draw_stim=True):
+        """
+        Default idle function for an event.
+
+        Sits idle catching default keys (exit and trigger).
+        
+        :Kwargs:
+            draw_stim (bool, default: True)
+                Controls if stimuli should be drawn or have already 
+                been drawn (useful if you only want to redefine
+                the drawing bit of this function).
+        
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
+        """      
+        if draw_stim:
+            self.before_event()
+              
+        event_keys = None
+        event.clearEvents() # key presses might be stored from before
+        if self.this_event.dur == 0 or self.this_event.dur == np.inf:
+            event_keys = self.last_keypress()
+        else:
+            event_keys = self.wait()
+        return event_keys
+        
+    def feedback(self):
+        """
+        Gives feedback by changing fixation color.
+                
+        Correct: fixation change to green
+        
+        Wrong: fixation change to red
+        """
+        this_resp = self.all_keys[-1]
+        subj_resp = self.computer.valid_responses[this_resp[0]]
+
+        # find which stimulus is fixation
+        if isinstance(self.this_event.display, (list, tuple)):
+            for stim in self.this_event.display:
+                if stim.name in ['fixation', 'fix']:       
+                    fix = stim
+                    break
+        else:
+            if self.this_event.display.name in ['fixation', 'fix']:
+                fix = self.this_event.display
+        
+        if fix is not None:            
+            orig_color = fix.color  # store original color
+            if self.this_trial['corr_resp'] == subj_resp:
+                fix.setFillColor('DarkGreen')  # correct response
+            else:
+                fix.setFillColor('DarkRed')  # incorrect response
+            
+        for stim in self.this_event.display:
             stim.draw()
         self.win.flip()
 
         # sit idle
-        while event_clock.getTime() < this_event['dur']:
-            self.last_keypress()
+        self.wait()
+            
+        # reset fixation color
+        fix.setFillColor(orig_color)
+        
+    def wait(self): 
+        """
+        Wait until the event is over, register key presses.
+        
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
+        """
+        all_keys = []
+        while self.check_continue():
+            keys = self.last_keypress()
+            if keys is not None:
+                all_keys += keys
+                
+        if len(all_keys) == 0:
+            all_keys = None
+            
+        return all_keys
+        
+    def check_continue(self):
+        """
+        Check if the event is not over yet.
+        
+        Uses ``event_clock``, ``trial_clock``, and, if
+        ``self.global_timing`` is True, ``glob_clock`` to check whether
+        the current event is not over yet. The event cannot last longer
+        than event and trial durations and also fall out of sync from
+        global clock.
+        
+        :Returns:
+            A list of tuples with a key name (str) and a response time (float).
+        """
+        event_on = self.event_clock.getTime() < self.this_event.dur        
+        if self.global_timing:
+            trial_on = self.trial_clock.getTime() < self.this_trial['dur']
+            time_on = self.glob_clock.getTime() < self.cumtime + self.this_trial['dur']
+        else:
+            trial_on = True
+            time_on = True
+        return (event_on and trial_on and time_on)    
 
-        for stim in display:  # reset fixation color
-            if stim.name == 'fixation':
-                stim.setFillColor(orig_color)
-
-    def set_autorun(self, trial_list):
+    def set_autorun(self, exp_plan):
         """
         Automatically runs experiment by simulating key responses.
 
@@ -613,259 +693,281 @@ class Task(TrialHandler, _Common):
         hypothesis.
 
         :Args:
-            trial_list (list of dict)
+            exp_plan (list of dict)
                 A list of trial definitions.
 
         :Returns:
-            trial_list with ``autoResp`` and ``autoRT`` columns included.
+            exp_plan with ``autoresp`` and ``autort`` columns included.
         """
         def rt(mean):
             add = np.random.normal(mean,scale=.2)/self.rp['autorun']
-            return self.trial[0]['dur'] + add
+            return self.trial[0].dur + add
 
-        inverse_resp = invert_dict(self.valid_responses)
-        # speed up the experiment
-        for ev in self.trial:
-            ev['dur'] /= self.rp['autorun']
-        self.trial_dur /= self.rp['autorun']
+        inverse_resp = invert_dict(self.computer.valid_responses)        
 
-        for trial in trial_list:
+        for trial in exp_plan:
             # here you could do if/else to assign different values to
             # different conditions according to your hypothesis
             trial['autoresp'] = random.choice(inverse_resp.values())
-            trial['autort'] = rt(.5)
-        return trial_list
+            trial['autort'] = rt(.5,)
+        return exp_plan
 
 
-    def set_TrialHandler(self, trial_list):
+    def set_TrialHandler(self, trial_list, trialmap=None):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
-
-        Creates ``self.trialDur`` if not present yet.
-        Appends information for autorun.
-        """
+        """ 
+        # re-initialize seed for each block of task
+        # (if there is more than one task)
+        if len(self.parent.tasks) > 1 or len(self.blocks) > 1 is not None:
+            self.seed = int(core.getAbsTime())  # generate a new seed
+            date = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
+            random.seed(self.seed)
+            np.random.seed(self.seed)            
+            
+            if not self.rp['no_output']:
+                self.logfile.write('\n')
+                self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
+                self.logfile.write('  #[[ Task %s: block %d ]] #---------\n' % (self.__str__, self.this_blockn+1))
+                self.logfile.write('    taskRandomSeed.isSet: True\n')
+                self.logfile.write('    taskRandomSeed.string: %d\n' % self.seed)
+                self.logfile.write('    taskRunTime: %s\n' % date)
+                self.logfile.write('    taskRunTime.epoch: %d\n' % self.seed)
+                self.logfile.write('#[ PsychoPy2 RuntimeInfoappendEnd ]#\n')
+                self.logfile.write('\n')
+                
         TrialHandler.__init__(self,
-            trial_list,
+            trial_list,            
             nReps=self.nReps,
             method=self.method,
             extraInfo=self.info,
             name=self.name,
             seed=self.seed)
-    #def run(self):
-        #"""
-        #Setup and go!
-        #"""
-        #self.setup()
-        #self.go(
-            #datafile=self.paths['data'] + self.info['subjid'] + '.csv',
-            #no_output=self.rp['no_output'])
-        #if self.rp['register']:
-            #self.register()
-        #elif self.rp['push']:
-            #self.commitpush()
-
-    def get_breaks(self, breakcol=None):
-        if breakcol is not None:
-            breaks = []
-            last = self.trialList[0][breakcol]
-            for n, trial in enumerate(self.trialList):
-                if trial[breakcol] != last:
-                    if len(breaks) > 0:
-                        breaks.append((breaks[-1][-1], n))
-                    else:
-                        breaks.append([0,n])
-                    last = trial[breakcol]
-            try:
-                breaks.append((breaks[-1][-1], len(self.trialList)))
-            except:
-                breaks = [(0, len(self.trialList))]
+        if trialmap is None:
+            self.trialmap = range(len(trial_list))
         else:
-            breaks = [(0, len(self.trialList))]
-        if self.method == 'fullRandom':
-            np.random.shuffle(breaks)
-        return breaks
-
-    def autorun(self):
+            self.trialmap = trialmap
+        
+    def get_blocks(self):
         """
-        Automatically runs the experiment just like it would normally work but
-        responding automatically (as defined in :func:`self.set_autorun`) and
-        at the speed specified by `self.rp['autorun']` parameter. If
-        speed is not specified, it is set to 100.
+        Finds blocks in the given column of ``self.exp_plan``.
+        
+        The relevant column is stored in ``self.blockcol`` which is
+        given by the user when initializing the experiment class.
+        
+        Produces a list of trial lists and trial mapping for each block. 
+        Trial mapping indicates where each trial is in the original
+        `exp_plan` list.
+        
+        The output is stored in ``self.blocks``.
         """
-        self.rp['autorun'] = 100
-        self.run()
-
-    def run(self):
-        self.setup_task()
-        datafile = self.paths['data'] + self.info['subjid'] + '.csv'
-        breaks = self.get_breaks(breakcol=None)
-        self.show_instructions(**self.instructions)
-        pause_instr = self.instructions.copy()
-        pause_instr['text'] = '<pause>'
-        for i, br in enumerate(breaks):
-            self.set_TrialHandler(self.trialList[br[0]:br[1]])
-            #for rep in range(self.nReps):
-            self._loop_trials(datafile=datafile)
-            if len(breaks) > 1:
-                self.show_instructions(**pause_instr)
-
-    def _loop_trials(self, datafile='data.csv'):
-        """
-        Iterate over the sequence of trials and events.
-
-        .. note:: In the output file, floats are formatted to 1 ms precision so
-                  that output files are nice.
-
+        if self.blockcol is not None:
+            blocknos = [trial[self.blockcol] for trial in self.exp_plan]
+            blocknos = np.unique(blocknos).tolist()
+            blocks = [None] * len(blocknos)
+            for trialno, trial in enumerate(self.exp_plan):
+                blockno = blocknos.index(trial[self.blockcol])
+                if blocks[blockno] is None:
+                    blocks[blockno] = [[trial], [trialno]]
+                else:
+                    blocks[blockno][0].append(trial)
+                    blocks[blockno][1].append(trialno)                
+        else:
+            blocks = [[self.exp_plan, range(len(self.exp_plan))]]
+            
+        self.blocks = blocks
+        
+    def before_task(self, text=None, wait=.5, wait_stim=None, **kwargs):
+        """Shows text from docstring explaining the task.
+        
         :Kwargs:
-            - datafile (str, default: 'data.csv')
-                Data file name to store experiment information and responses.
-            - no_output (bool, default: False)
-                If True, the data file will not be written. Useful for checking
-                how the experiment looks like and for debugging.
-
-        :Raises:
-            :py:exc:`IOError` if `datafile` is not found.
+            - text (str, default: None)
+                Text to show.
+            - wait (float, default: .5)
+                How long to wait after the end of showing instructions,
+                in seconds.
+            - wait_stim (stimulus or a list of stimuli, default: None)
+                During this waiting, which stimuli should be shown.
+                Usually, it would be a fixation spot.
+            - **kwargs
+                Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
-        if not self.rp['no_output']:
-            try_makedirs(os.path.dirname(datafile))
-            try:
-                dfile = open(datafile, 'ab')
-                datawriter = csv.writer(dfile, lineterminator = '\n')
-            except IOError:
-                raise IOError('Cannot write to the data file %s!' % datafile)
+        if len(self.parent.tasks) > 1:
+            # if there are no blocks, try to show fixation
+            if wait_stim is None:
+                if len(self.blocks) <= 1:
+                    try:
+                        wait_stim = self.s['fix']
+                    except:
+                        wait = 0  
+                else:
+                    wait = 0
+            if text is None:
+                self.show_text(text=self.__doc__, wait=wait,
+                               wait_stim=wait_stim, **kwargs)
             else:
-                write_head = True
-        else:
-            datawriter = None
-            write_head = None
-
+                self.show_text(text=text, wait=wait,
+                               wait_stim=wait_stim, **kwargs)
+    
+    def run_task(self):
+        """Sets up the task and runs it.
+        
+        If ``self.blockcol`` is defined, then runs block-by-block.
+        """
+        self.setup_task()
+        self.before_task()
+        
+        self.datafile.open()
+        for blockno, (block, trialmap) in enumerate(self.blocks):
+            self.this_blockn = blockno        
+            # set TrialHandler only to the current block
+            self.set_TrialHandler(block, trialmap=trialmap)            
+            self.run_block()
+        self.datafile.close()
+        
+        self.after_task()   
+        
+    def after_task(self, text=None, auto=1, **kwargs):
+        """Useful for showing feedback after a task is done.
+        
+        For example, you could display accuracy.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show. If None, this is skipped.
+            - auto (float, default: 1)
+                Duration of time-out of the instructions screen,
+                in seconds.
+            - **kwargs
+                Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
+        """
+        if text is not None:
+            self.show_text(text, auto=auto, **kwargs)
+        
+    def before_block(self, text=None, auto=1, wait=.5, wait_stim=None):
+        """Show text before the block starts.
+        
+        Will not show anything if there's only one block.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show. If None, defaults to showing block number.
+            - wait (float, default: .5)
+                How long to wait after the end of showing instructions,
+                in seconds.
+            - wait_stim (stimulus or a list of stimuli, default: None)
+                During this waiting, which stimuli should be shown.
+                Usually, it would be a fixation spot. If None, this
+                fixation spot will be attempted to be drawn.
+            - auto (float, default: 1)
+                Duration of time-out of the instructions screen,
+                in seconds.
+        """ 
+        if len(self.blocks) > 1:
+            if wait_stim is None:
+                try:
+                    wait_stim = self.s['fix']
+                except:
+                    pass
+            if text is None:
+                self.show_text(text='Block %d' % (self.this_blockn+1),
+                               auto=auto, wait=wait, wait_stim=wait_stim)
+            else:
+                self.show_text(text=text, auto=auto, wait=wait, wait_stim=wait_stim)      
+        
+    def run_block(self):
+        """Run a block in a task.
+        """       
+        self.before_block()
+        
         # set up clocks
-        glob_clock = core.Clock()
-        trial_clock = core.Clock()
-        event_clock = core.Clock()
-        trialno = 0
+        self.glob_clock = core.Clock()
+        self.trial_clock = core.Clock()
+        self.event_clock = core.Clock()
+        self.cumtime = 0
+        
         # go over the trial sequence
         for this_trial in self:
-            if self.nReps > 1:
-                this_trial['session'] = self.thisRepN
-            trial_clock.reset()
-            this_trial['onset'] = glob_clock.getTime()
-            sys.stdout.write('\rtrial %s' % (trialno+1))
-            sys.stdout.flush()
-
-            # go over each event in a trial
-            all_keys = []
-            for j, this_event in enumerate(self.trial):
-                event_clock.reset()
-                event_keys = this_event['func'](glob_clock=glob_clock,
-                    trial_clock=trial_clock, event_clock=event_clock,
-                    this_trial=this_trial, this_event=this_event, j=j,
-                    all_keys=all_keys)
-                if event_keys is not None:
-                    all_keys += event_keys
-                # this is to get keys if we did not do that during trial
-                all_keys += event.getKeys(
-                    keyList=self.valid_responses.keys(),
-                    timeStamped=trial_clock)
-
-            if len(all_keys) == 0 and self.rp['autorun'] > 0:
-                all_keys += [(this_trial['autoresp'], this_trial['autort'])]
-
-            this_trial = self.post_trial(this_trial, all_keys)
-            if self.rp['autorun'] > 0:  # correct the timing
-                try:
-                    this_trial['autort'] *= self.rp['autorun']
-                    this_trial['rt'] *= self.rp['autorun']
-                except:  # maybe not all keys are present
-                    pass
-                this_trial['onset'] *= self.rp['autorun']
-
-            if datawriter is not None:
-                header = self.info.keys() + this_trial.keys()
-                if write_head:  # will write the header the first time
-                    write_head = self._write_header(datafile, header, datawriter)
-                out = self.info.values() + this_trial.values()
-                # cut down floats to 1 ms precision
-                outf = ['%.3f'%i if isinstance(i,float) else i for i in out]
-                datawriter.writerow(outf)
-
-            trialno += 1
-            #if trialNo == self.nTotal/self.nReps:
-                #break
-
+            self.this_trial = this_trial  
+            self.run_trial()
+        
+        self.after_block()
+        
+    def after_block(self, text=None, **kwargs):
+        """Show text at the end of a block.
+        
+        Will not show this text after the last block in the task.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show. If None, will default to 
+                'Pause. Hit ``trigger`` to continue.'
+            - **kwargs
+                Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
+        """
         # clear trial counting in the terminal
         sys.stdout.write('\r          ')
         sys.stdout.write('\r')
         sys.stdout.flush()
-        if not self.rp['no_output']: dfile.close()
-
-    def _write_header(self, datafile, header, datawriter):
-        """Determines if a header should be writen in a csv data file.
-
-        Works by reading the first line and comparing it to the given header.
-        If the header already is present, then a new one is not written.
-
-        :Args:
-            - datafile (str)
-                Name of the data file
-            - header (list of str)
-                A list of column names
-            - datawriter (:class:`csv.writer`)
-                A CSV writer for writing data to the data file
-
-        :Returns:
-            False, so that it is never called again during :func:`loop_trials`
+        if text is None:
+            text = ('Pause. Hit %s to continue.' % 
+                                self.computer.default_keys['trigger'])
+        # don't show this after the last block
+        if self.this_blockn+1 < len(self.blocks):
+            self.show_text(text=text, **kwargs)
+        
+    def before_trial(self):
+        pass
+    
+    def run_trial(self):
+        """Presents a trial.
         """
-        write_head = True
-        # no header needed if the file already exists and has one
-        try:
-            dataf_r = open(datafile, 'rb')
-            dataread = csv.reader(dataf_r)
-        except:
-            pass
-        else:
+        self.trial_clock.reset()
+        self.this_trial['onset'] = self.glob_clock.getTime()
+        
+        self.this_trial['dur'] = 0
+        for ev in self.trial:
+            if ev.durcol is not None:
+                ev.dur = self.this_trial[ev.durcol]
+            self.this_trial['dur'] += ev.dur            
+        
+        self.all_keys = []
+        for event_no, this_event in enumerate(self.trial):
+            self.this_event = this_event
+            self.event_no = event_no
+            self.run_event()
+    
+        sys.stdout.write('\rtrial %s' % (self.thisTrialN+1))
+        sys.stdout.flush()
+
+        # if autorun and responses were not set yet, get them now
+        if len(self.all_keys) == 0 and self.rp['autorun'] > 0:
+            self.all_keys += [(self.this_trial['autoresp'], self.this_trial['autort'])]
+
+        self.post_trial(self.this_trial, self.all_keys)
+        
+        # correct timing if autorun
+        if self.rp['autorun'] > 0:
             try:
-                header_file = dataread.next()
-            except:  # empty file
-                write_head = True
-            else:
-                if header == header_file:
-                    write_head = False
-                else:
-                    write_head = True
-            dataf_r.close()
-        if write_head:
-            datawriter.writerow(header)
-        return False
+                self.this_trial['autort'] *= self.rp['autorun']
+                self.this_trial['rt'] *= self.rp['autorun']
+            except:  # maybe not all keys are present
+                pass
+            self.this_trial['onset'] *= self.rp['autorun']
+            self.this_trial['dur'] *= self.rp['autorun']
+            
+        self.datafile.write_header(self.info.keys() + self.this_trial.keys())
+        self.datafile.write(self.info.values() + self.this_trial.values())            
 
-
-    def wait_for_response(self, rt_clock, this_trial):
-        """
-        Waits for response. Returns last key pressed, timestamped.
-
-        :Args:
-            - rt_clock (`psychopy.core.Clock`)
-                A clock used as a reference for measuring response time
-            - this_trial
-                Current trial from `self.trialList`
-
-        :Returns:
-            A list of tuples with a key name (str) and a response time (float).
-        """
-        all_keys = []
-        event.clearEvents() # key presses might be stored from before
-        while len(all_keys) == 0: # if the participant did not respond earlier
-            if 'autort' in this_trial:
-                if rt_clock.getTime() > this_trial['autort']:
-                    all_keys = [(this_trial['autoresp'], this_trial['autort'])]
-            else:
-                all_keys = event.getKeys(
-                    keyList=self.valid_responses.keys(),
-                    timeStamped=rt_clock)
-            self.last_keypress()
-        return all_keys
-
+        self.cumtime += self.this_trial['dur']
+        # update exp_plan with new values
+        try:
+            self.exp_plan[self.trialmap[self.thisIndex]] = self.this_trial
+        except:  # for staircase
+            self.exp_plan.append(self.this_trial)
+            
+            
     def post_trial(self, this_trial, all_keys):
         """A default function what to do after a trial is over.
 
@@ -886,137 +988,42 @@ class Task(TrialHandler, _Common):
         :Returns:
             this_trial with ``subj_resp``, ``accuracy``, and ``rt`` filled in.
 
-        """
-        if len(all_keys) > 0:
-            this_resp = all_keys.pop()
-            this_trial['subj_resp'] = self.valid_responses[this_resp[0]]
-            acc = signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
-            this_trial['accuracy'] = acc
-            this_trial['rt'] = this_resp[1]
-        else:
-            this_trial['subj_resp'] = ''
-            acc = signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
-            this_trial['accuracy'] = acc
-            this_trial['rt'] = ''
-
-        return this_trial
-
-    def _astype(self,type='pandas'):
-        """
-        Converts data into a requested type.
-
-        Mostly reused :func:`psychopy.data.TrialHandler.saveAsWideText`
-
-        :Kwargs:
-            type
-        """
-        # collect parameter names related to the stimuli:
-        header = self.trialList[0].keys()
-        # and then add parameter names related to data (e.g. RT)
-        header.extend(self.data.dataTypes)
-
-        # loop through each trial, gathering the actual values:
-        dataOut = []
-        trialCount = 0
-        # total number of trials = number of trialtypes * number of repetitions:
-        repsPerType={}
-        for rep in range(self.nReps):
-            for trialN in range(len(self.trialList)):
-                #find out what trial type was on this trial
-                trialTypeIndex = self.sequenceIndices[trialN, rep]
-                #determine which repeat it is for this trial
-                if trialTypeIndex not in repsPerType.keys():
-                    repsPerType[trialTypeIndex]=0
-                else:
-                    repsPerType[trialTypeIndex]+=1
-                repThisType=repsPerType[trialTypeIndex]#what repeat are we on for this trial type?
-
-                # create a dictionary representing each trial:
-                # this is wide format, so we want fixed information (e.g. subject ID, date, etc) repeated every line if it exists:
-                if (self.extraInfo != None):
-                    nextEntry = self.extraInfo.copy()
-                else:
-                    nextEntry = {}
-
-                # add a trial number so the original order of the data can always be recovered if sorted during analysis:
-                trialCount += 1
-                nextEntry["TrialNumber"] = trialCount
-
-                # now collect the value from each trial of the variables named in the header:
-                for parameterName in header:
-                    # the header includes both trial and data variables, so need to check before accessing:
-                    if self.trialList[trialTypeIndex] and self.trialList[trialTypeIndex].has_key(parameterName):
-                        nextEntry[parameterName] = self.trialList[trialTypeIndex][parameterName]
-                    elif self.data.has_key(parameterName):
-                        nextEntry[parameterName] = self.data[parameterName][trialTypeIndex][repThisType]
-                    else: # allow a null value if this parameter wasn't explicitly stored on this trial:
-                        nextEntry[parameterName] = ''
-
-                #store this trial's data
-                dataOut.append(nextEntry)
-
-        # get the extra 'wide' parameter names into the header line:
-        header.insert(0,"TrialNumber")
-        if (self.info != None):
-            for key in self.info:
-                header.insert(0, key)
-
-        if type in [list, 'list']:
-            import pdb; pdb.set_trace()
-        elif type in [dict, 'dict']:
-            import pdb; pdb.set_trace()
-        elif type == 'pandas':
-            df = pandas.DataFrame(dataOut, columns=header)
-
-        return df
-
-    def aspandas(self):
-        """
-        Convert trialList into a pandas DataFrame object
-        """
-        return self._astype(type='pandas')
-
-    #def accuracy(self):
-        #df = self._astype(list)
-        #for line in df:
-            #if line['accuracy']=='Correct':
-                #accuracy += 1
-        #acc = accuracy * 100 / len(df)
-        #return acc
-    def weighted_sample(self, probs):
-        warnings.warn("weighted_sample is deprecated; "
-                      "use weighted_choice instead")
-        return self.weighted_choice(weights=probs)
-
-    def weighted_choice(self, choices=None, weights=None):
-        """
-        Chooses an element from a list based on it's weight.
-
-        :Kwargs:
-            - choices (list, default: None)
-                If None, an index between 0 and ``len(weights)`` is returned.
-            - weights (list, default: None)
-                If None, all choices get equal weights.
-
-        :Returns:
-            An element from ``choices``
-        """
-        if choices is None:
-            if weights is None:
-                raise Exception('Please specify either choices or weights.')
+        """        
+        if len(self.all_keys) > 0:
+            this_resp = self.all_keys.pop()
+            self.this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
+            try:
+                acc = signal_det(self.this_trial['corr_resp'], self.this_trial['subj_resp'])
+            except:
+                pass
             else:
-                choices = range(len(weights))
-        elif weights is None:
-            weights = np.ones(len(choices)) / float(len(choices))
-        if not np.allclose(np.sum(weights), 1):
-            raise Exception('Weights must add up to one.')
-        which = np.random.random()
-        ind = 0
-        while which>0:
-            which -= weights[ind]
-            ind +=1
-        ind -= 1
-        return choices[ind]
+                self.this_trial['accuracy'] = acc
+                self.this_trial['rt'] = this_resp[1]            
+        else:
+            self.this_trial['subj_resp'] = ''
+            try:
+                acc = signal_det(self.this_trial['corr_resp'], self.this_trial['subj_resp'])
+            except:
+                pass
+            else:
+                self.this_trial['accuracy'] = acc
+                self.this_trial['rt'] = ''        
+        
+    def run_event(self):
+        """Presents a trial and catches key presses.
+        """
+        # go over each event in a trial  
+        self.event_clock.reset()
+        
+        # show stimuli
+        event_keys = self.this_event.func()
+        
+        if event_keys is not None:
+            self.all_keys += event_keys
+        # this is to get keys if we did not do that during trial
+        self.all_keys += event.getKeys(
+            keyList=self.computer.valid_responses.keys(),
+            timeStamped=self.trial_clock)
 
     def get_behav_df(self, pattern='%s'):
         """
@@ -1034,71 +1041,188 @@ class Task(TrialHandler, _Common):
         return get_behav_df(self.info['subjid'], pattern=pattern)
 
 
+class Datafile(object):
+    
+    def __init__(self, filename, writeable=True, header=None):
+        """
+        A convenience class for managing data files.
+        
+        Output is recorded in a comma-separeated (csv) file.
+        
+        .. note:: In the output file, floats are formatted to 1 ms precision so
+                  that output files are nice. 
+                  
+        :Args:
+            filename (str)
+                Path to the file name
+        :Kwargs:
+            - writeable (bool, defualt: True)
+                Can data be written in file or not. Might seem a bit silly
+                but it is actually very useful because you can create
+                a file and tell it to write data without thinking
+                whether `no_output` is set.
+            - header (list, default: None)
+                If you give a header, then it will already be written
+                in the datafile. Usually it's better to wait and write
+                it only when the first data line is available.
+        """
+        self.filename = filename
+        self.writeable = writeable
+        self._header_written = False
+        if header is not None:
+            self.write_header(header)
+        else:
+            self.header = header
+    
+    def open(self):
+        """Opens a csv file for writing data
+        """        
+        if self.writeable:
+            try_makedirs(os.path.dirname(self.filename))
+            try:
+                self.dfile = open(self.filename, 'ab')
+                self.datawriter = csv.writer(self.dfile, lineterminator = '\n')
+            except IOError:
+                raise IOError('Cannot write to the data file %s!' % self.filename)
+    
+    def close(self):
+        """Closes the file
+        """
+        if self.writeable:
+            self.dfile.close()            
+            
+    def write(self, data):
+        """
+        Writes data list to a file.
+        
+        .. note:: In the output file, floats are formatted to 1 ms precision so
+                  that output files are nice. 
+                  
+        :Args:
+            data (list)
+                A list of values to write in a datafile
+        """
+        if self.writeable:
+            # cut down floats to 1 ms precision
+            dataf = ['%.3f'%i if isinstance(i,float) else i for i in data]
+            self.datawriter.writerow(dataf)
+            
+    def write_header(self, header):
+        """Determines if a header should be writen in a csv data file.
+
+        Works by reading the first line and comparing it to the given header.
+        If the header already is present, then a new one is not written.
+
+        :Args:
+            header (list of str)
+                A list of column names
+        """
+        self.header = header
+        if self.writeable and not self._header_written:
+            write_head = False
+            # no header needed if the file already exists and has one
+            try:
+                dataf_r = open(self.filename, 'rb')
+                dataread = csv.reader(dataf_r)
+            except:
+                pass
+            else:
+                try:
+                    header_file = dataread.next()
+                except:  # empty file
+                    write_head = True
+                else:
+                    if header == header_file:
+                        write_head = False
+                    else:
+                        write_head = True
+                dataf_r.close()
+                
+            if write_head:
+                self.datawriter.writerow(header)
+            self._header_written = True
+        
+
 class Experiment(ExperimentHandler, Task):
-    """An extension of an TrialHandler with many useful functions.
-    """
+    
     def __init__(self,
                  name='',
                  version='0.1',
                  info=None,
                  rp=None,
-                 instructions={'text': None, 'wait': 0},
+                 actions=None,
                  computer=default_computer,
-                 paths=set_paths,
+                 paths=None,
+                 data_fname=None,                 
                  **kwargs
                  ):
-
-                 #runtimeInfo=None,
-                 #originPath=None,
-                 #savePickle=True,
-                 #saveWideText=True,
-                 #dataFileName=''):
-
+        """
+        An extension of ExperimentHandler and TrialHandler with many
+        useful functions.
+        
+        .. note:: When you inherit this class, you must have at least 
+                 ``info`` and ``rp`` (or simply ``**kwargs``) keywords 
+                 because :class:`~psychopy.ui.Control` expects them.
+        
+        :Kwargs:
+            - name (str, default: '')
+                Name of the experiment. It will be used to call the
+                experiment from the command-line.
+            - version (str, default: '0.1')
+                Version of your experiment.
+            - info (tuple, list of tuples, or dict, default: None)
+                Information about the experiment that you want to see in the
+                output file. This is equivalent to PsychoPy's ``extraInfo``.
+                It will contain at least ``('subjid', 'subj')`` even if a
+                user did not specify that.
+            - rp (tuple, list of tuples, or dict, default: None)
+                Run parameters that apply for this particular run but need
+                not be stored in the data output. It will contain at least
+                the following::
+                
+                    [('no_output', False),  # do you want output? or just playing around?
+                     ('debug', False),  # not fullscreen presentation etc
+                     ('autorun', 0),  # if >0, will autorun at the specified speed
+                     ('unittest', False),  # like autorun but no breaks at show_instructions
+                     ('register', False),  # add and commit changes, like new data files?
+                     ('push', False),  # add, commit and push to a hg repo?
+                     ]
+                     
+            - actions (list of function names, default: None)
+                A list of function names (as ``str``) that can be called from
+                GUI. 
+            - computer (module, default: ``default_computer``)
+                Computer parameter module.
+            - paths (dict, default: None)
+                A dictionary of paths where to store different outputs. 
+                If None, :func:`~psychopy_ext.exp.set_paths()` is called.
+            - data_fname (str, default=None)
+                The name of the main data file for storing output. If None,
+                becomes ``self.paths['data'] + self.info['subjid'] + '.csv'``.
+                Then a :class:`~psychopy_ext.exp.Datafile` instance is
+                created in ``self.datafile`` for easy writing to a csv
+                format.
+            - \*\*kwargs
+        
+        """
         ExperimentHandler.__init__(self,
             name=name,
             version=version,
             extraInfo=info,
-            dataFileName='.empty'
+            dataFileName='.data'  # for now so that PsychoPy doesn't complain
             )
-        _Common.__init__(self)
 
-        self.name = name
-        self.version = version
-
-        self.instructions = instructions
-        if hasattr(self.instructions, 'text'):
-            if self.instructions['text'] is None:
-                self.instructions['text'] = self.__doc__
-        else:
-            self.instructions['text'] = self.__doc__
-        if not hasattr(self.instructions, 'wait'):
-            self.instructions['wait'] = 0
-
-        #self.paths = set_paths('.')
-
-        #self.nReps = nReps
-        #self.method = method
         self.computer = computer
-        self.paths = paths
-        #if self.computer is None:
-            #self.computer =
-        ##self.dataTypes = dataTypes
-        #self.originPath = originPath
+        
+        if paths is None:
+            self.paths = set_paths()
+        else:
+            self.paths = paths
 
         self._initialized = False
 
-        #self.signalDet = {False: 'Incorrect', True: 'Correct'}
-
-        # minimal parameters that Experiment expects in extraInfo and runParams
+        # minimal parameters that Experiment expects in info and rp
         self.info = OrderedDict([('subjid', 'subj')])
-        self.rp = OrderedDict([  # these control how the experiment is run
-            ('no_output', False),  # do you want output? or just playing around?
-            ('debug', False),  # not fullscreen presentation etc
-            ('autorun', 0),  # if >0, will autorun at the specified speed
-            ('unittest', False),  # like autorun but no breaks at show_instructions
-            ('register', False),  # add and commit changes, like new data files?
-            ('push', False),  # add, commit and push to a hg repo?
-            ])
         if info is not None:
             if isinstance(info, (list, tuple)):
                 try:
@@ -1106,46 +1230,63 @@ class Experiment(ExperimentHandler, Task):
                 except:
                     info = OrderedDict([info])
             self.info.update(info)
+            
+        self.rp = OrderedDict([  # these control how the experiment is run
+            ('no_output', False),  # do you want output? or just playing around?
+            ('debug', False),  # not fullscreen presentation etc
+            ('autorun', 0),  # if >0, will autorun at the specified speed
+            ('unittest', False),  # like autorun but no breaks when instructions shown
+            ('register', False),  # add and commit changes, like new data files?
+            ('push', False),  # add, commit and push to a hg repo?
+            ])        
         if rp is not None:
-            if isinstance(rp, (list, tuple)):
+            if isinstance(rp, (tuple, list)):
                 try:
                     rp = OrderedDict(rp)
                 except:
                     rp = OrderedDict([rp])
             self.rp.update(rp)
+            
+        #if not self.rp['notests']:
+            #run_tests(self.computer)
+            
+        self.actions = actions
+        
+        if data_fname is None:
+            filename = self.paths['data'] + self.info['subjid'] + '.csv'
+            self.datafile = Datafile(filename, writeable=not self.rp['no_output'])
+        else:
+            self.datafile = Datafile(data_fname, writeable=not self.rp['no_output'])
 
         if self.rp['unittest']:
             self.rp['autorun'] = 100
-
-        #sysinfo = info.RunTimeInfo(verbose=True, win=False,
-                #randomSeed='set:time')
-        #seed = sysinfo['experimentRandomSeed.string']
-
-        #self.seed = 10#int(seed)
-        self.tasks = []
-
+            
+        self.tasks = []  # a list to store all tasks for this exp
+        
         Task.__init__(self,
             self,
-            name=name,
+            #name=name,
             version=version,
-            instructions=instructions,
             **kwargs
-            )
+            )                    
+    
+    def __str__(self, **kwargs):
+        """string representation of the object"""
+        return 'psychopy_ext.exp.Experiment'
+        
+    #def add_tasks(self, tasks):
+        #if isinstance(tasks, str):
+            #tasks = [tasks]
 
-
-    def add_tasks(self, tasks):
-        if isinstance(tasks, str):
-            tasks = [tasks]
-
-        for task in tasks:
-            task = task()
-            task.computer = self.computer
-            task.win = self.win
-            if task.info is not None:
-                task.info.update(self.info)
-            if task.rp is not None:
-                task.rp.update(self.rp)
-            self.tasks.append(task)
+        #for task in tasks:
+            #task = task()
+            #task.computer = self.computer
+            #task.win = self.win
+            #if task.info is not None:
+                #task.info.update(self.info)
+            #if task.rp is not None:
+                #task.rp.update(self.rp)
+            #self.tasks.append(task)
 
     def set_logging(self, logname='log.log', level=logging.WARNING):
         """Setup files for saving logging information.
@@ -1159,7 +1300,7 @@ class Experiment(ExperimentHandler, Task):
 
         if not self.rp['no_output']:
             # add .log if no extension given
-            if len(logname.split('.')) < 2: logname += '.log'
+            if not logname.endswith('.log'): logname += '.log'
 
             # Setup logging file
             try_makedirs(os.path.dirname(logname))
@@ -1295,16 +1436,16 @@ class Experiment(ExperimentHandler, Task):
             viewScale = self.computer.view_scale
         )
 
-    def show_intro(self, text, **kwargs):
-        #if text is not None:
-        #self.create_win(debug=self.rp['debug'])
-        self.show_instructions(text=text, **kwargs)
-
     def setup(self):
-        try:
-            self.valid_responses = self.computer.valid_responses
-        except:
-            self.valid_responses = {'0': 0, '1': 1}
+        """
+        Initializes the experiment.
+        
+        A random seed is set for `random` and `numpy.random`. The seed 
+        is set using the 'set:time' option.
+        Also, runtime information is fully recorded, log file is set
+        and a window is created.
+        """
+        
         if not self.rp['no_output']:
             self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
                     randomSeed='set:time')
@@ -1321,22 +1462,95 @@ class Experiment(ExperimentHandler, Task):
             ##self.setup = Task.setup
             #Task.setup(self)
 
+    def before_exp(self, text=None, wait=.5, wait_stim=None, **kwargs):
+        """
+        Instructions at the beginning of the experiment.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show.
+            - wait (float, default: .5)
+                How long to wait after the end of showing instructions,
+                in seconds.
+            - wait_stim (stimulus or a list of stimuli, default: None)
+                During this waiting, which stimuli should be shown.
+                Usually, it would be a fixation spot.
+            - **kwargs
+                Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
+        """
+        if wait_stim is None:
+            if len(self.tasks) <= 1:
+                try:
+                    wait_stim = self.s['fix']
+                except:
+                    wait = 0  
+            else:
+                wait = 0
+        if text is None:
+            self.show_text(text=self.__doc__, wait=wait,
+                           wait_stim=wait_stim, **kwargs)
+        elif isinstance(intro, str):
+            self.show_text(text=text, wait=wait, wait_stim=wait_stim,
+                           **kwargs)
+        
     def run(self):
+        """Alias to :func:`~psychopy_ext.exp.Experiment.run_exp()`
+        """
+        self.run_exp()
+        
+    def run_exp(self):
+        """Sets everything up and calls tasks one by one.
+        
+        At the end, committing to a repository is possible. Use 
+        ``register`` and ``push`` flags (see 
+        :class:`~psychopy_ext.exp.Experiment` for more)
+        """
         self.setup()
+        self.before_exp()
+        
         if len(self.tasks) == 0:
-            Task.run(self)
+            self.run_task()
         else:
-            self.show_intro(**self.instructions)
             for task in self.tasks:
-                task.run()
-        text = ('End of Experiment. Thank you!\n\n'
-                'Press space bar to exit.')
-        self.show_instructions(text=text)
+                task(self).run_task()
+                
+        self.after_exp()
         if self.rp['register']:
             self.register()
         elif self.rp['push']:
             self.commitpush()
-        self.quit()
+        self.quit()   
+        
+    def after_exp(self, text=None, auto=1, **kwargs):
+        """Text after the experiment is over.
+        
+        :Kwargs:
+            - text (str, default: None)
+                Text to show. If None, defaults to 
+                'End of Experiment. Thank you!'
+            - auto (float, default: 1)
+                Duration of time-out of the instructions screen,
+                in seconds.   
+            - **kwargs
+                Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
+        """
+        if text is None:
+            self.show_text(text='End of Experiment. Thank you!',
+                      auto=auto, **kwargs)
+        else:
+            self.show_text(text=text, auto=auto, **kwargs)
+        
+    def autorun(self):
+        """
+        Automatically runs the experiment just like it would normally 
+        work but automatically (as defined in 
+        :func:`~psychopy_ext.exp.set_autorun()`) and
+        at the speed specified by `self.rp['autorun']` parameter. If
+        speed is not specified, it is set to 100.
+        """
+        if not hasattr(self.rp, 'autorun'):
+            self.rp['autorun'] = 100
+        self.run()
 
     def commit(self, message=None):
         """
@@ -1363,46 +1577,70 @@ class Experiment(ExperimentHandler, Task):
         err = self.commit(message=message)
         if err == '':
             out = ui._repo_action('push')
-            self.logfile.write('\n'.join(out))
+            self.logfile.write('\n'.join(out))        
+    
 
-
-def get_behav_df(subjid, pattern='%s'):
-    """
-    Extracts data from files for data analysis.
-
-    :Kwargs:
-        pattern (str, default: '%s')
-            A string with formatter information. Usually it contains a path
-            to where data is and a formatter such as '%s' to indicate where
-            participant ID should be incorporated.
-
-    :Returns:
-        A `pandas.DataFrame` of data for the requested participants.
-    """
-    if type(subjid) not in [list, tuple]:
-        subjid_list = [subjid]
-    else:
-        subjid_list = subjid
-
-    df_fnames = []
-    for subjid in subjid_list:
-        fnames = glob.glob(pattern % subjid)
-        fnames.sort()
-        df_fnames += fnames
-    dfs = []
-    for dtf in df_fnames:
-        data = pandas.read_csv(dtf)
-        if data is not None:
-            dfs.append(data)
-    if dfs == []:
-        print df_fnames
-        raise IOError('Behavioral data files not found.\n'
-            'Tried to look for %s' % (pattern % subjid))
-    df = pandas.concat(dfs, ignore_index=True)
-
-    return df
-
-
+class Event(object):
+    
+    def __init__(self, parent, name='', dur=.300, durcol=None, 
+                 display=None, func=None):
+        """
+        Defines event displays.
+        
+        :Args:
+            parent (:class:`~psychopy_ext.exp.Experiment` or 
+            :class:`~psychopy_ext.exp.Task`)
+        :Kwargs:
+            - name (str, default: '')
+                Event name.
+            - dur (int/float or a list of int/float, default: .300)
+                Event duration (in seconds). If events have different
+                durations throughout experiment, you can provide a list
+                of durations which must be of the same length as the
+                number of trials.
+            - display (stimulus or a list of stimuli, default: None)
+                Stimuli that are displayed during this event. If *None*,
+                displays a fixation spot (or, if not created, creates 
+                one first).
+            - func (function, default: None)
+                Function to perform . If *None*, defaults to
+                :func:`~psychopy_ext.exp.Task.idle_event`.
+        """   
+        self.parent = parent
+        self.name = name
+        self.dur = dur  # will be converted to a list during setup  
+        self.durcol = durcol          
+        if display is None:
+            try:
+                self.display = parent.fixation
+            except:
+                parent.create_fixation()
+                self.display = parent.fixation
+        else:
+            self.display = display            
+        if not isinstance(self.display, (tuple, list)):
+            display = [self.display]
+            
+        if func is None:            
+            self.func = parent.idle_event
+        else:
+            self.func = func
+            
+    @staticmethod        
+    def _fromdict(parent, entries):
+        """
+        Create an Event instance from a dictionary.
+        
+        This is only meant for backward compatibility and should not
+        be used in general.
+        """
+        return Event(parent, **entries)
+        #self.__dict__.update(entries)
+        #for key, value in dictionary.items():
+            #self.key = value           
+    
+        
+        
 class ThickShapeStim(visual.ShapeStim):
     """
     Draws thick shape stimuli as a collection of lines.
@@ -1561,7 +1799,7 @@ class GroupStim(object):
     """
 
     def __init__(self, stimuli=None, name=None):
-        if not isinstance(stimuli, tuple) and not isinstance(stimuli, list):
+        if not isinstance(stimuli, (tuple, list)):
             self.stimuli = [stimuli]
         else:
             self.stimuli = stimuli
@@ -1694,6 +1932,29 @@ class OrderedDict(dict, DictMixin):
 
     def __ne__(self, other):
         return not self == other
+        
+        
+class _HTMLParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        if tag in self.tags:
+            ft = '<font face="sans-serif">'
+        else:
+            ft = ''
+        self.output += self.get_starttag_text() + ft
+    def handle_endtag(self, tag):
+        if tag in self.tags:
+            ft = '</font>'
+        else:
+            ft = ''
+        self.output += ft + '</' + tag + '>'
+    def handle_data(self, data):
+        self.output += data
+        
+    def feed(self, data):
+        self.output = ''
+        self.tags = ['h%i' %(i+1) for i in range(6)] + ['p']
+        HTMLParser.feed(self, data)
+        return self.output
 
 def combinations(iterable, r):
     """
@@ -1893,3 +2154,140 @@ def get_unique_trials(trial_list, column='cond'):
     order = sorted(range(len(conds)), key=conds.__getitem__)
     # return an ordered list
     return [unique[c] for c in order]
+
+def weighted_sample( probs):
+        warnings.warn("weighted_sample is deprecated; "
+                      "use weighted_choice instead")
+        return weighted_choice(weights=probs)
+
+def weighted_choice( choices=None, weights=None):
+    """
+    Chooses an element from a list based on it's weight.
+
+    :Kwargs:
+        - choices (list, default: None)
+            If None, an index between 0 and ``len(weights)`` is returned.
+        - weights (list, default: None)
+            If None, all choices get equal weights.
+
+    :Returns:
+        An element from ``choices``
+    """
+    if choices is None:
+        if weights is None:
+            raise Exception('Please specify either choices or weights.')
+        else:
+            choices = range(len(weights))
+    elif weights is None:
+        weights = np.ones(len(choices)) / float(len(choices))
+    if not np.allclose(np.sum(weights), 1):
+        raise Exception('Weights must add up to one.')
+    which = np.random.random()
+    ind = 0
+    while which>0:
+        which -= weights[ind]
+        ind +=1
+    ind -= 1
+    return choices[ind]
+        
+def get_behav_df(subjid, pattern='%s'):
+    """
+    Extracts data from files for data analysis.
+
+    :Kwargs:
+        pattern (str, default: '%s')
+            A string with formatter information. Usually it contains a path
+            to where data is and a formatter such as '%s' to indicate where
+            participant ID should be incorporated.
+
+    :Returns:
+        A `pandas.DataFrame` of data for the requested participants.
+    """
+    if type(subjid) not in (list, tuple):
+        subjid_list = [subjid]
+    else:
+        subjid_list = subjid
+
+    df_fnames = []
+    for subjid in subjid_list:
+        fnames = glob.glob(pattern % subjid)
+        fnames.sort()
+        df_fnames += fnames
+    dfs = []
+    for dtf in df_fnames:
+        data = pandas.read_csv(dtf)
+        if data is not None:
+            dfs.append(data)
+    if dfs == []:
+        print df_fnames
+        raise IOError('Behavioral data files not found.\n'
+            'Tried to look for %s' % (pattern % subjid))
+    df = pandas.concat(dfs, ignore_index=True)
+
+    return df
+    
+def latin_square(n=6):
+    """
+    Generates a Latin square of size n. n must be even.
+
+    Based on `Chris Chatham's suggestion
+    <http://rintintin.colorado.edu/~chathach/balancedlatinsquares.html>`_
+
+    :Kwargs:
+        n (int, default: 6)
+            Size of Latin square. Should be equal to the number of
+            conditions you have.
+
+    .. :note: n must be even. For an odd n, I am not aware of a
+              general method to produce a Latin square.
+
+    :Returns:
+        A `numpy.array` with each row representing one possible ordering
+        of stimuli.
+    """
+    if n%2 != 0:
+        raise Exception('n must be even!')
+
+    latin = []
+    col = np.arange(1,n+1)
+
+    first_line = []
+    for i in range(n):
+        if i%2 == 0:
+            first_line.append((n-i/2)%n + 1)
+        else:
+            first_line.append((i+1)/2+1)
+
+    latin = np.array([np.roll(col,i-1) for i in first_line])
+
+    return latin.T
+
+def make_para(n=6):
+    """
+    Generates a symmetric para file with fixation periods approximately 25%
+    of the time.
+
+    :Kwargs:
+        n (int, default: 6)
+            Size of Latin square. Should be equal to the number of
+            conditions you have.
+            :note: n must be even. For an odd n, I am not aware of a
+            general method to produce a Latin square.
+
+    :Returns:
+        A `numpy.array` with each row representing one possible ordering
+        of stimuli (fixations are coded as 0).
+    """
+    latin = latin_square(n=n).tolist()
+    out = []
+    for j, this_latin in enumerate(latin):
+        this_latin = this_latin + this_latin[::-1]
+        temp = []
+        for i, item in enumerate(this_latin):
+            if i%4 == 0:
+                temp.append(0)
+            temp.append(item)
+        temp.append(0)
+        out.append(temp)
+
+    return np.array(out)
