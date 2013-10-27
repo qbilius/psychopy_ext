@@ -8,7 +8,7 @@ setup(
     version='0.5',
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
-    packages=['psychopy_ext', 'psychopy_ext.tests'],
+    packages=['psychopy_ext', 'psychopy_ext.demos'],
     url='https://github.com/qbilius/psychopy_ext/',
     license='LICENSE',
     description=description,

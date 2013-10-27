@@ -67,7 +67,6 @@ sys.path.append(os.path.abspath('sphinxext'))  # for matplotlib
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary',
               'sphinx.ext.coverage', 'sphinx.ext.viewcode',
-              'matplotlib.sphinxext.mathmpl',
               'matplotlib.sphinxext.only_directives',
               'matplotlib.sphinxext.plot_directive',
               'sphinx.ext.doctest']
