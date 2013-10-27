@@ -9,7 +9,8 @@
 A wrapper of matplotlib for producing pretty plots by default. As `pandas`
 evolves, some of these improvements will hopefully be merged into it.
 
-Usage:
+Usage::
+
     import plot
     plt = plot.Plot(nrows_ncols=(1,2))
     plt.plot(data)  # plots data on the first subplot
@@ -440,6 +441,11 @@ class Plot(object):
         else:
             return axes
 
+    def show(self, tight=True):
+        if tight and self.kind != 'matrix':
+            self.tight_layout()
+        plt.show()
+
     def decorate(self, axes, kind='bar', **kwargs):
         if kind == 'matrix':
             lims = np.zeros((len(axes),3,2))
@@ -507,6 +513,7 @@ class Plot(object):
                         #xlim[1] += (yran-xran)/2
 
             if self.sharex:
+#                import pdb; pdb.set_trace()
                 axes[0].set_xlim(xlim)
                 majorLocator = self._space_ticks(axes[0].get_xticks(),
                                                  xlim, kind)
@@ -621,8 +628,8 @@ class Plot(object):
                 pass  # assume rows are rows
         else:
             # make columns which will turn into legend entries
-            mean = self._unstack_levels(mean, 'cols')
-            p_yerr = self._unstack_levels(p_yerr, 'cols')
+            mean = _unstack_levels(mean, 'cols')
+            p_yerr = _unstack_levels(p_yerr, 'cols')
         if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
             print 'WARNING: Beanplot not available for a single measurement'
@@ -834,9 +841,9 @@ class Plot(object):
                     m = mean
                     e = ebars
                 else:
-                    d = self._get_multi(agg, rlab, dim='columns')
-                    m = self._get_multi(mean, rlab, dim='rows')
-                    e = self._get_multi(ebars, rlab, dim='rows')
+                    d = _get_multi(agg, rlab, dim='columns')
+                    m = _get_multi(mean, rlab, dim='rows')
+                    e = _get_multi(ebars, rlab, dim='rows')
 
                     #d = agg.copy()
                     #m = mean.copy()
@@ -873,7 +880,7 @@ class Plot(object):
     def _draw_legend(self, ax, visible=None, data=None, **kwargs):
         leg = ax.get_legend()  # get an existing legend
         if leg is None:  # create a new legend
-            leg = ax.legend(loc='center left')
+            leg = ax.legend() #loc='center left')
         if leg is not None:
             leg.legendPatch.set_alpha(0.5)
 
@@ -929,7 +936,7 @@ class Plot(object):
                         label = ', '.join([str(lab) for lab in label])
                     new_labs.append(label)
         else:
-            new_labs = ''
+            new_labs = ['']
         return new_labs
 
     def hide_plots(self, nums):
@@ -1021,22 +1028,10 @@ class Plot(object):
         step = np.ptp(x) / (len(x) - 1.)
         xlim = ax.get_xlim()
         if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
-            ax.set_xlim((xlim[0] - step/2, xlim[1] + step/2))
+            ax.set_xlim((np.min(x) - step/2, np.max(x) + step/2))
             ax.set_xticks(x)
-
-        # nicely space tick labels
-        if len(x) <= 5:
-            largest = len(x)
-        else:
-            largest = [fractions.gcd(len(x),i+1) for i in range(5)]
-            largest = np.argsort(largest)[-1] + 1
-        tickpos = len(x) / largest
-        majorLocator = MultipleLocator(tickpos)
-        ax.xaxis.set_major_locator(majorLocator)
-        ax.set_xticklabels(self._format_labels(labels=data.index)[0:len(x):tickpos])
-
-        #minorLocator = MultipleLocator(1)
-        #ax.xaxis.set_minor_locator(minorLocator)
+        xticklabels = self._format_labels(labels=data.index)
+        ax.set_xticklabels([''] + xticklabels)
         return ax
 
     def scatter_plot(self, data, ax=None, labels=None, **kwargs):
@@ -1121,7 +1116,7 @@ class Plot(object):
                                                vmax=data.max().max())
         else:
             norm = None
-        data = self._unstack_levels(data, 'cols')
+        data = _unstack_levels(data, 'cols')
         im = ax.imshow(data, norm=norm, interpolation='none', **kwargs)
         ax.set_xticks(range(data.shape[1]))
         ax.set_yticks(range(data.shape[0]))
@@ -1356,7 +1351,7 @@ class Plot(object):
             if rlab is None:
                 d = data
             else:
-                d = self._get_multi(data, rlab, dim='columns')
+                d = _get_multi(data, rlab, dim='columns')
                 #if not isinstance(rlab, (tuple, list)):
                     #rlab = [rlab]
                 #d = data.copy()
@@ -1423,7 +1418,7 @@ class Plot(object):
         except:
             rlabels = data.columns
         else:
-            rowdata = self._stack_levels(data, 'cols')
+            rowdata = _stack_levels(data, 'cols')
             if rowdata.shape[1] > 1:
                 inds = [i for i,n in enumerate(rowdata.columns.names) if n.startswith('rows.')]
             else:
@@ -1449,158 +1444,101 @@ class Plot(object):
 
         return ax
 
-    def _unstack_levels(self, data, pref):
-        try:
-            levels = [n for n in data.index.names if n.startswith(pref+'.')]
-        except:
-            unstacked = data
+def _unstack_levels(data, pref):
+    try:
+        levels = [n for n in data.index.names if n.startswith(pref+'.')]
+    except:
+        unstacked = data
+    else:
+        if len(levels) == 0:
+            unstacked = pandas.DataFrame(data)
         else:
-            if len(levels) == 0:
-                unstacked = pandas.DataFrame(data)
+            try:
+                clevs = data.columns.names + levels
+            except:
+                clevs = levels
+            try:
+                rlevs = [n for n in data.index.names if n not in levels]
+            except:
+                rlevs = None #['']#levels
+
+            if len(levels) == 1:
+                unstacked = data.unstack(levels[0])
             else:
+                unstacked = data.unstack(levels)
+            #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
+            for lev in clevs:
                 try:
-                    clevs = data.columns.names + levels
-                except:
-                    clevs = levels
-                try:
-                    rlevs = [n for n in data.index.names if n not in levels]
-                except:
-                    rlevs = None #['']#levels
-
-                if len(levels) == 1:
-                    unstacked = data.unstack(levels[0])
-                else:
-                    unstacked = data.unstack(levels)
-                #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
-                for lev in clevs:
-                    try:
-                        order = data.columns.get_level_values(lev).unique()
-                    except:
-                        pass
-                    else:
-                        unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
-                for lev in rlevs:
-                    order = data.index.get_level_values(lev).unique()
-                    unstacked = stats.reorder(unstacked, order=order, level=lev, dim='index')
-                for lev in levels:
-                    order = data.index.get_level_values(lev).unique()
-                    unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
-                unstacked.columns.names = clevs
-                if rlevs is not None:
-                    unstacked.index.names = rlevs
-        return unstacked
-
-    def _stack_levels(self, data, pref):
-        try:
-            levels = [n for n in data.columns.names if n.startswith(pref+'.')]
-        except:
-            stacked = data
-        else:
-            if len(levels) == 0:
-                stacked = pandas.DataFrame(data)
-            else:
-                try:
-                    clevs = [n for n in data.columns.names if n not in levels]
-                except:
-                    clevs = None #levels
-                try:
-                    rlevs = data.index.names + levels #[n for n in data.index.names if n not in levels]
-                except:
-                    rlevs = levels
-
-                if len(levels) == 1:
-                    stacked = data.stack(levels)
-                else:
-                    stacked = data.stack(levels)
-                stacked = pandas.DataFrame(stacked)
-                #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
-                if clevs is not None:
-                    for lev in clevs:
-                        order = data.columns.get_level_values(lev).unique()
-                        stacked = stats.reorder(stacked, order=order, level=lev, dim='columns')
-                for lev in rlevs:
-                    try:
-                        order = data.index.get_level_values(lev).unique()
-                    except:
-                        pass
-                    else:
-                        stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
-                for lev in levels:
                     order = data.columns.get_level_values(lev).unique()
-                    stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
-                if clevs is not None and len(clevs) != 0:
-                    stacked.columns.names = clevs
-                stacked.index.names = rlevs
-                #stacked = data.stack(levels)
-        return stacked
-
-    def _get_multi(self, data, labels, dim='columns'):
-        #if labels is None:
-            #d = data
-        #else:
-        if not isinstance(labels, (tuple, list)):
-            labels = [labels]
-        d = data.copy()
-        for label in labels:
-            if dim == 'columns':
-                d = d.loc[:,label]
-            else:
-                d = d.loc[label]
-        return d
-
-    def _beanlike_setup(self, data, ax, order=None):
-        if self._stack_levels(data, 'rows').shape[1] > 2:  # more than 2 columns
-            new_levs = []
-            for n in data.columns.names:
-                if n.startswith('cols.'):
-                    new_lev = 'rows.' + n.split('cols.')[1]
+                except:
+                    pass
                 else:
-                    new_lev = n
-                new_levs.append(new_lev)
-            data.columns.names = new_levs
+                    unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+            for lev in rlevs:
+                order = data.index.get_level_values(lev).unique()
+                unstacked = stats.reorder(unstacked, order=order, level=lev, dim='index')
+            for lev in levels:
+                order = data.index.get_level_values(lev).unique()
+                unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+            unstacked.columns.names = clevs
+            if rlevs is not None:
+                unstacked.index.names = rlevs
+    return unstacked
 
-            idx = [d + (0,) for d in data.columns]
-            data_new = pandas.DataFrame(data, columns=idx)
-            data_new.columns.names = data.columns.names + ['cols.fakecol']
-            data_new.ix[:] = np.array(data)
-            data = data_new
+def _stack_levels(data, pref):
+    try:
+        levels = [n for n in data.columns.names if n.startswith(pref+'.')]
+    except:
+        stacked = data
+    else:
+        if len(levels) == 0:
+            stacked = pandas.DataFrame(data)
+        else:
+            try:
+                clevs = [n for n in data.columns.names if n not in levels]
+            except:
+                clevs = None #levels
+            try:
+                rlevs = data.index.names + levels #[n for n in data.index.names if n not in levels]
+            except:
+                rlevs = levels
 
+            if len(levels) == 1:
+                stacked = data.stack(levels)
+            else:
+                stacked = data.stack(levels)
+            stacked = pandas.DataFrame(stacked)
+            #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
+            if clevs is not None:
+                for lev in clevs:
+                    order = data.columns.get_level_values(lev).unique()
+                    stacked = stats.reorder(stacked, order=order, level=lev, dim='columns')
+            for lev in rlevs:
+                try:
+                    order = data.index.get_level_values(lev).unique()
+                except:
+                    pass
+                else:
+                    stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
+            for lev in levels:
+                order = data.columns.get_level_values(lev).unique()
+                stacked = stats.reorder(stacked, order=order, level=lev, dim='index')
+            if clevs is not None and len(clevs) != 0:
+                stacked.columns.names = clevs
+            stacked.index.names = rlevs
+            #stacked = data.stack(levels)
+    return stacked
 
-        def mask(data):
-            ptp = np.ptp(np.array(data), axis=0)
-            sel = np.logical_or(ptp == 0, np.isnan(ptp))
-            sel = np.logical_not(sel)
-            return sel
-
-        sel = data.apply(mask)
-        sel = pandas.DataFrame(sel).T
-        sel.index.names = ['yerr.mask']
-        sel = self._unstack_levels(sel, 'yerr')
-        sel = self._unstack_levels(sel, 'rows')
-        sel = self._unstack_levels(sel, 'yerr')
-        sel = sel.T  # now rows and yerr are in rows, cols in cols
-
-        data = pandas.DataFrame(data)  # Series will be forced into a DataFrame
-        data = self._unstack_levels(data, 'yerr')
-        data = self._unstack_levels(data, 'rows')
-        rlabels = data.columns
-        data = self._unstack_levels(data, 'yerr')
-        data = data.T  # now rows and yerr are in rows, cols in cols
-
-        if len(data.index.levels[-1]) <= 1:
-            raise Exception('Cannot make a beanplot for a single observation')
-
-        if ax is None:
-            ax = self.next()
-        #if order is None:
-        pos = range(len(rlabels))
-
-        return data, pos, rlabels, sel
-
-    def show(self, tight=True):
-        if tight and self.kind != 'matrix':
-            self.tight_layout()
-        plt.show()
+def _get_multi(data, labels, dim='columns'):
+    if not isinstance(labels, (tuple, list)):
+        labels = [labels]
+    d = data.copy()
+    for label in labels:
+        if dim == 'columns':
+            d = d.loc[:,label]
+        else:
+            d = d.loc[label]
+    return d
 
 
 if __name__ == '__main__':
