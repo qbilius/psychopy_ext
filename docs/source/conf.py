@@ -56,6 +56,7 @@ if on_rtd:
 #docs_basepath = os.path.abspath(os.path.dirname(__file__))
 #sys.path.insert(0, os.path.abspath(os.path.join(docs_basepath, '../..')))
 sys.path.insert(0, os.path.abspath('../../'))
+sys.path.append(os.path.abspath('sphinxext'))  # for matplotlib
 
 # -- General configuration -----------------------------------------------------
 
@@ -65,7 +66,11 @@ sys.path.insert(0, os.path.abspath('../../'))
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary',
-              'sphinx.ext.coverage', 'sphinx.ext.viewcode']
+              'sphinx.ext.coverage', 'sphinx.ext.viewcode',
+              'matplotlib.sphinxext.mathmpl',
+              'matplotlib.sphinxext.only_directives',
+              'matplotlib.sphinxext.plot_directive',
+              'sphinx.ext.doctest']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -88,9 +93,9 @@ copyright = u'2010-2013, Jonas Kubilius'
 # built documents.
 #
 # The short X.Y version.
-version = '0.4'
+version = '0.5'
 # The full version, including alpha/beta/rc tags.
-release = '0.4'
+release = '0.5'
 
 # Generate summaries
 autosummary_generate = True
@@ -337,4 +342,5 @@ epub_copyright = u'2013, Jonas Kubilius'
 intersphinx_mapping = {
     'python': ('http://docs.python.org/', None),
     'psychopy' : ('http://www.psychopy.org/', None),
+    'pandas' : ('http://pandas.pydata.org/', None),
     }
