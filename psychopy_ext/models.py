@@ -299,18 +299,20 @@ class Zoccolan(Model):
 
 
 class GaborJet(Model):
-    """
-    Python implementation of the `Gabor-Jet model from Biederman lab
-    <http://geon.usc.edu/GWTgrid_simple.m>`_. A given image is transformed with a
-    Gabor wavelet and certain values on a grid are chosen for the output.
-    Further details are in `Xu et al., 2009
-    <http://dx.doi.org/10.1016/j.visres.2009.08.021>`_.
 
-    Original implementation copyright 2004 Xiaomin Yue
-    """
-
-    def __init__(self, nScale = 5, nOrientation = 8):
+    def __init__(self, nScale=5, nOrientation=8):
         """
+        Python implementation of the Gabor-Jet model from Biederman lab.
+
+        A given image is transformed with a
+        Gabor wavelet and certain values on a grid are chosen for the output.
+        Further details are in `Xu et al., 2009
+        <http://dx.doi.org/10.1016/j.visres.2009.08.021>`_.
+
+        Original implementation copyright 2004 'Xiaomin Yue
+        <http://geon.usc.edu/GWTgrid_simple.m>`_.
+
+
         :Kwargs:
             - nScale (int, default: 5)
                 Spatial frequency scales
@@ -349,12 +351,13 @@ class GaborJet(Model):
 
     def test(self,
             im,
-            cell_type = 'complex',  # 'complex': 40 output values
-                                    # 'simple': 80 values
-            grid_size = 0,  # how many positions within an image to take
-            sigma = 2*np.pi,  # control the size of gaussian envelope
+            cell_type = 'complex',
+            grid_size = 0,
+            sigma = 2*np.pi
             ):
         """
+        Apply GaborJet to given images.
+
         :Args:
             im (numpy.array)
                 input image; can be (128,128) or (256,256) px size
@@ -362,7 +365,7 @@ class GaborJet(Model):
         :Kwargs:
             - cell_type (str, default: 'complex')
                 Choose between 'complex'(40 output values) and 'simple'
-                (80 values, NOT FULLY WORKING, FIXME)
+                (80 values, NOT FULLY WORKING YET)
             - grid_size (int, default: 0)
                 How many positions within an image to take
             - sigma (float, default: 2*np.pi)
@@ -456,16 +459,18 @@ class GaborJet(Model):
                     tmpMag = TmpGWTMag[rangeXY,:][:,rangeXY]
                     JetsMagnitude[:,LevelL*self.nOrientation+DirecL] = tmpMag.ravel()
                 else:
-                    TmpGWTMag_real = np.real(iTmpFilterImage)
-                    TmpGWTMag_imag = np.imag(iTmpFilterImage)
-                    # get magnitude and phase at specific positions
-                    tmpMag_real = TmpGWTMag_real[rangeXY,:][:,rangeXY]
-                    tmpMag_imag = TmpGWTMag_imag[rangeXY,:][:,rangeXY]
-                    JetsMagnitude_real[:,LevelL*self.nOrientation+DirecL] = tmpMag_real.ravel()
-                    JetsMagnitude_imag[:,LevelL*self.nOrientation+DirecL] =  tmpMag_imag.ravel()
+                    raise Exception('simple cell type not implemented yet')
+                    #TmpGWTMag_real = np.real(iTmpFilterImage)
+                    #TmpGWTMag_imag = np.imag(iTmpFilterImage)
+                    ## get magnitude and phase at specific positions
+                    #tmpMag_real = TmpGWTMag_real[rangeXY,:][:,rangeXY]
+                    #tmpMag_imag = TmpGWTMag_imag[rangeXY,:][:,rangeXY]
+                    #JetsMagnitude_real[:,LevelL*self.nOrientation+DirecL] = tmpMag_real.ravel()
+                    #JetsMagnitude_imag[:,LevelL*self.nOrientation+DirecL] =  tmpMag_imag.ravel()
 
         if cell_type == 'simple':
-            JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
+            raise Exception('simple cell type not implemented yet')
+            #JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
         # use magnitude for dissimilarity measures
         return (JetsMagnitude, JetsPhase, grid_position)
 
