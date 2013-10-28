@@ -160,7 +160,6 @@ class Control(object):
                     sys.exit("There cannot be any '-' just by themselves "
                                   "in the input")
                 item = None
-                print input_key
                 # is input_key among info?
                 if hasattr(class_init, 'info'):
                     for key, value in class_init.info.items():
@@ -260,7 +259,7 @@ class Control(object):
                 sys.exit('Object %s not callable; is it really a function?' %
                                 input_func)
 
-    def app(self, exp_choices=[], title='Experiment', size=(400,300)):
+    def app(self, exp_choices=[], title='Experiment', size=None):
         app = MyApp()
 
         # initial frame with a gauge on it
@@ -284,7 +283,8 @@ class Control(object):
         # nicely size the entire window
         app.splash.Close()
         panel.Fit()
-        frame.Fit()
+        if size is None:
+            frame.Fit()
         frame.Centre()
         frame.Show()
 
@@ -490,7 +490,7 @@ def _get_methods_byname(myclass):
 class MyApp(wx.App):
 
     def __init__(self):
-        super(MyApp, self).__init__()
+        super(MyApp, self).__init__(redirect=False)
         path = os.path.join(os.path.dirname(__file__), 'importing.png')
         image = wx.Bitmap(path, wx.BITMAP_TYPE_PNG)
         self.splash = AS.AdvancedSplash(None, bitmap=image,
@@ -506,7 +506,7 @@ class StaticBox(wx.StaticBox):
         """
         wx.StaticBox.__init__(self, parent, label=label)
         self.sizer = wx.StaticBoxSizer(self)
-        grid = wx.GridSizer(rows=len(content), cols=2)
+        grid = wx.FlexGridSizer(rows=len(content), cols=2)
         self.inputFields = []
         for label, initial in content.items():
             #import pdb; pdb.set_trace()
@@ -537,7 +537,7 @@ class StaticBox(wx.StaticBox):
             else:
                 inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
                 inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
-                
+
             #if len(color): inputBox.SetForegroundColour(color)
             #if len(tip): inputBox.SetToolTip(wx.ToolTip(tip))
             self.inputFields.append(inputBox)#store this to get data back on button click
@@ -575,7 +575,7 @@ class Page(wx.Panel):
         #actions = _get_methods(class_init)
         actions = _get_methods_byname(class_init)
         # buttons will sit on a grid of 2 columns and as many rows as necessary
-        buttons = wx.GridSizer(rows=0, cols=2)
+        buttons = wx.FlexGridSizer(rows=0, cols=2)
         add = False
         for i, (label, action) in enumerate(actions):
             if hasattr(class_init, 'actions'):
@@ -630,7 +630,7 @@ class Page(wx.Panel):
                 if gaps > 1:
                     info.append('--%s "%s"' %(k,v))
                 else:
-                    info.append('--%s %s' %(k,v))                
+                    info.append('--%s %s' %(k,v))
         rp=[]
         for k,v in button.rp.items():
             try:
@@ -674,7 +674,7 @@ class Listbook(wx.Listbook):
     Listbook class
     """
     def __init__(self, parent, exp_choices):
-        wx.Listbook.__init__(self, parent, id=wx.ID_ANY, style=wx.BK_DEFAULT)
+        wx.Listbook.__init__(self, parent, id=wx.ID_ANY)
         self.exp_choices = exp_choices
         self.ready = []
         self.Bind(wx.EVT_LISTBOOK_PAGE_CHANGING, self.OnPageChanging)
