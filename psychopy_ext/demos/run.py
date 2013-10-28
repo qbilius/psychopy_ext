@@ -22,4 +22,4 @@ exp_choices = [
 
 # bring up the graphic user interface or interpret command line inputs
 # usually you can skip the size parameter
-ui.Control(exp_choices, title='Demo Project', size=(580,530))
+ui.Control(exp_choices, title='Demo Project', size=(600,530))
