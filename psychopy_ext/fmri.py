@@ -52,7 +52,7 @@ class Analysis(object):
         For conducting functional magnetic resonance imaging analyses.
 
         Assumptions:
-        
+
         1. For beta- and t-values, analyses were done is SPM.
         2. Functional runs named as `func_<runno>`, anatomicals named as
            `struct<optional extra stuff>`, behavioral data files (or files with
@@ -64,13 +64,13 @@ class Analysis(object):
             - paths (dict of str:str pairs)
                 A dictionary of paths where data is stored. Expected to have at
                 least the following keys:
-                
+
                 - 'analysis' (for storing analysis outputs),
                 - 'data_behav' (behavioral data with condition labels),
                 - 'data_fmri',
                 - 'rec' (for ROIs from surface reconstruction in Caret or so),
                 - 'data_rois' (for storing the extracted signals in these ROIs)
-                    
+
             - tr (int or float)
                 Time of repetition during the fMRI scan. Usually 1, 2, or 3 seconds.
                 This information is not
@@ -82,11 +82,11 @@ class Analysis(object):
             - rp (dict, default: None)
                 All runtime parameters that you want to be able to access from GUI
                 or CLI. Expected to have at least:
-                
+
                 - no_output
                 - verbose
                 - force
-                    
+
             - fmri_prefix (str, default: 'swa*')
                 Prefix of SPM output functional scans that you want to analyze.
             - fix (int or str, default: 0)
@@ -118,6 +118,7 @@ class Analysis(object):
             ('debug', False),
             ('verbose', True),
             ('plot', True),
+            ('saveplot', False),
             ('visualize', False),
             ('force', False),
             ('dry', False),
@@ -227,16 +228,19 @@ class Analysis(object):
         return exp.get_behav_df(self.info['subjid'], pattern=pattern)
 
 
-    def plot(self, df, cols=['cond', 'name'], **kwargs):
+    def plot(self, df, cols='cond', **kwargs):
         if self.rp['method'] == 'timecourse':
             plt = plot_timecourse(df, cols=cols)
             plt.tight_layout()
         else:
+            if self.rp['method'] == 'corr':
+                title = '(1-correlation) / 2'
+            else:
+                title = 'SVM decoding'
+
             agg = self.get_agg(df, **kwargs)
-            #agg = 1 - 2*agg
             plt = plot.Plot()
-            axes = plt.plot(agg, subplots='roi', kind='bar',
-                            ylabel='dissimilarity')
+            axes = plt.plot(agg, kind='bar', title=title, ylabel='dissimilarity')
             # mark chance level
             if self.rp['method'] == 'svm':
                 try:
@@ -248,9 +252,13 @@ class Analysis(object):
             plt.tight_layout()
 
             if self.rp['method'] in ['corr','svm']:
-                #matrix = self.get_data(df, kind='matrix')
+                mtx_agg = self.get_agg(df, kind='matrix')
                 mtx = plot.Plot(kind='matrix')
-                axes = mtx.plot(agg, subplots='roi', kind='matrix')
+                axes = mtx.plot(mtx_agg, kind='matrix', title=title)
+                try:
+                    iter(axes)
+                except:
+                    axes = [axes]
                 for ax in axes:
                     ax.set_xlabel('')
                     ax.set_ylabel('')
@@ -884,6 +892,10 @@ class Analysis(object):
         # subtract the mean chunk-wise
         evds_avg.samples -= np.repeat(mean, numt, 0)
 
+        if len(evds_avg.UC) == 1:
+            raise Exception('You have only a single fMRI. You need more '
+                            'than one to run a correlational analysis.')
+
         #results = np.zeros((nIter,numt,numt))
         runtype = [0,1] * (len(evds_avg.UC)/2) + \
                    [-1] * (len(evds_avg.UC)%2)
@@ -922,7 +934,8 @@ class Analysis(object):
 
         Process:
             - Split data into a training set (about 75% of all values) and a testing
-              set (about 25% of values).
+              set (about 25% of values), unless there are only two runs, in
+              which case is 50% training and 50% testing.
             - For each pair of conditions, train the classifier.
             - Then test on the average of the testing set, i.e., only on two
               samples. This trick usually boosts the performance (credit:
@@ -955,11 +968,18 @@ class Analysis(object):
             (evds_avg.shape[1],1) ).T
 
         ## NEW
+        ntest_runs = len(evds_avg.UC) / 4
+        if ntest_runs == 0:
+            if len(evds_avg.UC) == 1:
+                raise Exception('You have only a single fMRI. You need more '
+                                'than one to run an SVM analysis.')
+            ntest_runs = 1
+
         if len(evds_avg.UC)%2:
-            runtype = [0]*(len(evds_avg.UC)-9) + [1]*8 + [-1]
+            runtype = [0]*(len(evds_avg.UC)-ntest_runs-1) + [1]*ntest_runs + [-1]
             # for odd number of chunks (will get rid of one)
         else:
-            runtype = [0]*(len(evds_avg.UC)-8) + [1]*8
+            runtype = [0]*(len(evds_avg.UC)-ntest_runs) + [1]*ntest_runs
         ###
 
         ## OLD
@@ -1490,7 +1510,7 @@ class Preproc(object):
             paths (dict of str:str pairs)
                 A dictionary of paths where data is stored. Expected to have at
                 least the following keys:
-                
+
                 - 'fmri_root' for moving the original realignment parameter
                   (prefix `rp`) file
                 - 'data_behav' - where to find behavioral data with condition
