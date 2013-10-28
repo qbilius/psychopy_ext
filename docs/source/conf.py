@@ -41,9 +41,9 @@ class Mock(object):
 
 MOCK_MODULES = ['wx', 'numpy',
     'psychopy', 'psychopy.data', 'pandas',
-    #'matplotlib',
-    #'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1',
-    #'matplotlib.patches', 'matplotlib.ticker',
+    'matplotlib',
+    'matplotlib.pyplot', 'mpl_toolkits', 'mpl_toolkits.axes_grid1',
+    'matplotlib.patches', 'matplotlib.ticker',
     'scipy', 'scipy.stats', 'scipy.misc', 'scipy.ndimage',
     'mvpa2', 'mvpa2.suite', 'nibabel']
 
@@ -56,8 +56,9 @@ if on_rtd:
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #docs_basepath = os.path.abspath(os.path.dirname(__file__))
 #sys.path.insert(0, os.path.abspath(os.path.join(docs_basepath, '../..')))
-#sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../../'))
 #sys.path.append(os.path.abspath('sphinxext'))  # for matplotlib
+sys.path.insert(0, os.path.abspath('_ext'))
 
 # -- General configuration -----------------------------------------------------
 
@@ -70,10 +71,14 @@ extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary',
               'sphinx.ext.coverage', 'sphinx.ext.viewcode',
               'matplotlib.sphinxext.only_directives',
               'matplotlib.sphinxext.plot_directive',
-              'sphinx.ext.doctest']
+              'sphinx.ext.doctest', 'edit_on_github']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
+
+# GitHub repo options
+edit_on_github_project = 'qbilius/psychopy_ext'
+edit_on_github_branch = 'master'
 
 # The suffix of source filenames.
 source_suffix = '.rst'
@@ -186,7 +191,10 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-#html_sidebars = {}
+html_sidebars = {
+   '**': ['globaltoc.html', 'sourcelink.html', 'searchbox.html'],
+   #'using/windows': ['windowssidebar.html', 'searchbox.html'],
+}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
@@ -202,7 +210,7 @@ html_static_path = ['_static']
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-#html_show_sourcelink = True
+html_show_sourcelink = True
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 #html_show_sphinx = True

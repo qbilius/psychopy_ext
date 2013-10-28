@@ -1,4 +1,4 @@
-*Please refer to the [online documentation](http://psychopy_ext.readthedocs.org/)
+*Please refer to the [online documentation](http://qbilius.github.io/psychopy_ext/build/html/index.html)
 for a more in depth explanation how to use the package.*
 
 
@@ -9,7 +9,7 @@ What is it?
 
 Unlike `PsychoPy`, `PyMVPA` or `matplotlib` that are very flexible and support multiple options to suit everyone’s needs, the underlying philosophy of `psychopy_ext` is to act as the glue at a higher level of operation by choosing reasonable defaults for these packages and providing patterns for common tasks with a minimal user intervention.
 
-*(Read more [in the documentation](https://psychopy_ext.readthedocs.org/en/latest/whyuse.html))*
+*(Read more [in the documentation](http://qbilius.github.io/psychopy_ext/build/html/whyuse.html))*
 
 Features
 --------
