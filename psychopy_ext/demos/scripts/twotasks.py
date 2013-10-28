@@ -34,29 +34,29 @@ class TwoTasks(exp.Experiment):
     ================================
 
     This experiment is composed of four parts. Each part consists of
-    **training** for 1 min (for this demo purposes only) and 
+    **training** for 1 min (for this demo purposes only) and
     **testing** for 5 min.
 
     **Press spacebar to continue.**
-    
+
     *(Use 'Left Shift + Esc' to exit.)*
     """
     def __init__(self,
         name='exp',
-        info=('subjID', 'twotasks_'),
-        rp=('phase', 'both')
+        info=('subjid', 'twotasks_'),
+        rp=('phase', ('both', 'train', 'test'))
         ):
         super(TwoTasks, self).__init__(name=name, info=info, rp=rp,
                 actions='run', paths=PATHS, computer=computer)
-            
+
         self.nsessions = 3 # number of sessions
         self.tasks = [_Train, _Test]
-        
+
         # stimuli orientation
-        self.oris = {'attended': 60, 'unattended': 150}        
+        self.oris = {'attended': 60, 'unattended': 150}
         self.stim_size = 3.  # in deg
         self.stim_dist = 4.  # from the fixation in polar coords
-        
+
     def run(self):
         """
         This is a more complicated run method than usually because
@@ -79,7 +79,7 @@ class TwoTasks(exp.Experiment):
             if expno != self.nsessions - 1:
                 self.show_text(pause_instr)
         self.after_exp()
-        
+
         if self.rp['register']:
             self.register()
         elif self.rp['push']:
@@ -90,7 +90,7 @@ class _Train(exp.Task):
     """
     Training
     ========
-    
+
     Your task
     ---------
 
@@ -105,8 +105,8 @@ class _Train(exp.Task):
     """
 
     def __init__(self, parent, session=1):
-            
-        data_fname = parent.paths['data'] + parent.info['subjid'] + '_train.csv'        
+
+        data_fname = parent.paths['data'] + parent.info['subjid'] + '_train.csv'
         super(_Train, self).__init__(
             parent,
             method='random',
@@ -114,7 +114,7 @@ class _Train(exp.Task):
             )
         self.session = session
         self.computer.valid_responses = {'j': 1}
-        
+
         self.oris = parent.oris
         self.stim_size = parent.stim_size
         self.stim_dist = parent.stim_dist
@@ -128,11 +128,11 @@ class _Train(exp.Task):
         # Define stimuli
         self.create_fixation()
         self.s = {'fix': self.fixation}
-        self.s['attended'] = visual.GratingStim(self.win, name='attended', 
+        self.s['attended'] = visual.GratingStim(self.win, name='attended',
                                 mask='circle', sf=2, size=self.stim_size,
                                 pos=(-self.stim_dist,0),
                                 ori=self.oris['attended'])
-        self.s['unattended'] = visual.GratingStim(self.win, name='unattended', 
+        self.s['unattended'] = visual.GratingStim(self.win, name='unattended',
                                 mask='circle', sf=2, size=self.stim_size,
                                 pos=(self.stim_dist,0),
                                 ori=self.oris['unattended'])
@@ -188,7 +188,7 @@ class _Train(exp.Task):
         self.win.flip()
 
         event_keys = self.idle_event(draw_stim=False)
-        
+
         return event_keys
 
     def post_trial(self, this_trial, all_keys):
@@ -205,7 +205,7 @@ class _Train(exp.Task):
             this_trial['rt'] = ''
 
         return this_trial
-        
+
     def before_task(self):
         """We slightly redefine the default function so that full
         instructions are shown the first time round.
@@ -216,17 +216,17 @@ class _Train(exp.Task):
             text = '''
             Training, session %d
             --------------------
-            
+
             (decrease in its contrast: **press 'j'**)
             '''
-            super(_Train, self).before_task(text=text % self.session)            
-            
-            
+            super(_Train, self).before_task(text=text % self.session)
+
+
 class _Test(exp.Task):
     """
     Testing
     =======
-    
+
     Your task
     ---------
 
@@ -248,18 +248,18 @@ class _Test(exp.Task):
             parent,
             method='random',
             blockcol = 'pos',
-            data_fname=data_fname 
-            )        
+            data_fname=data_fname
+            )
         self.session = session
         self.oris = parent.oris
         self.stim_size = parent.stim_size
         self.stim_dist = parent.stim_dist
-        
+
         self.ntrials = 32  # must be a multiple of 4; very short, just for demo
         self.oridiff = 13
 
         self.computer.valid_responses = {'f': 'same', 'j': 'diff'}
-        
+
         self.anl = Analysis(info=self.parent.info)
 
     def create_stimuli(self):
@@ -294,7 +294,7 @@ class _Test(exp.Task):
                                 display=self.s['fix'],
                                 func=self.wait_until_response)
                      ]
-                
+
     def create_exp_plan(self):
         exp_plan = []
         for name in self.oris.keys():
@@ -333,7 +333,7 @@ class _Test(exp.Task):
                 acc = .9
             elif trial['pos'] == 'unattended':
                 acc = .6
-                
+
             if trial['corr_resp'] == 'same':
                 resp_ind = exp.weighted_choice(choices=invert_resp.keys(),
                                                 weights=[1-acc, acc])
@@ -356,13 +356,13 @@ class _Test(exp.Task):
                 stim.setOri(self.oris[self.this_trial['pos']])
             if stim.name == 'stim2':
                 stim.setPos(pos)
-                stim.setOri(self.oris[self.this_trial['pos']] + 
+                stim.setOri(self.oris[self.this_trial['pos']] +
                             self.this_trial['dir']*self.this_trial['oridiff'])
             stim.draw()
         self.win.flip()
-        
+
         self.idle_event(draw_stim=False)
-        
+
     def before_task(self):
         """We slightly redefine the default function so that full
         instructions are shown the first time round.
@@ -373,20 +373,20 @@ class _Test(exp.Task):
             text = '''
             Testing, session %d
             -------------------
-            
+
             (Second stimulus oriented to the:
-            
+
             - left: **hit 'f'**
             - right: **hit 'j'**)
             '''
             super(_Test, self).before_task(text=text % self.session)
-            
+
     def after_task(self):
         acc = self.anl.test_feedback(self.exp_plan)
         pause_instr = 'Your accuracy is %d%%.' % acc
         super(_Test, self).after_task(text=pause_instr)
-            
-            
+
+
 class Analysis(object):
     def __init__(self,
                  name='analysis',
@@ -404,7 +404,7 @@ class Analysis(object):
 
     def _set_all_subj(self):
         self.info['subjid'] = ['twotasks_%02d' % i for i in range(1,11)]
-        
+
     def test_feedback(self, trial_list):
         """Provides feedback during the test phase
         """
@@ -413,7 +413,7 @@ class Analysis(object):
         acc /= (np.sum(df.accuracy == 'correct') + \
                 np.sum(df.accuracy == 'incorrect'))
         return acc*100
-        
+
     def test(self):
         """Analysis of the test phase data
         """

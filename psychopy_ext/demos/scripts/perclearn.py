@@ -49,8 +49,8 @@ class PercLearn(exp.Experiment):
         name='exp',
         info=('subjid', 'perclearn_'),
         rp=OrderedDict([
-            ('phase', 'both'),
-            ('kind', '2AFC'),
+            ('phase', ('both', 'train', 'test')),
+            ('kind', ('2AFC', 'QUEST')),
             ('practice', False),
             ])
         ):

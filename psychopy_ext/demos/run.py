@@ -13,7 +13,7 @@ from psychopy_ext import ui
 __author__ = "Jonas Kubilius"
 __version__ = "0.1"
 exp_choices = [
-    ui.Choices('scripts.main', name='Simple', alias='main', order=['exp','analysis']),
+    ui.Choices('scripts.main', name='Simple exp.', alias='main', order=['exp','analysis']),
     ui.Choices('scripts.twotasks', name='Two tasks', order=['exp','analysis']),
     ui.Choices('scripts.staircase', name='Staircase', order=['exp','analysis']),
     ui.Choices('scripts.perclearn', name='Advanced', order=['exp','analysis']),
@@ -21,4 +21,5 @@ exp_choices = [
     ]
 
 # bring up the graphic user interface or interpret command line inputs
-ui.Control(exp_choices, title='Demo Project')
+# usually you can skip the size parameter
+ui.Control(exp_choices, title='Demo Project', size=(580,530))
