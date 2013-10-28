@@ -12,7 +12,7 @@
 # Packages
 *.egg
 *.egg-info
-gh-pages
+MANIFEST
 paper
 dist
 build
