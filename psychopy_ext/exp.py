@@ -141,7 +141,7 @@ def run_tests(computer):
 class Task(TrialHandler):
 
     def __init__(self,
-                 parent,                 
+                 parent,
                  name='',
                  version='0.1',
                  method='random',
@@ -150,11 +150,11 @@ class Task(TrialHandler):
                  ):
         """
         An extension of TrialHandler with many useful functions.
-        
+
         :Args:
             parent (:class:`Experiment`)
                 The Experiment to which this Tast belongs.
-                
+
         :Kwargs:
             - name (str, default: '')
                 Name of the task. Currently not used anywhere.
@@ -162,19 +162,19 @@ class Task(TrialHandler):
                 Version of your experiment.
             - method ({'sequential', 'random'}, default: 'random')
                 Order of trials:
-                
+
                     - sequential: trials and blocks presented sequentially
                     - random: trials presented randomly, blocks sequentially
                     - fullRandom: converted to 'random'
-                    
+
                 Note that there is no explicit possibility to randomize
                 the order of blocks. This is intentional because you
                 in fact define block order in the `blockcol`.
-                    
+
             - data_fname (str, default=None)
                 The name of the main data file for storing output. If None,
                 reuses :class:`~psychopy_ext.exp.Datafile` instance from
-                its parent; otherwise, a new one is created 
+                its parent; otherwise, a new one is created
                 (stored in ``self.datafile``).
             - blockcol (str, default: None)
                 Column name in `self.exp_plan` that defines which trial
@@ -187,32 +187,32 @@ class Task(TrialHandler):
         self.name = name
         self.version = version
         self.nReps = 1  # fixed
-        
-        self.method = method        
+
+        self.method = method
         if method == 'randomFull':
             self.method = 'random'
-            
+
         if data_fname is None:
             self.datafile = parent.datafile
         else:
             self.datafile = Datafile(data_fname)
-        self.blockcol = blockcol        
+        self.blockcol = blockcol
         self.computer.valid_responses = parent.computer.valid_responses
-        
+
         self._exit_key_no = 0
         self.blocks = []
 
-        #self.info = parent.info                
+        #self.info = parent.info
         #self.extraInfo = self.info  # just for compatibility with PsychoPy
-        #self.rp = parent.rp        
-            
+        #self.rp = parent.rp
+
     def __str__(self, **kwargs):
         """string representation of the object"""
         return 'psychopy_ext.exp.Task'
 
     def quit(self, message=''):
         """What to do when exit is requested.
-        """        
+        """
         print  # in case there was anything without \n
         logging.warning(message)
         self.win.close()
@@ -241,12 +241,12 @@ class Task(TrialHandler):
         """
         if not self.parent._initialized:
             raise Exception('You must first call Experiment.setup()')
-            
+
         self.win = self.parent.win
-        self.logfile = self.parent.logfile            
+        self.logfile = self.parent.logfile
         self.info = self.parent.info
-        self.rp = self.parent.rp 
-        self.datafile.writeable = not self.rp['no_output']       
+        self.rp = self.parent.rp
+        self.datafile.writeable = not self.rp['no_output']
 
         self.create_stimuli()
         self.create_trial()
@@ -255,18 +255,18 @@ class Task(TrialHandler):
                             'with the self.create_trial() method')
         # for backward compatibility: convert event dict into Event
         if isinstance(self.trial[0], dict):
-            self.trial = [Event._fromdict(self, ev) for ev in self.trial]   
-                     
+            self.trial = [Event._fromdict(self, ev) for ev in self.trial]
+
         self.create_exp_plan()
         if not hasattr(self, 'exp_plan'):
             raise Exception('self.exp_plan variable must be created '
                             'with the self.create_exp_plan() method')
-            
+
         ## convert Event.dur to a list of exp_plan length
         #for ev in self.trial:
             #if isinstance(ev.dur, (int, float)):
-                #ev.dur = [ev.dur] * len(self.exp_plan)        
-            
+                #ev.dur = [ev.dur] * len(self.exp_plan)
+
         # determine if syncing to global time is necessary
         self.global_timing = True
         for ev in self.trial:
@@ -274,20 +274,20 @@ class Task(TrialHandler):
             if np.any(ev.dur == 0) or np.any(np.isinf(ev.dur)):
                 self.global_timing = False
                 break
-                
+
         if self.rp['autorun']:
             # speed up the experiment
             for ev in self.trial:  # speed up each event
                 #ev.dur = map(lambda x: float(x)/self.rp['autorun'], ev.dur)
                 ev.dur /= self.rp['autorun']
             self.exp_plan = self.set_autorun(self.exp_plan)
-            
+
         self.get_blocks()
-            
+
     def show_text(self, text='', wait=0, wait_stim=None, auto=0):
         """
         Presents an instructions screen.
-        
+
         :Kwargs:
             - text (str, default: None)
                 Text to show.
@@ -306,12 +306,12 @@ class Task(TrialHandler):
         # before it can draw properly
         visual.TextStim(self.win, text='').draw()
         self.win.flip()
-        
+
         #instructions = visual.TextStim(self.win, text=text,
                                     #color='white', height=20, units='pix',
                                     #pos=(0, 0),  # don't know why
                                     #wrapWidth=40*20)
-        
+
         text = textwrap.dedent(text)
         if text.find('\n') < 0:  # single line, no formatting
             html = '<h2><font face="sans-serif">%s</font></h2>' % text
@@ -320,13 +320,14 @@ class Task(TrialHandler):
             width = instr._pygletTextObj.content_width
             multiline = False
         else:
-            try:            
+            try:
                 import docutils.core
             except:  # will make plain formatting
                 html = '<p><font face="sans-serif">%s</font></p>' % text
-                text.replace('\n\n', '</font></p><p><font face="sans-serif">')                
+                html = html.replace('\n\n', '</font></p><p><font face="sans-serif">')
+                html = html.replace('\n', '</font><br /><font face="sans-serif">')
                 width = 40*12
-                multiline = True                
+                multiline = True
             else:
                 html = docutils.core.publish_parts(text,
                                         writer_name='html')['html_body']
@@ -334,14 +335,14 @@ class Task(TrialHandler):
                 width = 40*12
                 multiline = True
         instructions = visual.TextStim(self.win, units='pix',
-                                       wrapWidth=width)   
+                                       wrapWidth=width)
         instructions._pygletTextObj = pyglet.text.HTMLLabel(html,
                                   width=width, multiline=multiline,
                                   x=0, anchor_x='left', anchor_y='center')
-                
+
         instructions.draw()
         self.win.flip()
-        
+
         if self.rp['unittest']:
             print text
 
@@ -361,10 +362,10 @@ class Task(TrialHandler):
             if not isinstance(wait_stim, (tuple, list)):
                 wait_stim = [wait_stim]
             for stim in wait_stim:
-                stim.draw()            
+                stim.draw()
             self.win.flip()
         core.wait(wait)  # wait a little bit before starting the experiment
-        event.clearEvents()  # clear keys 
+        event.clearEvents()  # clear keys
 
     def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
@@ -437,7 +438,7 @@ class Task(TrialHandler):
                     mask   = 'circle',
                     size   = size,
                 ),
-                name='fixation')    
+                name='fixation')
 
     def create_stimuli(self):
         """
@@ -496,7 +497,7 @@ class Task(TrialHandler):
                     ])
         """
         raise NotImplementedError
-        
+
     def last_keypress(self):
         """
         Extract the last key pressed from the event list.
@@ -504,7 +505,7 @@ class Task(TrialHandler):
         If exit key is pressed (default: 'Left Shift + Esc'), quits.
 
         :Returns:
-            An str of the last pressed key or None if nothing has been 
+            An str of the last pressed key or None if nothing has been
             pressed.
         """
         #if keylist is None:
@@ -522,7 +523,7 @@ class Task(TrialHandler):
         for key in keys:
             keylist_flat.extend(key)
 
-        this_keylist = event.getKeys(keyList=keylist_flat)        
+        this_keylist = event.getKeys(keyList=keylist_flat)
         if len(this_keylist) > 0:
             this_key = this_keylist.pop()
             exit_keys = self.computer.default_keys['exit']
@@ -539,34 +540,34 @@ class Task(TrialHandler):
                     self._exit_key_no = 0
             else:
                 self._exit_key_no = 0
-                return this_key   
-        
+                return this_key
+
     def before_event(self):
         for stim in self.this_event.display:
             stim.draw()
         self.win.flip()
-        
+
     def after_event(self):
         pass
-    
-    def wait_until_response(self, draw_stim=True):        
+
+    def wait_until_response(self, draw_stim=True):
         """
         Waits until a response key is pressed.
-        
+
         Returns last key pressed, timestamped.
-        
+
         :Kwargs:
             draw_stim (bool, default: True)
-                Controls if stimuli should be drawn or have already 
+                Controls if stimuli should be drawn or have already
                 been drawn (useful if you only want to redefine
                 the drawing bit of this function).
 
         :Returns:
             A list of tuples with a key name (str) and a response time (float).
-        """ 
+        """
         if draw_stim:
             self.before_event()
-            
+
         event_keys = []
         event.clearEvents() # key presses might be stored from before
         while len(event_keys) == 0: # if the participant did not respond earlier
@@ -579,25 +580,25 @@ class Task(TrialHandler):
                     timeStamped=self.trial_clock)
             self.last_keypress()
         return event_keys
-    
+
     def idle_event(self, draw_stim=True):
         """
         Default idle function for an event.
 
         Sits idle catching default keys (exit and trigger).
-        
+
         :Kwargs:
             draw_stim (bool, default: True)
-                Controls if stimuli should be drawn or have already 
+                Controls if stimuli should be drawn or have already
                 been drawn (useful if you only want to redefine
                 the drawing bit of this function).
-        
+
         :Returns:
             A list of tuples with a key name (str) and a response time (float).
-        """      
+        """
         if draw_stim:
             self.before_event()
-              
+
         event_keys = None
         event.clearEvents() # key presses might be stored from before
         if self.this_event.dur == 0 or self.this_event.dur == np.inf:
@@ -605,13 +606,13 @@ class Task(TrialHandler):
         else:
             event_keys = self.wait()
         return event_keys
-        
+
     def feedback(self):
         """
         Gives feedback by changing fixation color.
-                
+
         Correct: fixation change to green
-        
+
         Wrong: fixation change to red
         """
         this_resp = self.all_keys[-1]
@@ -620,34 +621,34 @@ class Task(TrialHandler):
         # find which stimulus is fixation
         if isinstance(self.this_event.display, (list, tuple)):
             for stim in self.this_event.display:
-                if stim.name in ['fixation', 'fix']:       
+                if stim.name in ['fixation', 'fix']:
                     fix = stim
                     break
         else:
             if self.this_event.display.name in ['fixation', 'fix']:
                 fix = self.this_event.display
-        
-        if fix is not None:            
+
+        if fix is not None:
             orig_color = fix.color  # store original color
             if self.this_trial['corr_resp'] == subj_resp:
                 fix.setFillColor('DarkGreen')  # correct response
             else:
                 fix.setFillColor('DarkRed')  # incorrect response
-            
+
         for stim in self.this_event.display:
             stim.draw()
         self.win.flip()
 
         # sit idle
         self.wait()
-            
+
         # reset fixation color
         fix.setFillColor(orig_color)
-        
-    def wait(self): 
+
+    def wait(self):
         """
         Wait until the event is over, register key presses.
-        
+
         :Returns:
             A list of tuples with a key name (str) and a response time (float).
         """
@@ -656,33 +657,33 @@ class Task(TrialHandler):
             keys = self.last_keypress()
             if keys is not None:
                 all_keys += keys
-                
+
         if len(all_keys) == 0:
             all_keys = None
-            
+
         return all_keys
-        
+
     def check_continue(self):
         """
         Check if the event is not over yet.
-        
+
         Uses ``event_clock``, ``trial_clock``, and, if
         ``self.global_timing`` is True, ``glob_clock`` to check whether
         the current event is not over yet. The event cannot last longer
         than event and trial durations and also fall out of sync from
         global clock.
-        
+
         :Returns:
             A list of tuples with a key name (str) and a response time (float).
         """
-        event_on = self.event_clock.getTime() < self.this_event.dur        
+        event_on = self.event_clock.getTime() < self.this_event.dur
         if self.global_timing:
             trial_on = self.trial_clock.getTime() < self.this_trial['dur']
             time_on = self.glob_clock.getTime() < self.cumtime + self.this_trial['dur']
         else:
             trial_on = True
             time_on = True
-        return (event_on and trial_on and time_on)    
+        return (event_on and trial_on and time_on)
 
     def set_autorun(self, exp_plan):
         """
@@ -703,7 +704,7 @@ class Task(TrialHandler):
             add = np.random.normal(mean,scale=.2)/self.rp['autorun']
             return self.trial[0].dur + add
 
-        inverse_resp = invert_dict(self.computer.valid_responses)        
+        inverse_resp = invert_dict(self.computer.valid_responses)
 
         for trial in exp_plan:
             # here you could do if/else to assign different values to
@@ -717,15 +718,15 @@ class Task(TrialHandler):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
-        """ 
+        """
         # re-initialize seed for each block of task
         # (if there is more than one task)
         if len(self.parent.tasks) > 1 or len(self.blocks) > 1 is not None:
             self.seed = int(core.getAbsTime())  # generate a new seed
             date = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
             random.seed(self.seed)
-            np.random.seed(self.seed)            
-            
+            np.random.seed(self.seed)
+
             if not self.rp['no_output']:
                 self.logfile.write('\n')
                 self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
@@ -736,9 +737,9 @@ class Task(TrialHandler):
                 self.logfile.write('    taskRunTime.epoch: %d\n' % self.seed)
                 self.logfile.write('#[ PsychoPy2 RuntimeInfoappendEnd ]#\n')
                 self.logfile.write('\n')
-                
+
         TrialHandler.__init__(self,
-            trial_list,            
+            trial_list,
             nReps=self.nReps,
             method=self.method,
             extraInfo=self.info,
@@ -748,18 +749,18 @@ class Task(TrialHandler):
             self.trialmap = range(len(trial_list))
         else:
             self.trialmap = trialmap
-        
+
     def get_blocks(self):
         """
         Finds blocks in the given column of ``self.exp_plan``.
-        
+
         The relevant column is stored in ``self.blockcol`` which is
         given by the user when initializing the experiment class.
-        
-        Produces a list of trial lists and trial mapping for each block. 
+
+        Produces a list of trial lists and trial mapping for each block.
         Trial mapping indicates where each trial is in the original
         `exp_plan` list.
-        
+
         The output is stored in ``self.blocks``.
         """
         if self.blockcol is not None:
@@ -772,15 +773,15 @@ class Task(TrialHandler):
                     blocks[blockno] = [[trial], [trialno]]
                 else:
                     blocks[blockno][0].append(trial)
-                    blocks[blockno][1].append(trialno)                
+                    blocks[blockno][1].append(trialno)
         else:
             blocks = [[self.exp_plan, range(len(self.exp_plan))]]
-            
+
         self.blocks = blocks
-        
+
     def before_task(self, text=None, wait=.5, wait_stim=None, **kwargs):
         """Shows text from docstring explaining the task.
-        
+
         :Kwargs:
             - text (str, default: None)
                 Text to show.
@@ -800,7 +801,7 @@ class Task(TrialHandler):
                     try:
                         wait_stim = self.s['fix']
                     except:
-                        wait = 0  
+                        wait = 0
                 else:
                     wait = 0
             if text is None:
@@ -809,30 +810,30 @@ class Task(TrialHandler):
             else:
                 self.show_text(text=text, wait=wait,
                                wait_stim=wait_stim, **kwargs)
-    
+
     def run_task(self):
         """Sets up the task and runs it.
-        
+
         If ``self.blockcol`` is defined, then runs block-by-block.
         """
         self.setup_task()
         self.before_task()
-        
+
         self.datafile.open()
         for blockno, (block, trialmap) in enumerate(self.blocks):
-            self.this_blockn = blockno        
+            self.this_blockn = blockno
             # set TrialHandler only to the current block
-            self.set_TrialHandler(block, trialmap=trialmap)            
+            self.set_TrialHandler(block, trialmap=trialmap)
             self.run_block()
         self.datafile.close()
-        
-        self.after_task()   
-        
+
+        self.after_task()
+
     def after_task(self, text=None, auto=1, **kwargs):
         """Useful for showing feedback after a task is done.
-        
+
         For example, you could display accuracy.
-        
+
         :Kwargs:
             - text (str, default: None)
                 Text to show. If None, this is skipped.
@@ -844,12 +845,12 @@ class Task(TrialHandler):
         """
         if text is not None:
             self.show_text(text, auto=auto, **kwargs)
-        
+
     def before_block(self, text=None, auto=1, wait=.5, wait_stim=None):
         """Show text before the block starts.
-        
+
         Will not show anything if there's only one block.
-        
+
         :Kwargs:
             - text (str, default: None)
                 Text to show. If None, defaults to showing block number.
@@ -863,7 +864,7 @@ class Task(TrialHandler):
             - auto (float, default: 1)
                 Duration of time-out of the instructions screen,
                 in seconds.
-        """ 
+        """
         if len(self.blocks) > 1:
             if wait_stim is None:
                 try:
@@ -874,34 +875,34 @@ class Task(TrialHandler):
                 self.show_text(text='Block %d' % (self.this_blockn+1),
                                auto=auto, wait=wait, wait_stim=wait_stim)
             else:
-                self.show_text(text=text, auto=auto, wait=wait, wait_stim=wait_stim)      
-        
+                self.show_text(text=text, auto=auto, wait=wait, wait_stim=wait_stim)
+
     def run_block(self):
         """Run a block in a task.
-        """       
+        """
         self.before_block()
-        
+
         # set up clocks
         self.glob_clock = core.Clock()
         self.trial_clock = core.Clock()
         self.event_clock = core.Clock()
         self.cumtime = 0
-        
+
         # go over the trial sequence
         for this_trial in self:
-            self.this_trial = this_trial  
+            self.this_trial = this_trial
             self.run_trial()
-        
+
         self.after_block()
-        
+
     def after_block(self, text=None, **kwargs):
         """Show text at the end of a block.
-        
+
         Will not show this text after the last block in the task.
-        
+
         :Kwargs:
             - text (str, default: None)
-                Text to show. If None, will default to 
+                Text to show. If None, will default to
                 'Pause. Hit ``trigger`` to continue.'
             - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
@@ -911,33 +912,33 @@ class Task(TrialHandler):
         sys.stdout.write('\r')
         sys.stdout.flush()
         if text is None:
-            text = ('Pause. Hit %s to continue.' % 
+            text = ('Pause. Hit %s to continue.' %
                                 self.computer.default_keys['trigger'])
         # don't show this after the last block
         if self.this_blockn+1 < len(self.blocks):
             self.show_text(text=text, **kwargs)
-        
+
     def before_trial(self):
         pass
-    
+
     def run_trial(self):
         """Presents a trial.
         """
         self.trial_clock.reset()
         self.this_trial['onset'] = self.glob_clock.getTime()
-        
+
         self.this_trial['dur'] = 0
         for ev in self.trial:
             if ev.durcol is not None:
                 ev.dur = self.this_trial[ev.durcol]
-            self.this_trial['dur'] += ev.dur            
-        
+            self.this_trial['dur'] += ev.dur
+
         self.all_keys = []
         for event_no, this_event in enumerate(self.trial):
             self.this_event = this_event
             self.event_no = event_no
             self.run_event()
-    
+
         sys.stdout.write('\rtrial %s' % (self.thisTrialN+1))
         sys.stdout.flush()
 
@@ -946,7 +947,7 @@ class Task(TrialHandler):
             self.all_keys += [(self.this_trial['autoresp'], self.this_trial['autort'])]
 
         self.post_trial(self.this_trial, self.all_keys)
-        
+
         # correct timing if autorun
         if self.rp['autorun'] > 0:
             try:
@@ -956,9 +957,9 @@ class Task(TrialHandler):
                 pass
             self.this_trial['onset'] *= self.rp['autorun']
             self.this_trial['dur'] *= self.rp['autorun']
-            
+
         self.datafile.write_header(self.info.keys() + self.this_trial.keys())
-        self.datafile.write(self.info.values() + self.this_trial.values())            
+        self.datafile.write(self.info.values() + self.this_trial.values())
 
         self.cumtime += self.this_trial['dur']
         # update exp_plan with new values
@@ -966,8 +967,8 @@ class Task(TrialHandler):
             self.exp_plan[self.trialmap[self.thisIndex]] = self.this_trial
         except:  # for staircase
             self.exp_plan.append(self.this_trial)
-            
-            
+
+
     def post_trial(self, this_trial, all_keys):
         """A default function what to do after a trial is over.
 
@@ -988,7 +989,7 @@ class Task(TrialHandler):
         :Returns:
             this_trial with ``subj_resp``, ``accuracy``, and ``rt`` filled in.
 
-        """        
+        """
         if len(self.all_keys) > 0:
             this_resp = self.all_keys.pop()
             self.this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
@@ -998,7 +999,7 @@ class Task(TrialHandler):
                 pass
             else:
                 self.this_trial['accuracy'] = acc
-                self.this_trial['rt'] = this_resp[1]            
+                self.this_trial['rt'] = this_resp[1]
         else:
             self.this_trial['subj_resp'] = ''
             try:
@@ -1007,17 +1008,17 @@ class Task(TrialHandler):
                 pass
             else:
                 self.this_trial['accuracy'] = acc
-                self.this_trial['rt'] = ''        
-        
+                self.this_trial['rt'] = ''
+
     def run_event(self):
         """Presents a trial and catches key presses.
         """
-        # go over each event in a trial  
+        # go over each event in a trial
         self.event_clock.reset()
-        
+
         # show stimuli
         event_keys = self.this_event.func()
-        
+
         if event_keys is not None:
             self.all_keys += event_keys
         # this is to get keys if we did not do that during trial
@@ -1042,16 +1043,16 @@ class Task(TrialHandler):
 
 
 class Datafile(object):
-    
+
     def __init__(self, filename, writeable=True, header=None):
         """
         A convenience class for managing data files.
-        
+
         Output is recorded in a comma-separeated (csv) file.
-        
+
         .. note:: In the output file, floats are formatted to 1 ms precision so
-                  that output files are nice. 
-                  
+                  that output files are nice.
+
         :Args:
             filename (str)
                 Path to the file name
@@ -1073,10 +1074,10 @@ class Datafile(object):
             self.write_header(header)
         else:
             self.header = header
-    
+
     def open(self):
         """Opens a csv file for writing data
-        """        
+        """
         if self.writeable:
             try_makedirs(os.path.dirname(self.filename))
             try:
@@ -1084,20 +1085,20 @@ class Datafile(object):
                 self.datawriter = csv.writer(self.dfile, lineterminator = '\n')
             except IOError:
                 raise IOError('Cannot write to the data file %s!' % self.filename)
-    
+
     def close(self):
         """Closes the file
         """
         if self.writeable:
-            self.dfile.close()            
-            
+            self.dfile.close()
+
     def write(self, data):
         """
         Writes data list to a file.
-        
+
         .. note:: In the output file, floats are formatted to 1 ms precision so
-                  that output files are nice. 
-                  
+                  that output files are nice.
+
         :Args:
             data (list)
                 A list of values to write in a datafile
@@ -1106,7 +1107,7 @@ class Datafile(object):
             # cut down floats to 1 ms precision
             dataf = ['%.3f'%i if isinstance(i,float) else i for i in data]
             self.datawriter.writerow(dataf)
-            
+
     def write_header(self, header):
         """Determines if a header should be writen in a csv data file.
 
@@ -1137,14 +1138,14 @@ class Datafile(object):
                     else:
                         write_head = True
                 dataf_r.close()
-                
+
             if write_head:
                 self.datawriter.writerow(header)
             self._header_written = True
-        
+
 
 class Experiment(ExperimentHandler, Task):
-    
+
     def __init__(self,
                  name='',
                  version='0.1',
@@ -1153,17 +1154,17 @@ class Experiment(ExperimentHandler, Task):
                  actions=None,
                  computer=default_computer,
                  paths=None,
-                 data_fname=None,                 
+                 data_fname=None,
                  **kwargs
                  ):
         """
         An extension of ExperimentHandler and TrialHandler with many
         useful functions.
-        
-        .. note:: When you inherit this class, you must have at least 
-                 ``info`` and ``rp`` (or simply ``**kwargs``) keywords 
+
+        .. note:: When you inherit this class, you must have at least
+                 ``info`` and ``rp`` (or simply ``**kwargs``) keywords
                  because :class:`~psychopy.ui.Control` expects them.
-        
+
         :Kwargs:
             - name (str, default: '')
                 Name of the experiment. It will be used to call the
@@ -1179,7 +1180,7 @@ class Experiment(ExperimentHandler, Task):
                 Run parameters that apply for this particular run but need
                 not be stored in the data output. It will contain at least
                 the following::
-                
+
                     [('no_output', False),  # do you want output? or just playing around?
                      ('debug', False),  # not fullscreen presentation etc
                      ('autorun', 0),  # if >0, will autorun at the specified speed
@@ -1187,14 +1188,14 @@ class Experiment(ExperimentHandler, Task):
                      ('register', False),  # add and commit changes, like new data files?
                      ('push', False),  # add, commit and push to a hg repo?
                      ]
-                     
+
             - actions (list of function names, default: None)
                 A list of function names (as ``str``) that can be called from
-                GUI. 
+                GUI.
             - computer (module, default: ``default_computer``)
                 Computer parameter module.
             - paths (dict, default: None)
-                A dictionary of paths where to store different outputs. 
+                A dictionary of paths where to store different outputs.
                 If None, :func:`~psychopy_ext.exp.set_paths()` is called.
             - data_fname (str, default=None)
                 The name of the main data file for storing output. If None,
@@ -1203,7 +1204,7 @@ class Experiment(ExperimentHandler, Task):
                 created in ``self.datafile`` for easy writing to a csv
                 format.
             - \*\*kwargs
-        
+
         """
         ExperimentHandler.__init__(self,
             name=name,
@@ -1213,7 +1214,7 @@ class Experiment(ExperimentHandler, Task):
             )
 
         self.computer = computer
-        
+
         if paths is None:
             self.paths = set_paths()
         else:
@@ -1230,7 +1231,7 @@ class Experiment(ExperimentHandler, Task):
                 except:
                     info = OrderedDict([info])
             self.info.update(info)
-            
+
         self.rp = OrderedDict([  # these control how the experiment is run
             ('no_output', False),  # do you want output? or just playing around?
             ('debug', False),  # not fullscreen presentation etc
@@ -1238,7 +1239,7 @@ class Experiment(ExperimentHandler, Task):
             ('unittest', False),  # like autorun but no breaks when instructions shown
             ('register', False),  # add and commit changes, like new data files?
             ('push', False),  # add, commit and push to a hg repo?
-            ])        
+            ])
         if rp is not None:
             if isinstance(rp, (tuple, list)):
                 try:
@@ -1246,12 +1247,12 @@ class Experiment(ExperimentHandler, Task):
                 except:
                     rp = OrderedDict([rp])
             self.rp.update(rp)
-            
+
         #if not self.rp['notests']:
             #run_tests(self.computer)
-            
+
         self.actions = actions
-        
+
         if data_fname is None:
             filename = self.paths['data'] + self.info['subjid'] + '.csv'
             self.datafile = Datafile(filename, writeable=not self.rp['no_output'])
@@ -1260,20 +1261,20 @@ class Experiment(ExperimentHandler, Task):
 
         if self.rp['unittest']:
             self.rp['autorun'] = 100
-            
+
         self.tasks = []  # a list to store all tasks for this exp
-        
+
         Task.__init__(self,
             self,
             #name=name,
             version=version,
             **kwargs
-            )                    
-    
+            )
+
     def __str__(self, **kwargs):
         """string representation of the object"""
         return 'psychopy_ext.exp.Experiment'
-        
+
     #def add_tasks(self, tasks):
         #if isinstance(tasks, str):
             #tasks = [tasks]
@@ -1439,13 +1440,13 @@ class Experiment(ExperimentHandler, Task):
     def setup(self):
         """
         Initializes the experiment.
-        
-        A random seed is set for `random` and `numpy.random`. The seed 
+
+        A random seed is set for `random` and `numpy.random`. The seed
         is set using the 'set:time' option.
         Also, runtime information is fully recorded, log file is set
         and a window is created.
         """
-        
+
         if not self.rp['no_output']:
             self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
                     randomSeed='set:time')
@@ -1465,7 +1466,7 @@ class Experiment(ExperimentHandler, Task):
     def before_exp(self, text=None, wait=.5, wait_stim=None, **kwargs):
         """
         Instructions at the beginning of the experiment.
-        
+
         :Kwargs:
             - text (str, default: None)
                 Text to show.
@@ -1483,7 +1484,7 @@ class Experiment(ExperimentHandler, Task):
                 try:
                     wait_stim = self.s['fix']
                 except:
-                    wait = 0  
+                    wait = 0
             else:
                 wait = 0
         if text is None:
@@ -1492,45 +1493,45 @@ class Experiment(ExperimentHandler, Task):
         elif isinstance(intro, str):
             self.show_text(text=text, wait=wait, wait_stim=wait_stim,
                            **kwargs)
-        
+
     def run(self):
         """Alias to :func:`~psychopy_ext.exp.Experiment.run_exp()`
         """
         self.run_exp()
-        
+
     def run_exp(self):
         """Sets everything up and calls tasks one by one.
-        
-        At the end, committing to a repository is possible. Use 
-        ``register`` and ``push`` flags (see 
+
+        At the end, committing to a repository is possible. Use
+        ``register`` and ``push`` flags (see
         :class:`~psychopy_ext.exp.Experiment` for more)
         """
         self.setup()
         self.before_exp()
-        
+
         if len(self.tasks) == 0:
             self.run_task()
         else:
             for task in self.tasks:
                 task(self).run_task()
-                
+
         self.after_exp()
         if self.rp['register']:
             self.register()
         elif self.rp['push']:
             self.commitpush()
-        self.quit()   
-        
+        self.quit()
+
     def after_exp(self, text=None, auto=1, **kwargs):
         """Text after the experiment is over.
-        
+
         :Kwargs:
             - text (str, default: None)
-                Text to show. If None, defaults to 
+                Text to show. If None, defaults to
                 'End of Experiment. Thank you!'
             - auto (float, default: 1)
                 Duration of time-out of the instructions screen,
-                in seconds.   
+                in seconds.
             - \*\*kwargs
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
@@ -1539,11 +1540,11 @@ class Experiment(ExperimentHandler, Task):
                       auto=auto, **kwargs)
         else:
             self.show_text(text=text, auto=auto, **kwargs)
-        
+
     def autorun(self):
         """
-        Automatically runs the experiment just like it would normally 
-        work but automatically (as defined in 
+        Automatically runs the experiment just like it would normally
+        work but automatically (as defined in
         :func:`~psychopy_ext.exp.set_autorun()`) and
         at the speed specified by `self.rp['autorun']` parameter. If
         speed is not specified, it is set to 100.
@@ -1577,18 +1578,18 @@ class Experiment(ExperimentHandler, Task):
         err = self.commit(message=message)
         if err == '':
             out = ui._repo_action('push')
-            self.logfile.write('\n'.join(out))        
-    
+            self.logfile.write('\n'.join(out))
+
 
 class Event(object):
-    
-    def __init__(self, parent, name='', dur=.300, durcol=None, 
+
+    def __init__(self, parent, name='', dur=.300, durcol=None,
                  display=None, func=None):
         """
         Defines event displays.
-        
+
         :Args:
-            parent (:class:`~psychopy_ext.exp.Experiment` or 
+            parent (:class:`~psychopy_ext.exp.Experiment` or
             :class:`~psychopy_ext.exp.Task`)
         :Kwargs:
             - name (str, default: '')
@@ -1600,16 +1601,16 @@ class Event(object):
                 number of trials.
             - display (stimulus or a list of stimuli, default: None)
                 Stimuli that are displayed during this event. If *None*,
-                displays a fixation spot (or, if not created, creates 
+                displays a fixation spot (or, if not created, creates
                 one first).
             - func (function, default: None)
                 Function to perform . If *None*, defaults to
                 :func:`~psychopy_ext.exp.Task.idle_event`.
-        """   
+        """
         self.parent = parent
         self.name = name
-        self.dur = dur  # will be converted to a list during setup  
-        self.durcol = durcol          
+        self.dur = dur  # will be converted to a list during setup
+        self.durcol = durcol
         if display is None:
             try:
                 self.display = parent.fixation
@@ -1617,30 +1618,30 @@ class Event(object):
                 parent.create_fixation()
                 self.display = parent.fixation
         else:
-            self.display = display            
+            self.display = display
         if not isinstance(self.display, (tuple, list)):
             display = [self.display]
-            
-        if func is None:            
+
+        if func is None:
             self.func = parent.idle_event
         else:
             self.func = func
-            
-    @staticmethod        
+
+    @staticmethod
     def _fromdict(parent, entries):
         """
         Create an Event instance from a dictionary.
-        
+
         This is only meant for backward compatibility and should not
         be used in general.
         """
         return Event(parent, **entries)
         #self.__dict__.update(entries)
         #for key, value in dictionary.items():
-            #self.key = value           
-    
-        
-        
+            #self.key = value
+
+
+
 class ThickShapeStim(visual.ShapeStim):
     """
     Draws thick shape stimuli as a collection of lines.
@@ -1932,8 +1933,8 @@ class OrderedDict(dict, DictMixin):
 
     def __ne__(self, other):
         return not self == other
-        
-        
+
+
 class _HTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag in self.tags:
@@ -1949,7 +1950,7 @@ class _HTMLParser(HTMLParser):
         self.output += ft + '</' + tag + '>'
     def handle_data(self, data):
         self.output += data
-        
+
     def feed(self, data):
         self.output = ''
         self.tags = ['h%i' %(i+1) for i in range(6)] + ['p']
@@ -2189,7 +2190,7 @@ def weighted_choice( choices=None, weights=None):
         ind +=1
     ind -= 1
     return choices[ind]
-        
+
 def get_behav_df(subjid, pattern='%s'):
     """
     Extracts data from files for data analysis.
@@ -2225,7 +2226,7 @@ def get_behav_df(subjid, pattern='%s'):
     df = pandas.concat(dfs, ignore_index=True)
 
     return df
-    
+
 def latin_square(n=6):
     """
     Generates a Latin square of size n. n must be even.
