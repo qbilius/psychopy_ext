@@ -1,3 +1,8 @@
 include *.txt
-include *.md
-recursive-include docs *.txt
+include LICENSE
+include *.rst
+include docs/Makefile
+recursive-include docs *.bat *.html *.png *.py *.rst *.txt 
+recursive-include psychopy_ext/tests *.csv *.py *.txt
+recursive-include psychopy_ext/demos *.bat *.py
+prune docs/paper

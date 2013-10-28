@@ -1,6 +1,5 @@
-*Please refer to the `online documentation <http://qbilius.github.io/psychopy_ext/index.html>`_
-for a more in depth explanation how to use the package.*
-
+Please refer to the `online documentation <http://qbilius.github.io/psychopy_ext/index.html>`_
+for a more in depth explanation how to use the package.
 
 What is it?
 ===========
@@ -9,7 +8,6 @@ What is it?
 
 Unlike **PsychoPy**, **PyMVPA** or **matplotlib** that are very flexible and support multiple options to suit everyone’s needs, the underlying philosophy of **psychopy_ext** is to act as the glue at a higher level of operation by choosing reasonable defaults for these packages and providing patterns for common tasks with a minimal user intervention.
 
-*(Read more `in the documentation <http://qbilius.github.io/psychopy_ext/whyuse.html>`_)*
 
 Features
 --------
@@ -32,24 +30,24 @@ Check out a demo:
 
 - For people who use a keyboard:
 
-    - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
-    - Type ``python main.py exp run``. Do the experiment!
-    - Type ``python main.py analysis run --plot`` to see how well you did.
+  - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
+  - Type ``python main.py exp run``. Do the experiment!
+  - Type ``python main.py analysis run --plot`` to see how well you did.
 
 - For people who use **PsychoPy** app:
 
-    - Open **run.py** file from the demos folder ('psychopy_ext/demos')
-    - Click the green running man to run it.
-    - Click on the run button. Do the experiment!
-    - When done, click on the green running man again, choose the analysis
+  - Open **run.py** file from the demos folder ('psychopy_ext/demos')
+  - Click the green running man to run it.
+  - Click on the run button. Do the experiment!
+  - When done, click on the green running man again, choose the analysis
     tab, select **plot** option, and click on **run** to see how well you did.
 
 - For people who use a mouse:
 
-    - In a file browser, navigate to the demos folder (``psychopy_ext/demos``)
-    - Double-click click on **run.py**
-    - Click on the run button. Do the experiment!
-    - When done, click on the green running man again, choose the analysis
+  - In a file browser, navigate to the demos folder (``psychopy_ext/demos``)
+  - Double-click click on **run.py**
+  - Click on the run button. Do the experiment!
+  - When done, click on the green running man again, choose the analysis
     tab, select **plot** option, and click on **run** to see how well you did.
 
 - Inspect **main.py** file to see how it works.
@@ -74,9 +72,9 @@ Future roadmap (a wishlist):
 - Browser-based project management tool
 - ``info`` and ``rp`` should become classes with tips, lists etc
 - Full fMRI preprocessing support (maybe)
-- Generate full papers via '`Open Science Paper <https://github.com/cpfaff/Open-Science-Paper>`_'
-and '`PythonTeX <https://github.com/gpoore/pythontex>`_'
-- Force metadata by turning ``trialList`` into a class
+- Generate full papers via `Open Science Paper <https://github.com/cpfaff/Open-Science-Paper>`_
+  and `PythonTeX <https://github.com/gpoore/pythontex>`_
+- Force metadata by turning ``exp_plan`` into a class
 - Integrated Bayesian statistics
 
 
