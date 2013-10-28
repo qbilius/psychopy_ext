@@ -12,7 +12,6 @@
 # Packages
 *.egg
 *.egg-info
-gh-pages
 paper
 dist
 build
