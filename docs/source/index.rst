@@ -47,8 +47,8 @@ API reference
    :maxdepth: 3
 
    api/index
-   
-   
+
+
 License
 -------
 
@@ -64,7 +64,7 @@ Included external packages and functions (covered by a compatible license): comb
 Acknowledgements
 ----------------
 
-I would like to thank Jonathan Peirce, Jeremy Gray and all `PsychoPy <http://www.psychopy.org/>`_ developers for the well maintained code from which I learned a lot about development, `Scott Torborg <http://www.scotttorborg.com/python-packaging>`_ and *`The Hitchhiker's guide to packaging <http://guide.python-distribute.org/>`_* for guiding me in packaging, and `ZetCode <http://zetcode.com/wxpython/>`_ for examples on dealing with the terrible logic of wxPython.
+I would like to thank Jonathan Peirce, Jeremy Gray and all `PsychoPy <http://www.psychopy.org/>`_ developers for the well maintained code from which I learned a lot about development, `Scott Torborg <http://www.scotttorborg.com/python-packaging>`_ and `The Hitchhiker's guide to packaging <http://guide.python-distribute.org/>`_ for guiding me in packaging, and `ZetCode <http://zetcode.com/wxpython/>`_ for examples on dealing with wxPython.
 
 Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
 
