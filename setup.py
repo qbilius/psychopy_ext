@@ -13,7 +13,7 @@ setup(
     url='https://github.com/qbilius/psychopy_ext/',
     license='LICENSE',
     description=description,
-    long_description=open('README.md').read(),
+    long_description=open('README.rst').read(),
     install_requires=[
         "psychopy >= 1.7",
         "pandas >= 0.12",
