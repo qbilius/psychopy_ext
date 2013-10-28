@@ -1,4 +1,4 @@
-import sys, os, shutil, urllib2, tarfile, gzip, glob
+import sys, os, shutil, urllib2, tarfile, glob
 import cPickle as pickle
 
 import numpy as np
@@ -45,7 +45,7 @@ class Analysis(fmri.Analysis):
                     ('rois', [(['rh_V1d','rh_V1v'],'V1'), 'rh_LO']),
                     ('reuserois', False),
                     ('method', ('timecourse', 'corr', 'svm')),
-                    ('values', ('raw', 'other')),
+                    ('values', 'raw'),
                     ('plot', True),
                     ]),
                  actions=['prepare_data', 'run']
@@ -56,7 +56,7 @@ class Analysis(fmri.Analysis):
         if self.rp['values'] == 'raw':
             if self.rp['method'] == 'timecourse':
                 self.offset = 0
-                self.dur = 6
+                self.dur = 7
             else:
                 self.offset = 3
                 self.dur = 3
@@ -72,17 +72,18 @@ class Analysis(fmri.Analysis):
         """
         url = 'http://download.klab.lt/fmri-demo.php'
         file_name = url.split('/')[-1].split('.')[0]
-        file_name = os.path.join(self.paths['root'], file_name) + '.tar.gz' 
+        file_name = os.path.join(self.paths['root'], file_name) + '.tar.gz'
         u = urllib2.urlopen(url)
         try: # if this fails (e.g. permissions) we will get an error
             os.makedirs(self.paths['root'])
         except:
-            pass#raise Exception('Path for data (%) already exists.' % self.paths['root'])
+            raise Exception('Path for data (%s) already exists. So if the data '
+                            'is already there, proceed to run the analysis.' % self.paths['root'])
 
         f = open(file_name, 'wb')
         meta = u.info()
         file_size = int(meta.getheaders("Content-Length")[0])
-        print "Downloading fmri data (%s bytes) to %s" % (file_size, self.paths['root'])
+        print 'downloading fmri data (%s bytes) to %s' % (file_size, self.paths['root'])
 
         file_size_dl = 0
         block_sz = 32*1024
@@ -99,12 +100,14 @@ class Analysis(fmri.Analysis):
 
         f.close()
 
-        # untar data                
-        try:            
+        # untar data
+        try:
             tfile = tarfile.open(file_name)
+            print
+            print 'extracting...'
             tfile.extractall(self.paths['root'])
         except:
-            raise Exception('Cannot unpack tutorial data. Try downloading ' 
+            raise Exception('Cannot unpack tutorial data. Try downloading '
                             'it again using the same command.')
 
     def prepare_data(self):
@@ -112,10 +115,10 @@ class Analysis(fmri.Analysis):
         Renames data files from PyMVPA2 in the expected format.
         """
         nchunks=2
-        
-        print        
-        self._download_data()        
-        print 'preparing demo data...'
+
+        print
+        self._download_data()
+        print 'restructuring...'
 
         ds_path = os.path.join(self.paths['root'], 'bold.nii')
         ds = mvpa2.suite.fmri_dataset(samples=ds_path)
@@ -152,53 +155,31 @@ class Analysis(fmri.Analysis):
             for roi in rois:
                 shutil.copy(roi, self.paths['rois'] % subjid + os.path.basename(roi))
 
-        print 'done'
-        
+        # cleanup
+        os.remove(self.paths['root'] + 'fmri-demo.tar.gz')
+        os.remove(self.paths['root'] + 'behav.csv')
+        os.remove(self.paths['root'] + 'bold.nii')
+        for roi in rois:
+            os.remove(roi)
+        print
+        print 'DONE'
+
     def run(self):
         if not os.path.isdir(self.paths['root']) or len(os.listdir(self.paths['root'])) == 0:
             raise Exception('You must get the data first using "prepare_data"')
         else:
             super(Analysis, self).run()
 
-#    def run(self):
-#        df, df_fname, loaded = super(Analysis, self).run()
-#        if self.method == 'timecourse':
-#            plt = fmri.plot_timecourse(df, cols=['cond'])
-#        else:
-#            if self.runParams['method'] == 'svm':
-#                popmean = .5
-#                ylabel = 'dissimilarity'
-#            else:
-#                popmean = 0
-#                ylabel = self.runParams['values'] + ' values'
-#
-#            #if self.runParams['set_size'] != 'degree':
-#            xlabel = ''
-#
-#            axes = plt.plot(agg, kind=self.runParams['plotkind'],
-#                            popmean=popmean, xlabel=xlabel, ylabel=ylabel,
-#                            title=title)
-#
-#            if self.runParams['method'] == 'svm' and\
-#            self.runParams['plotkind'] == 'bar':
-#                if len(axes) > 1:
-#                    sel_axes = axes[2:]  # skip behavioral and SVM
-#                else:
-#                    sel_axes = axes
-#                for ax in sel_axes:
-#                    ax.axhline(.5, linestyle='-', color='0.2')
-#        plt.show()
-
-    def get_data(self, df, kind='abs'):
+    def get_agg(self, df, kind=None):
         if kind == 'matrix':
             agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
                                   subplots='roi', rows='stim1.cond',
                                   cols='stim2.cond')
-        elif kind == 'corr':
+        elif self.rp['method'] in ['corr', 'svm']:
             df['same_diff'] = 'between'
             df['same_diff'][df['stim1.cond'] == df['stim2.cond']] = 'within'
             agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
-                                  rows=['roi', 'stim1.cond'], cols='same_diff')
+                                  rows='roi', cols='same_diff')
         else:
             agg = stats.aggregate(df, values='subj_resp', yerr='subjid',
                                   rows='roi', cols='cond')
