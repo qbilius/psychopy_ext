@@ -496,7 +496,6 @@ class Plot(object):
         else:
             xlim = [np.min(lims[:,0,0]), np.max(lims[:,0,1])]
             ylim = [np.min(lims[:,1,0]), np.max(lims[:,1,1])]
-
             #if kind in ['scatter', 'mds']:
                 #if ((self.sharex and not self.sharey) or
                 #(not self.sharex and self.sharey)):
@@ -513,7 +512,6 @@ class Plot(object):
                         #xlim[1] += (yran-xran)/2
 
             if self.sharex:
-#                import pdb; pdb.set_trace()
                 axes[0].set_xlim(xlim)
                 majorLocator = self._space_ticks(axes[0].get_xticks(),
                                                  xlim, kind)
@@ -551,7 +549,10 @@ class Plot(object):
                 self._label_y(ax.mean, ax.p_yerr, ax, kind=kind, **kwargs)
 
             if kind == 'bar':
-                self.draw_sig(ax.agg, ax, **kwargs)
+                try:  # not always possible to compute significance
+                    self.draw_sig(ax.agg, ax, **kwargs)
+                except:
+                    pass
 
             #if kind in ['matrix', 'scatter', 'mds']:
                 #legend = False
@@ -589,10 +590,11 @@ class Plot(object):
             tickpos = 1# len(ticks)
         else:
             largest = [fractions.gcd(len(ticks)-1,i+1) for i in range(5)]
-            tickpos = (len(ticks) - 1) / np.max(largest)
             if np.max(largest) == 1:
                 largest = [fractions.gcd(len(ticks),i+1) for i in range(5)]
                 tickpos = len(ticks) / np.max(largest)# np.argsort(largest)[-1] + 1
+            else:
+                tickpos = (len(ticks) - 1) / np.max(largest)
 
         try:
             majorLocator = MultipleLocator(ticks[tickpos] - ticks[0])
@@ -1030,8 +1032,8 @@ class Plot(object):
         if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
             ax.set_xlim((np.min(x) - step/2, np.max(x) + step/2))
             ax.set_xticks(x)
-        xticklabels = self._format_labels(labels=data.index)
-        ax.set_xticklabels([''] + xticklabels)
+#        xticklabels = self._format_labels(labels=data.index)
+#        ax.set_xticklabels([''] + xticklabels)
         return ax
 
     def scatter_plot(self, data, ax=None, labels=None, **kwargs):
