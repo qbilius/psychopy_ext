@@ -3,9 +3,11 @@ from distutils.core import setup
 
 description = ('A framework for a rapid reproducible design, analysis and '
                'plotting of  experiments in neuroscience and psychology.')
+exec(open('psychopy_ext/version.py').read())
+
 setup(
     name='psychopy_ext',
-    version='0.5',
+    version=__version__,
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
     packages=['docs', 'psychopy_ext', 'psychopy_ext.demos', 
