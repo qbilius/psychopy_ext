@@ -14,24 +14,25 @@ Features
 - Easy to run and rerun everything
 - Neat project organization
 - Templates for building and analyzing experiments (behavioral & fMRI)
-- Built-in simple models of vision (Pixel-wise difference, GaborJet, and HMAX'99)
-- Custom needs? Inherit & customize: everything is a class!
-- Automatic running (unit testing) of experiments
-- Automatic GUI and command-line interpreter
 - Simplified descriptive statistics
 - Pretty plotting
+- Automatic running (unit testing) of experiments
+- Automatic GUI and command-line interpreter
+- Custom needs? Inherit & customize: everything is a class!
+- Built-in simple models of vision (Pixel-wise difference, GaborJet, and HMAX'99)
 
 
 Introduction
 ------------
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
 
    demo
    quickstart
    architecture
    whyuse
+   faq
 
 Documentation
 -------------

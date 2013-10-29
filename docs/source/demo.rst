@@ -2,7 +2,7 @@
 Demo
 ====
 
-Find the ``run.py`` in the ``psychopy_ext`` ``demos`` folder, and run it. You'll see an app appear for this *Demo Project*:
+Find the ``run.py`` in the ``demo`` folder of *psychopy_ext*, and run it. You'll see an app appear for this *Demo Project*:
 
     .. image:: gui.png
         :width: 300px

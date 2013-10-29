@@ -15,42 +15,50 @@ Features
 - Easy to run and rerun everything
 - Neat project organization
 - Templates for building and analyzing experiments (behavioral & fMRI)
-- Built-in simple models of vision (Pixel-wise difference, GaborJet, and HMAX'99)
-- Custom needs? Inherit & customize: everything is a class!
-- Automatic running (unit testing) of experiments
-- Automatic GUI and command-line interpreter
 - Simplified descriptive statistics
 - Pretty plotting
+- Automatic running (unit testing) of experiments
+- Automatic GUI and command-line interpreter
+- Custom needs? Inherit & customize: everything is a class!
+- Built-in simple models of vision (Pixel-wise difference, GaborJet, and HMAX'99)
+
+Installation
+============
+
+    pip install psychopy_ext
+    
+(`no success? <http://qbilius.github.io/psychopy_ext/faq.html#pip-failing>`_)
 
 
 Quick start
 ===========
 
-Check out a demo:
+First, find demo files in ``site-packages`` (`where is it? <http://qbilius.github.io/psychopy_ext/faq.html#where-is-demo>`_). Now check them out:
 
 - For people who use a keyboard:
 
-  - In a terminal, navigate to the demos folder ('psychopy_ext/demos')
-  - Type ``python main.py exp run``. Do the experiment!
-  - Type ``python main.py analysis run --plot`` to see how well you did.
+  - In a terminal, navigate to the demos folder
+  - Type ``python run.py exp run``. Do the experiment!
+  - Type ``python run.py analysis run --plot`` to see how well you did.
 
 - For people who use **PsychoPy** app:
 
-  - Open **run.py** file from the demos folder ('psychopy_ext/demos')
+  - In coder view, open **run.py** file from the demos folder
   - Click the green running man to run it.
   - Click on the run button. Do the experiment!
   - When done, click on the green running man again, choose the analysis
     tab, select **plot** option, and click on **run** to see how well you did.
 
-- For people who use a mouse:
+- For people who use a mouse on Windows:
 
-  - In a file browser, navigate to the demos folder (``psychopy_ext/demos``)
-  - Double-click click on **run.py**
+  - In a file browser, navigate to the demos folder
+  - Double-click click on **run.bat**
   - Click on the run button. Do the experiment!
   - When done, click on the green running man again, choose the analysis
     tab, select **plot** option, and click on **run** to see how well you did.
 
-- Inspect **main.py** file to see how it works.
+When done with the demo, inspect **main.py** file to see how it works,
+and build your using this template.
 
 
 Current state of affairs
@@ -81,11 +89,19 @@ Future roadmap (a wishlist):
 Dependencies
 ============
 
-* Python 2.4+ (but tested only with 2.7)
-* PsychoPy
-* pandas
-* PyMVPA (optional; required for the ``fmri`` class)
-* NiBabel (optional; required for the ``fmri`` class)
+*Required*
+
+* `Python 2.6+ <http://python.org/download/>`_ (but tested only with 2.7)
+* `PsychoPy 1.7+ <http://sourceforge.net/projects/psychpy/files/>`_
+* `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
+
+*Optional*
+
+* `PyMVPA 2.0+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class)
+* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class)
+* `docutils <https://pypi.python.org/pypi/docutils>`_ (used for rendering docstrings on screen by the ``exp`` class)
+
+(Note: if there isn't a binary package for your Windows platform and your Python version, try `Christoph Gohlke's Unofficial Binaries <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
 
 
 License
