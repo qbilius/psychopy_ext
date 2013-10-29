@@ -7,7 +7,7 @@
 
 """Basic command-line and graphic user interface"""
 
-import wx, sys, os, inspect, shutil
+import wx, sys, os, inspect, shutil, subprocess
 from types import ModuleType
 
 try:
@@ -287,7 +287,6 @@ class Control(object):
             frame.Fit()
         frame.Centre()
         frame.Show()
-
         app.MainLoop()
 
     def _type(self, input_key, input_value, value, exp_type):
@@ -298,72 +297,6 @@ class Control(object):
                 Exception('Expected %s for %s'
                            % (exp_type, input_key))
             return input_value
-
-
-    def _cmd_old(self, modules, raw_args=None):
-        import argparse
-        def add_arg(mod_parse, arg, default):
-            if type(default) == bool:
-                if default:
-                    action = 'store_false'
-                else:
-                    action = 'store_true'
-                mod_parse.add_argument('--' + arg, default=default,
-                                       action=action)
-            else:
-                mod_parse.add_argument('--' + arg, default=default,
-                                       type=type(default))
-
-        parser = argparse.ArgumentParser()
-
-        subparsers = parser.add_subparsers(dest='moduleName')
-        mods = {}
-        for module_uninit in modules:
-            mod = module_uninit()
-            mods[mod.name] = mod
-            mod_parse = subparsers.add_parser(mod.name)
-            action_choices = [a[1] for a in mod.actions]
-            mod_parse.add_argument('action', choices=action_choices)
-            for arg, default in mod.info.items():
-                add_arg(mod_parse, arg, default)
-            for arg, default in mod.rp.items():
-                add_arg(mod_parse, arg, default)
-
-        if raw_args is not None:
-            raw_args = raw_args.split(' ')
-        rp = parser.parse_args(args=raw_args)
-        module = mods[rp.moduleName]
-
-
-        for key in module.info.keys():
-            try:
-                value = eval(rp.__dict__[key])
-            except:
-                value = rp.__dict__[key]
-            module.info[key] = value
-
-        for key in module.rp.keys():
-            if key in rp.__dict__:
-                module.rp[key] = rp.__dict__[key]
-
-            #else:
-                #module.rp[key] =
-        # mod, module = mods[rp.moduleName]
-        # info = []
-        # rp = []
-        # for key in mod.info.keys():
-        #     try:
-        #         value = eval(rp.__dict__[key])
-        #     except:
-        #         value = rp.__dict__[key]
-        #     info.append((key,value))
-        # for key in mod.rp.keys():
-        #     rp.append((key,rp.__dict__[key]))
-        # module = module(info=OrderedDict(info),
-        #                 rp=OrderedDict(rp))
-        getattr(module, rp.action)()
-        # args.func(args)
-
 
 
 def report(exp_choices, args):
@@ -642,18 +575,21 @@ class Page(wx.Panel):
                     rp.append('--%s "%s"' %(k,v))
                 else:
                     rp.append('--%s %s' %(k,v))
-        argv = ' '.join(sys.argv + opts + info + rp)
+        argv = ' '.join(opts + info + rp)
 
+        # -u forces stdin, stdout and stderr to be totally unbuffered
         if sys.platform=='win32':
             # the quotes allow file paths with spaces
-            command = '"%s" -u %s' % (sys.executable, argv)
-            wx.Execute(command, wx.EXEC_SYNC | wx.EXEC_NOHIDE)
+            command = '"%s" -u "%s" %s' % (sys.executable, sys.argv[0], argv)
+            # wx.Execute(command, wx.EXEC_SYNC | wx.EXEC_NOHIDE)
         else:
             # for unix this signifies a space in a filename
             python_exec = sys.executable.replace(' ','\ ')
             # the quotes would break a unix system command
-            command = '%s -u %s' %(python_exec, argv)
-            wx.Execute(command, wx.EXEC_SYNC| wx.EXEC_MAKE_GROUP_LEADER)
+            command = '"%s" -u "%s" %s' % (sys.executable, sys.argv[0], argv)
+            # wx.Execute(command, wx.EXEC_SYNC| wx.EXEC_MAKE_GROUP_LEADER)
+
+        subprocess.call(command, shell=False)
 
         #try:
             #class_init = self.class_obj(info=button.info, rp=button.rp)

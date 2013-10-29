@@ -44,16 +44,16 @@ class Confsup(exp.Experiment):
     ----
 
     Indicate which shape is different. Use the numeric pad to respond:
-    
+
     - Top left: 4
     - Top right: 5
     - Bottom left: 1
     - Bottom right: 2
 
     Please remember to fixate on the central dot.
-    
+
     **Please press spacebar to begin.**
-    
+
     *(Use Left Shift + Esc to exit.)*
     """
     def __init__(self,
@@ -76,7 +76,7 @@ class Confsup(exp.Experiment):
             info=info,
             rp=rp,
             actions=actions,
-            method='random',  # order of trials; check `psychopy.TrialHandler` for acceptable formats            
+            method='random',  # order of trials; check `psychopy.TrialHandler` for acceptable formats
             computer=computer,
             paths=PATHS,
             blockcol='rep',  # experiment will be divided into blocks
@@ -233,13 +233,13 @@ class Confsup(exp.Experiment):
         # finally, draw the fixation
         self.s['fix'].draw()
         self.win.flip()
-        
+
         event_keys = self.wait_until_response(draw_stim=False)
         return event_keys
-        
+
     def after_exp(self):
         """
-        This is almost identical to the default `after` function.        
+        This is almost identical to the default `after` function.
         The point is to show how it looks like in case you want to
         modify it.
         """
@@ -271,7 +271,7 @@ class Analysis(object):
                                  yerr='subjid', order='sorted')
         agg_rt = stats.aggregate(df[df.accuracy=='correct'], cols='context',
                                  values='rt', yerr='subjid', order='sorted')
-        
+
         plt = plot.Plot(ncols=2)
         if len(df.subjid.unique()) == 1:
             kind = 'bar'
@@ -279,7 +279,7 @@ class Analysis(object):
             kind = 'bean'
         plt.plot(agg_acc, kind=kind, title='accuracy', ylabel='% correct')
         plt.plot(agg_rt, kind=kind, title='response time', ylabel='seconds')
-        
+
         print agg_acc
         print agg_rt
         plt.show()
