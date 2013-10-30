@@ -860,10 +860,13 @@ class Analysis(object):
 
     def correlation(self, evds, nIter=100):
         """
-        Computes pariwise correlations between multiple splits in half of the data.
+        Computes pairwise correlations between the two data splits in half.
 
         Reported as one minus a correlation over two to provide a dissimilarity
-        measure between 0 and 1 as in svm.
+        measure between 0 and 1 as in :func:`~psychopy_ext.fmri.Analysis.svm()`.
+
+        Data is normalized by subtracting the mean across conditions (targets)
+        per chunk per voxel.
 
         :Args:
             evds (event-related mvpa dataset)
@@ -933,6 +936,8 @@ class Analysis(object):
                  it is at least intuitive.
 
         Process:
+            - Normalize data by subtracting the mean across voxels
+              per chunk per condition (target).
             - Split data into a training set (about 75% of all values) and a testing
               set (about 25% of values), unless there are only two runs, in
               which case is 50% training and 50% testing.
