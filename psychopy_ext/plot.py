@@ -695,8 +695,27 @@ class Plot(object):
     def _label_x(self, mean, p_yerr, ax, kind='bar', xtickson=True,
                    rotate=True, **kwargs):
 
-        if kind not in ['line', 'histogram', 'scatter', 'mds']:
-            ax.set_xticklabels(self._format_labels(labels=mean.index))
+        if kind not in ['histogram', 'scatter', 'mds']:
+            labels = ax.get_xticklabels()
+            new_labels = self._format_labels(labels=mean.index)
+            if len(labels) > len(mean):
+                new_labels = [''] + new_labels            
+            if kind == 'line':
+                #import pdb; pdb.set_trace()
+                try:  # don't set labels for number
+                    mean.index[0] + 1
+                except:   
+                    ax.set_xticklabels(new_labels)                
+                else:
+                    loc = map(int, ax.xaxis.get_majorticklocs())
+                    try:
+                        new_labels = [loc[0]] + mean.index[np.array(loc[1:-1])].tolist()
+                    except:
+                        pass
+                    else:
+                        ax.set_xticklabels(new_labels)
+            else:
+                ax.set_xticklabels(new_labels)
         labels = ax.get_xticklabels()
         if len(labels) > 0:
             max_len = max([len(label.get_text()) for label in labels])
@@ -1032,8 +1051,18 @@ class Plot(object):
         if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
             ax.set_xlim((np.min(x) - step/2, np.max(x) + step/2))
             ax.set_xticks(x)
-#        xticklabels = self._format_labels(labels=data.index)
-#        ax.set_xticklabels([''] + xticklabels)
+        
+        try:
+            data.index[0] + 1
+        except:
+            pass
+        else:
+            ax.set_xticklabels(data.index)
+        #xticklabels = self._format_labels(labels=data.index)
+        #old_labels = ax.get_xticklabels()        
+        #if len(xticklabels) < old_labels:
+            #xticklabels = [''] + xticklabels
+        #ax.set_xticklabels(xticklabels)
         return ax
 
     def scatter_plot(self, data, ax=None, labels=None, **kwargs):
@@ -1221,7 +1250,6 @@ class Plot(object):
                 if not isinstance(rlabel, (tuple, list)):
                     rlabel = [rlabel]
                 d = data.copy()
-                #gg
                 for r in rlabel:
                     d = d.loc[:,r]
                 #d = data.loc[:,rlabel]
@@ -1289,7 +1317,10 @@ class Plot(object):
         left = Rectangle((0, 0), 1, 1, fc="black", ec='black')
         right = Rectangle((0, 0), 1, 1, fc="gray", ec='gray')
 
-        ax.legend((left, right), data.columns.tolist())
+        if d.ndim == 1:
+            ax.legend((left,), [''])
+        else:
+            ax.legend((left, right), d.columns.tolist())
         #ax.set_xlim(pos[0]-3*w, pos[-1]+3*w)
         #if bp:
             #ax.boxplot(data,notch=1,positions=pos,vert=1)
