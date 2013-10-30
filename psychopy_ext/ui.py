@@ -549,61 +549,18 @@ class Page(wx.Panel):
             for key, field in zip(button.rp.keys(), self.sb2.inputFields):
                 button.rp[key] = field.GetValue()
 
-        # taken from PsychoPy's builder.py
-        #scriptProcess = wx.Process(self) #self is the parent (which will receive an event when the process ends)
-        #scriptProcess.Redirect()#builder will receive the stdout/stdin
+        # call the relevant script
         opts = [self.alias, self.class_alias, button.GetLabelText()]
-        info = []
-        for k,v in button.info.items():
-            try:
-                gaps = len(v.split(' '))
-            except:
-                info.append('--%s %s' %(k,v))
+        params = []
+        for k,v in button.info.items() + button.rp.items():
+            params.append('--%s' % k)
+            if len(v.split(' ')) > 1:
+                params.append('"%s"' % v)
             else:
-                if gaps > 1:
-                    info.append('--%s "%s"' %(k,v))
-                else:
-                    info.append('--%s %s' %(k,v))
-        rp=[]
-        for k,v in button.rp.items():
-            try:
-                gaps = len(v.split(' '))
-            except:
-                rp.append('--%s %s' %(k,v))
-            else:
-                if len(v.split(' ')) > 1:
-                    rp.append('--%s "%s"' %(k,v))
-                else:
-                    rp.append('--%s %s' %(k,v))
-        argv = ' '.join(opts + info + rp)
-
-        # -u forces stdin, stdout and stderr to be totally unbuffered
-        if sys.platform=='win32':
-            # the quotes allow file paths with spaces
-            command = '"%s" -u "%s" %s' % (sys.executable, sys.argv[0], argv)
-            # wx.Execute(command, wx.EXEC_SYNC | wx.EXEC_NOHIDE)
-        else:
-            # for unix this signifies a space in a filename
-            python_exec = sys.executable.replace(' ','\ ')
-            # the quotes would break a unix system command
-            command = '"%s" -u "%s" %s' % (sys.executable, sys.argv[0], argv)
-            # wx.Execute(command, wx.EXEC_SYNC| wx.EXEC_MAKE_GROUP_LEADER)
-
-        subprocess.call(command, shell=False)
-
-        #try:
-            #class_init = self.class_obj(info=button.info, rp=button.rp)
-        #except:
-            #try:
-                #class_init = self.class_obj(info=button.info)
-            #except:
-                #try:
-                    #class_init = self.class_obj(rp=button.rp)
-                #except:
-                    #class_init = self.class_obj()
-        #func = getattr(class_init, button.action)
-        #func()  # FIX: would be nice to keep it open at the end of the exp
-
+                params.append('%s' % v)                
+        command = [sys.executable, sys.argv[0]] + opts + params
+        subprocess.call(command, shell=False)  # no shell is safer
+        
 
 class Listbook(wx.Listbook):
     """
