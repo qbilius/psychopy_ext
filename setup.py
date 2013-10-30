@@ -10,7 +10,7 @@ setup(
     version=__version__,
     author='Jonas Kubilius',
     author_email='qbilius@gmail.com',
-    packages=['docs', 'psychopy_ext', 'psychopy_ext.demos', 
+    packages=['docs', 'psychopy_ext', 'psychopy_ext.demos',
               'psychopy_ext.demos.scripts', 'psychopy_ext.tests'],
     package_data={'': ['*.png', '*.py*', '*.bat', '*.csv', '*.txt']},
     url='https://github.com/qbilius/psychopy_ext/',
@@ -20,7 +20,6 @@ setup(
     install_requires=[
         "psychopy >= 1.7",
         "pandas >= 0.12",
-        "pymvpa2 >= 2.0",
         "docutils"
     ],
     #test_suite='nose.collector',

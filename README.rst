@@ -26,7 +26,7 @@ Installation
 ============
 
     pip install psychopy_ext
-    
+
 (`no success? <http://qbilius.github.io/psychopy_ext/faq.html#pip-failing>`_)
 
 
@@ -38,8 +38,8 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
 - For people who use a keyboard:
 
   - In a terminal, navigate to the demos folder
-  - Type ``python run.py exp run``. Do the experiment!
-  - Type ``python run.py analysis run --plot`` to see how well you did.
+  - Type ``python run.py main exp run``. Do the experiment!
+  - Type ``python run.py main analysis run --plot`` to see how well you did.
 
 - For people who use **PsychoPy** app:
 
@@ -58,7 +58,7 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
     tab, select **plot** option, and click on **run** to see how well you did.
 
 When done with the demo, inspect **main.py** file to see how it works,
-and build your using this template.
+and build your experiment using this template, or try more demos.
 
 
 Current state of affairs
@@ -67,7 +67,7 @@ Current state of affairs
 **psychopy_ext** is currently stable, meaning that I use it myself daily
 but there are some limitations:
 
-- fMRI analyses (``fmri`` module) have not been thoroughly tested yet (no unit tests) but 
+- fMRI analyses (``fmri`` module) have not been thoroughly tested yet (no unit tests) but
   has been used extensively in my own research.
 - ``plots`` work well but might still require fine tuning and may be
   unable to handle missing values etc.
@@ -94,12 +94,12 @@ Dependencies
 * `Python 2.6+ <http://python.org/download/>`_ (but tested only with 2.7)
 * `PsychoPy 1.7+ <http://sourceforge.net/projects/psychpy/files/>`_
 * `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
+* `docutils <https://pypi.python.org/pypi/docutils>`_ (technically it is not mandatory but it will allow rendering docstrings on screen by the ``exp`` class)
 
 *Optional*
 
 * `PyMVPA 2.0+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class)
 * `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class)
-* `docutils <https://pypi.python.org/pypi/docutils>`_ (used for rendering docstrings on screen by the ``exp`` class)
 
 (Note: if there isn't a binary package for your Windows platform and your Python version, try `Christoph Gohlke's Unofficial Binaries <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
 

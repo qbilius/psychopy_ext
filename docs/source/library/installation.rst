@@ -23,12 +23,12 @@ Dependencies
 * `Python 2.6+ <http://python.org/download/>`_ (but tested only with 2.7)
 * `PsychoPy 1.7+ <http://sourceforge.net/projects/psychpy/files/>`_
 * `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
+* `docutils <https://pypi.python.org/pypi/docutils>`_ (technically it is not mandatory but it will allow rendering docstrings on screen by the ``exp`` class)
 
 *Optional*
 
 * `PyMVPA 2.0+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class)
 * `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class)
-* `docutils <https://pypi.python.org/pypi/docutils>`_ (used for rendering docstrings on screen by the ``exp`` class)
 
 (Note: if there isn't a binary package for your Windows platform and your Python version, try `Christoph Gohlke's Unofficial Binaries <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
 
