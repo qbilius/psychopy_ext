@@ -39,7 +39,7 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
 
   - In a terminal, navigate to the demos folder
   - Type ``python run.py main exp run``. Do the experiment!
-  - Type ``python run.py main analysis run --plot`` to see how well you did.
+  - Type ``python run.py main analysis run`` to see how well you did.
 
 - For people who use **PsychoPy** app:
 
@@ -47,7 +47,7 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
   - Click the green running man to run it.
   - Click on the run button. Do the experiment!
   - When done, click on the green running man again, choose the analysis
-    tab, select **plot** option, and click on **run** to see how well you did.
+    tab, and click on **run** to see how well you did.
 
 - For people who use a mouse on Windows:
 
@@ -55,7 +55,7 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
   - Double-click click on **run.bat**
   - Click on the run button. Do the experiment!
   - When done, click on the green running man again, choose the analysis
-    tab, select **plot** option, and click on **run** to see how well you did.
+    tab, and click on **run** to see how well you did.
 
 When done with the demo, inspect **main.py** file to see how it works,
 and build your experiment using this template, or try more demos.
