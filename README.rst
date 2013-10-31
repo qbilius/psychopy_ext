@@ -46,16 +46,14 @@ First, find demo files in ``site-packages`` (`where is it? <http://qbilius.githu
   - In coder view, open **run.py** file from the demos folder
   - Click the green running man to run it.
   - Click on the run button. Do the experiment!
-  - When done, click on the green running man again, choose the analysis
-    tab, and click on **run** to see how well you did.
+  - When done, choose the analysis tab and click on **run** to see how well you did.
 
 - For people who use a mouse on Windows:
 
   - In a file browser, navigate to the demos folder
   - Double-click click on **run.bat**
   - Click on the run button. Do the experiment!
-  - When done, click on the green running man again, choose the analysis
-    tab, and click on **run** to see how well you did.
+  - When done, choose the analysis tab, and click on **run** to see how well you did.
 
 When done with the demo, inspect **main.py** file to see how it works,
 and build your experiment using this template, or try more demos.
