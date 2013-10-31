@@ -33,7 +33,7 @@ Installation
 Quick start
 ===========
 
-First, find demo files in ``site-packages`` (`where is it? <http://qbilius.github.io/psychopy_ext/faq.html#where-is-demo>`_). Now check them out:
+First, find demo files in ``site-packages`` (`where is it? <http://qbilius.github.io/psychopy_ext/faq.html#where-is-demo>`_). Copy them to your home folder or another location of your choice (but where you have write permission). Now check the demos:
 
 - For people who use a keyboard:
 

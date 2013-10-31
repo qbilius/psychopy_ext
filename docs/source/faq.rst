@@ -22,8 +22,10 @@ Where do I find demo files?
 Demos are located in the ``psychopy_ext/demos`` folder in your Python's ``site-packages`` (unless you are using ``virtualenv`` in which case you know where you put ``psychopy_ext``). Don't know where ``site-packages`` are? Try::
 
     import site; print site.getsitepackages()
-    
-    
+
+Can't find it still? Fine, just download the *psychopy_ext* zip file then from the `PyPI index <https://pypi.python.org/pypi/psychopy_ext>`_. The demos are in the ``psychopy_ext`` folder.
+
+
 .. _how-run-demo:
 
 -------------------
