@@ -554,13 +554,14 @@ class Page(wx.Panel):
         params = []
         for k,v in button.info.items() + button.rp.items():
             params.append('--%s' % k)
-            if len(v.split(' ')) > 1:
-                params.append('"%s"' % v)
-            else:
-                params.append('%s' % v)                
+            vstr = '%s' % v
+            if len(vstr.split(' ')) > 1:
+                vstr = '"%s"' % vstr
+            params.append(vstr)
+        print params
         command = [sys.executable, sys.argv[0]] + opts + params
         subprocess.call(command, shell=False)  # no shell is safer
-        
+
 
 class Listbook(wx.Listbook):
     """
@@ -575,10 +576,9 @@ class Listbook(wx.Listbook):
     def OnPageChanging(self, event):
         new = event.GetSelection()
         if new not in self.ready:
-            setup_page(self.exp_choices[new], self.GetPage(new))
-            self.ready.append(new)
-        #wx.SetCursor(wx.StockCursor(wx.CURSOR_WAIT))
-        #wx.SetCursor(wx.StockCursor(wx.CURSOR_ARROW))
+            success = setup_page(self.exp_choices[new], self.GetPage(new))
+            if success:
+                self.ready.append(new)
 
 def setup_page(choice, pagepanel):
     """
@@ -590,11 +590,17 @@ def setup_page(choice, pagepanel):
         - pagepanel
     """
     if isinstance(choice.module, str):
-        __import__(choice.module)
-        class_aliases, class_obj = _get_classes(sys.modules[choice.module],
-            class_order=choice.order)
+        try:
+            __import__(choice.module)
+        except ImportError as e:
+            wx.MessageBox('%s' % e, 'Info', wx.OK | wx.ICON_ERROR)
+            return False
+        else:
+            class_aliases, class_obj = _get_classes(sys.modules[choice.module],
+                                                    class_order=choice.order)
     else:
         class_aliases, class_obj = _get_classes(choice.module, class_order=choice.order)
+
     nb = wx.Notebook(pagepanel)
     for class_alias, class_obj in class_aliases:
         nb.AddPage(Page(nb, class_obj, choice.alias, class_alias), class_alias)
@@ -603,6 +609,7 @@ def setup_page(choice, pagepanel):
     pagepanel.SetSizer(panelsizer)
     pagepanel.Layout()
     pagepanel.Fit()
+    return True
 
 def _detect_rev():
     """
