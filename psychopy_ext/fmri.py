@@ -20,8 +20,15 @@ import cPickle as pickle
 
 import numpy as np
 import pandas
-import mvpa2.suite
-import nibabel as nb
+
+try:
+    import mvpa2.suite
+except ImportError:
+    raise ImportError('You must have pymvpa2 installed to run this.')
+try:
+    import nibabel as nb
+except ImportError:
+    raise ImportError('You must have nibabel installed to run this.')
 
 # some modules are only available in Python 2.6
 try:
