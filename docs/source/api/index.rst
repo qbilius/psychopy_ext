@@ -257,6 +257,15 @@ Plotting
    Plot.matrix_plot
    Plot.mds_plot
    Plot.bean_plot
+   Plot.show
+   
+   Plot.get_ax
+   Plot.next
+   Plot.hide_plots
+   Plot.display_legend
+   Plot.set_legend_pos
+   Plot.draw_sig
+   
 
 Helper functions
 ~~~~~~~~~~~~~~~~

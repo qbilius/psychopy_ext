@@ -225,11 +225,11 @@ def reorder(agg, order, level=None, dim='columns'):
     It relies on for loops, so it will be slow for large data frames.
 
     :Args:
-        agg (pandas.DataFrame)
+        - agg (pandas.DataFrame)
             Your (usually aggregated) data
+        - order (list or dict)
+            Order of entries. A list is only accepted is `level` is given
     :Kwargs:
-        - order (list or dict, default: None)
-            Order of entries. A list is only accepted is `level` is given.
         - level (str, default: None)
             Which level needs to be reordered. Levels must be str.
         - dim (str, {'rows', 'index', 'columns'}, default: 'columns')
