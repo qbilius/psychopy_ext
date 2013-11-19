@@ -456,14 +456,23 @@ class Plot(object):
             if kind in ['scatter', 'mds']:
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_ylim()
-                xran = lims[i,0,1] - lims[i,0,0]
-                yran = lims[i,1,1] - lims[i,1,0]
-                if xran > yran:
-                    lims[i,1,0] -= (xran-yran)/2 + xran/10.
-                    lims[i,1,1] += (xran-yran)/2 + xran/10.
-                else:
-                    lims[i,0,0] -= (yran-xran)/2 + yran/10.
-                    lims[i,0,1] += (yran-xran)/2 + yran/10.
+                xticks = ax.get_xticks()
+                min_space = abs(xticks[1] - xticks[0])
+                lims[i,0,0] -= min_space
+                lims[i,0,1] += min_space
+                yticks = ax.get_yticks()
+                min_space = abs(yticks[1] - yticks[0])
+                lims[i,1,0] -= min_space
+                lims[i,1,1] += min_space
+                
+                #xran = lims[i,0,1] - lims[i,0,0]
+                #yran = lims[i,1,1] - lims[i,1,0]
+                #if xran > yran:
+                    #lims[i,1,0] -= (xran-yran)/2 + xran/10.
+                    #lims[i,1,1] += (xran-yran)/2 + xran/10.
+                #else:
+                    #lims[i,0,0] -= (yran-xran)/2 + yran/10.
+                    #lims[i,0,1] += (yran-xran)/2 + yran/10.
             elif kind in ['histogram', 'bean']:
                 lims[i,0] = ax.get_xlim()
                 lims[i,1] = ax.get_ylim()
@@ -477,7 +486,7 @@ class Plot(object):
                 if kind == 'bar':
                     lims[i,0,0] -= .25  # add some padding from both sides
                     lims[i,0,1] += .25
-                lims[i,1] = self._autoscale(ax.mean, ax.p_yerr, kind=kind)
+                lims[i,1] = self._autoscale(ax, ax.mean, ax.p_yerr, kind=kind)
 
         if 'xlim' in kwargs:
             for lim in lims:
@@ -489,8 +498,8 @@ class Plot(object):
         if kind == 'matrix':
             for ax in axes:
                 for im in ax.images:
-                    norm = mpl.colors.normalize(np.min(lims[:,2,0]),
-                                                np.max(lims[:,2,1]))
+                    norm = mpl.colors.Normalize(vmin=np.min(lims[:,2,0]),
+                                                vmax=np.max(lims[:,2,1]))
                     im.set_norm(norm)
 
         else:
@@ -511,31 +520,30 @@ class Plot(object):
                         #xlim[0] -= (yran-xran)/2
                         #xlim[1] += (yran-xran)/2
 
-            if self.sharex:
-                axes[0].set_xlim(xlim)
-                majorLocator = self._space_ticks(axes[0].get_xticks(),
-                                                 xlim, kind)
-                if majorLocator is not None:
-                    axes[0].xaxis.set_major_locator(majorLocator)
-            else:
-                for i, ax in enumerate(axes):
-                    ax.set_xlim(lims[i,0])
-                    majorLocator = self._space_ticks(ax.get_xticks(),
-                                                     lims[i,0], kind)
+            if kind in ['line', 'scatter', 'mds']:
+                if self.sharex:
+                    #import pdb; pdb.set_trace()
+                    axes[0].set_xlim(xlim)
+                    majorLocator = self._space_ticks(axes[0].get_xticks(), kind)
                     if majorLocator is not None:
-                        ax.xaxis.set_major_locator(majorLocator)
+                        axes[0].xaxis.set_major_locator(majorLocator)
+                else:
+                    for i, ax in enumerate(axes):
+                        ax.set_xlim(lims[i,0])
+                        majorLocator = self._space_ticks(ax.get_xticks(), kind)
+                        if majorLocator is not None:
+                            ax.xaxis.set_major_locator(majorLocator)
 
             if self.sharey: # set y-axis limits globally
+                #import pdb; pdb.set_trace()
                 axes[0].set_ylim(ylim)
-                majorLocator = self._space_ticks(axes[0].get_yticks(),
-                                                 ylim)
+                majorLocator = self._space_ticks(axes[0].get_yticks(), kind)
                 if majorLocator is not None:
                     axes[0].yaxis.set_major_locator(majorLocator)
             else:
                 for i, ax in enumerate(axes):
                     ax.set_ylim(lims[i,1])
-                    majorLocator = self._space_ticks(ax.get_yticks(),
-                                                     lims[i,1])
+                    majorLocator = self._space_ticks(ax.get_yticks(), kind)
                     if majorLocator is not None:
                         ax.yaxis.set_major_locator(majorLocator)
 
@@ -567,7 +575,7 @@ class Plot(object):
                 legend = None
 
             if kind not in ['matrix', 'scatter', 'mds']:
-                self._draw_legend(ax, visible=legend, data=ax.mean, **kwargs)
+                self._draw_legend(ax, visible=legend, data=ax.mean, kind=kind)
             if 'numb' in kwargs:
                 if kwargs['numb'] == True:
                     self.add_inner_title(ax, title='%s' % self.subplotno, loc=2)
@@ -585,22 +593,20 @@ class Plot(object):
                 pass
         return axes
 
-    def _space_ticks(self, ticks, lim, kind=None):
+    def _space_ticks(self, ticks, kind=None):        
         if len(ticks) <= 5:
-            tickpos = 1# len(ticks)
+            nbins = len(ticks)
         else:
-            largest = [fractions.gcd(len(ticks)-1,i+1) for i in range(5)]
+            largest = [fractions.gcd(len(ticks)+1,i+1) for i in range(5)]
             if np.max(largest) == 1:
                 largest = [fractions.gcd(len(ticks),i+1) for i in range(5)]
-                tickpos = len(ticks) / np.max(largest)# np.argsort(largest)[-1] + 1
-            else:
-                tickpos = (len(ticks) - 1) / np.max(largest)
-
+            nbins = np.max(largest) + 1
+        #if kind in ['scatter', 'mds']:
+            #majorLocator = mpl.ticker.LinearLocator(numticks=nbins)
+        #else:
         try:
-            majorLocator = MultipleLocator(ticks[tickpos] - ticks[0])
+            majorLocator = mpl.ticker.FixedLocator(ticks, nbins=nbins)
         except:
-            majorLocator = None
-        if kind == 'bar':
             majorLocator = None
         return majorLocator
 
@@ -637,9 +643,9 @@ class Plot(object):
             print 'WARNING: Beanplot not available for a single measurement'
 
         if kind == 'bar':
-            self.bar_plot(mean, yerr=p_yerr, ax=ax)
+            self.bar_plot(mean, yerr=p_yerr, ax=ax, **kwargs)
         elif kind == 'line':
-            self.line_plot(mean, yerr=p_yerr, ax=ax)
+            self.line_plot(mean, yerr=p_yerr, ax=ax, **kwargs)
         elif kind == 'bean':
             ax = self.bean_plot(agg, ax=ax, order=order, **kwargs)
         elif kind == 'histogram':
@@ -701,7 +707,6 @@ class Plot(object):
             if len(labels) > len(mean):
                 new_labels = [''] + new_labels            
             if kind == 'line':
-                #import pdb; pdb.set_trace()
                 try:  # don't set labels for number
                     mean.index[0] + 1
                 except:   
@@ -709,7 +714,7 @@ class Plot(object):
                 else:
                     loc = map(int, ax.xaxis.get_majorticklocs())
                     try:
-                        new_labels = [loc[0]] + mean.index[np.array(loc[1:-1])].tolist()
+                        new_labels = [loc[0]] + mean.index[np.array(loc[1:])].tolist()
                     except:
                         pass
                     else:
@@ -719,7 +724,7 @@ class Plot(object):
         labels = ax.get_xticklabels()
         if len(labels) > 0:
             max_len = max([len(label.get_text()) for label in labels])
-            if max_len > 10 or kind == 'matrix':
+            if max_len > 10 or (kind == 'matrix' and max_len > 2):
                 if rotate :  #FIX to this: http://stackoverflow.com/q/5320205
                     for label in labels:
                         label.set_ha('right')
@@ -765,7 +770,7 @@ class Plot(object):
 
         return ax
 
-    def _autoscale(self, mean, p_yerr, kind='bar'):
+    def _autoscale(self, ax, mean, p_yerr, kind='bar'):
         #mean_array = np.asarray(mean)
         r = mean.max().max() - mean.min().min()
         ebars = np.where(np.isnan(p_yerr), 0, p_yerr)
@@ -783,6 +788,11 @@ class Plot(object):
             ymin -= xyrange / 3.
         if ymax != 0:
             ymax += xyrange / 3.
+            
+        yticks = ax.get_yticks()
+        min_space = abs(yticks[1] - yticks[0])
+        ymin =  np.round(ymin/min_space) * min_space
+        ymax =  np.round(ymax/min_space) * min_space
         return ymin, ymax
 
     def _get_title(self, data, pref):
@@ -818,7 +828,7 @@ class Plot(object):
                 vals_len = np.max([len(agg.columns.levels[col]) for col in cols])
             except:
                 vals_len = len(agg.columns)
-
+        
         if vals_len <= 2:  # if >2, cannot compute stats
             if isinstance(agg, pandas.DataFrame):
                 mean, p_yerr = stats.confidence(agg)
@@ -889,6 +899,7 @@ class Plot(object):
                     ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
                 if rlab is None:
                     rlab = ''
+                
                 try:
                     sig_t.append((rlab, t))
                     sig_p.append((rlab, p))
@@ -898,13 +909,19 @@ class Plot(object):
                 ax.sig_t = pandas.DataFrame(sig_t)
                 ax.sig_p = pandas.DataFrame(sig_p)
 
-    def _draw_legend(self, ax, visible=None, data=None, **kwargs):
+    def _draw_legend(self, ax, visible=None, data=None, kind=None):
         leg = ax.get_legend()  # get an existing legend
         if leg is None:  # create a new legend
             leg = ax.legend() #loc='center left')
-        if leg is not None:
-            leg.legendPatch.set_alpha(0.5)
+        if leg is not None:            
+            if kind == 'line':
+                handles, labels = ax.get_legend_handles_labels()
+                # remove the errorbars
+                handles = [h[0] for h in handles]
+                leg = ax.legend(handles, labels)
 
+            leg.legendPatch.set_alpha(0.5)
+            
             try:  # may or may not have any columns
                 leg.set_title(self._get_title(data, 'cols'))
             except:
@@ -914,9 +931,9 @@ class Plot(object):
             for text, new_text in zip(texts, new_texts):
                 text.set_text(new_text)
 
-            if 'legend_visible' in kwargs:
-                leg.set_visible(kwargs['legend_visible'])
-            elif visible is not None:
+            #if 'legend_visible' in kwargs:
+                #leg.set_visible(kwargs['legend_visible'])
+            if visible is not None:
                 leg.set_visible(visible)
             else:  #decide automatically
                 if len(leg.texts) == 1:  # showing a single legend entry is useless
@@ -973,8 +990,26 @@ class Plot(object):
         for num in nums:
             ax = self.get_ax(num)
             ax.axis('off')
+            
+    def display_legend(self, nums, show=False):
+        """
+        Shows or hides (default) legends on given axes.
 
-    def bar_plot(self, data, yerr=None, ax=None):
+        :Args:
+            nums (int, tuple or list of ints)
+                Axes numbers that need their legend hidden.
+        :Kwargs:
+            show (bool, default: False)
+                Whether legends should be shown or hidden
+        """
+        if isinstance(nums, int) or isinstance(nums, tuple):
+            nums = [nums]
+        for num in nums:
+            ax = self.get_ax(num)
+            leg = ax.get_legend()
+            leg.set_visible(show)
+
+    def bar_plot(self, data, yerr=None, ax=None, **kwargs):
         """
         Plots a bar plot.
 
@@ -994,15 +1029,18 @@ class Plot(object):
             ax = self.get_ax()
 
         colors = self.get_colors(len(data.columns))
+        if not 'ecolor' in kwargs:
+            kwargs['ecolor'] = 'black'
 
         n = len(data.columns)
         idx = np.arange(len(data))
         width = .75 / n
         rects = []
+        
         for i, (label, column) in enumerate(data.iteritems()):
             rect = ax.bar(idx + i*width - .75/2, column, width,
                 label=str(label), yerr=yerr[label].tolist(),
-                color = colors[i], ecolor='black')
+                color = colors[i], **kwargs)
             # TODO: yerr indexing might need fixing
             rects.append(rect)
 
@@ -1018,7 +1056,7 @@ class Plot(object):
 
         return ax
 
-    def line_plot(self, data, yerr=None, ax=None):
+    def line_plot(self, data, yerr=None, ax=None, **kwargs):
         """
         Plots a bar plot.
 
@@ -1026,7 +1064,6 @@ class Plot(object):
             data (`pandas.DataFrame` or any other array accepted by it)
                 A data frame where rows go to the x-axis and columns go to the
                 legend.
-
         """
         data = pandas.DataFrame(data)
         if yerr is None:
@@ -1036,28 +1073,33 @@ class Plot(object):
         if ax is None:
             self.subplotno += 1
             ax = self.get_ax()
+        #if not 'fmt' in kwargs:
+            #kwargs['fmt'] = None
+        #if not 'ecolor' in kwargs:
+            #kwargs['ecolor'] = 'black'
 
         #colors = self.get_colors(len(data.columns))
-
-        x = range(len(data))
-        lines = []
+        try:
+            data.index[0] + 1
+        except:
+            x = range(len(data))
+        else:
+            x = data.index.tolist()
         for i, (label, column) in enumerate(data.iteritems()):
-            line = ax.plot(x, column, label=str(label))
-            lines.append(line)
-            ax.errorbar(x, column, yerr=yerr[label].tolist(), fmt=None,
-                ecolor='black')
+            ax.errorbar(x, column, yerr=yerr[label].tolist(),
+                        label=str(label), fmt='-', ecolor='black', **kwargs)
         step = np.ptp(x) / (len(x) - 1.)
         xlim = ax.get_xlim()
         if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
             ax.set_xlim((np.min(x) - step/2, np.max(x) + step/2))
             ax.set_xticks(x)
         
-        try:
-            data.index[0] + 1
-        except:
-            pass
-        else:
-            ax.set_xticklabels(data.index)
+        #try:
+            #data.index[0] + 1
+        #except:
+            #pass
+        #else:
+            #ax.set_xticklabels(data.index)
         #xticklabels = self._format_labels(labels=data.index)
         #old_labels = ax.get_xticklabels()        
         #if len(xticklabels) < old_labels:
@@ -1117,7 +1159,7 @@ class Plot(object):
             ax = self.get_ax()
         #import pdb; pdb.set_trace()
         #data.ndim == 1
-        ax.hist(np.array(data), bins=bins)
+        ax.hist(np.array(data), bins=bins, **kwargs)
         return ax
 
     def matrix_plot(self, data, ax=None, normalize='auto', **kwargs):
@@ -1399,7 +1441,6 @@ class Plot(object):
                 hist, bin_edges = np.histogram(d, bins=bins, range=rng)
                 draw_lines(pos[rno], d, maxcount, hist, bin_edges, sides=[-1,1])
             elif d.ndim == 2:
-                #import pdb; pdb.set_trace()
                 d1 = d[pandas.notnull(d.iloc[:,0])].iloc[:,0]
                 hist, bin_edges = np.histogram(d1, bins=bins, range=rng)
                 draw_lines(pos[rno], d1, maxcount, hist, bin_edges, sides=[-1,0])
@@ -1459,6 +1500,7 @@ class Plot(object):
             if len(inds) == 0:
                 rlabels = [None]  # no rows
             else:#elif len(inds) >= 1:
+                #import pdb; pdb.set_trace()
                 labs = [rowdata.columns.get_level_values(i) for i in inds]
                 rlabels = list(zip(*labs))
         pos = range(len(rlabels))
@@ -1535,11 +1577,11 @@ def _stack_levels(data, pref):
                 rlevs = data.index.names + levels #[n for n in data.index.names if n not in levels]
             except:
                 rlevs = levels
-
-            if len(levels) == 1:
-                stacked = data.stack(levels)
-            else:
-                stacked = data.stack(levels)
+            #import pdb; pdb.set_trace()
+            #if len(levels) == 1:
+                #stacked = data.stack(levels)
+            #else:
+            stacked = data.stack(levels)
             stacked = pandas.DataFrame(stacked)
             #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
             if clevs is not None:
