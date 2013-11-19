@@ -113,21 +113,24 @@ def aggregate(df, rows=None, cols=None, values=None,
     else:
         agg = pandas.DataFrame(agg).T
         
-    if order != 'sorted':
-        names = agg.columns.names  # store it; will need it later
-        if isinstance(order, dict):
-            items = order
+    # sort data nicely
+    if isinstance(order, dict):
+        order_full = order
+    else:
+        order_full = dict([(col, order) for col in agg.columns.names])
+        
+    #if order != 'sorted':
+    #names = agg.columns.names  # store it; will need it later
+    for level, level_ord in order_full.items():
+        if isinstance(level_ord, str):
+            if level_ord == 'natural':
+                col = '.'.join(level.split('.')[1:])
+                thisord = df[col].unique()
         else:
-            items = dict([(col, order) for col in agg.columns.names])
-        for level, level_ord in items.items():
-            if isinstance(level_ord, str):
-                if level_ord == 'natural':
-                    col = '.'.join(level.split('.')[1:])
-                    thisord = df[col].unique()
-            else:
-                thisord = level_ord
-            agg = reorder(agg, level=level, order=thisord)
-            agg.columns.names = names  # buggy pandas        
+            thisord = level_ord
+        order_full[level] = thisord
+    agg = reorder(agg, order=order_full)
+    #agg.columns.names = names  # buggy pandas        
         
     # rows should become rows, and cols should be cols if so desired
     if yerr[0] is None and unstack:
@@ -215,47 +218,62 @@ def get_star(p):
         star = ''
     return star
 
-def reorder(agg, order=None, level=0, dim='columns'):
+def reorder(agg, order, level=None, dim='columns'):
     """
     Reorders rows or columns in a pandas.DataFrame.
 
-    If hierarchical indexing is used, level must be specified.
     It relies on for loops, so it will be slow for large data frames.
 
     :Args:
         agg (pandas.DataFrame)
             Your (usually aggregated) data
     :Kwargs:
-        - order (list-like, default: None)
-            Order of entries
-        - level (int or str, default: 0)
-            Which level needs to be reordered
+        - order (list or dict, default: None)
+            Order of entries. A list is only accepted is `level` is given.
+        - level (str, default: None)
+            Which level needs to be reordered. Levels must be str.
         - dim (str, {'rows', 'index', 'columns'}, default: 'columns')
             Whether to reorder rows (or index) or columns.
     :Returns:
         Reordered pandas.DataFrame
-    """
+    """     
     if dim in ['index', 'rows']:
         orig_idx = agg.index
     else:
-        orig_idx = agg.columns
-
-    if not hasattr(orig_idx, 'levels'):
-        multidx = order
-    else:
-        n = len(orig_idx.levels)
-        count = [len(lev) for lev in orig_idx.levels]
-        multidx = []
-        for i in range(n):
-            if orig_idx.names[i] == level or i == level:
-                vals = order
-            else:
-                vals = orig_idx.get_level_values(i).unique()
-            rep = np.repeat(vals, np.product(count[i+1:]))
-            tile = np.tile(rep, np.product(count[:i]))
-            multidx.append(tile)
-        multidx = pandas.MultiIndex.from_tuples(list(zip(*multidx)),
-                                                names=orig_idx.names)
+        orig_idx = agg.columns           
+        
+    if not isinstance(order, dict):
+        if level is None:
+            raise Exception('When "order" is a list, a "level" must be'
+                            'passed as well.')
+        else:
+            try:
+                order = {level: orig_idx[level].unique()}
+            except: # no levels
+                order = {level: orig_idx.unique()}
+                
+            
+    for level in orig_idx.names:
+        if not level in order:
+            # retain the existing order            
+            this_order = orig_idx[level].unique()
+        else:
+            this_order = order[level]
+        # convert to a list
+        order[level] = [i for i in this_order]
+        
+    data = np.zeros((len(orig_idx), len(orig_idx.names)))
+    ind_sort = pandas.DataFrame(index=orig_idx, data=data, columns=orig_idx.names)
+    for rowno, (rowidx, row) in enumerate(ind_sort.iterrows()):
+        if not isinstance(rowidx, tuple):
+            level = row.index[0]
+            row[level] = order[level].index(rowidx)
+        else:
+            for i, item in enumerate(rowidx):
+                level = row.index[i]
+                row[level] = order[level].index(item)
+    ind_sort.sort(columns=ind_sort.columns.tolist(), inplace=True)
+    multidx = ind_sort.index
 
     if dim in ['index', 'rows']:
         agg_new = agg.reindex(index=multidx)
