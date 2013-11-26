@@ -139,8 +139,6 @@ class TestAgg(unittest.TestCase):
         cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
         test_agg = pandas.DataFrame([col]*12, index=index, columns=cols).T
         test_agg.index.names = ['yerr.subjID']  # yeah...
-        #import pdb; pdb.set_trace()
-        #gg
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_norows(self):
