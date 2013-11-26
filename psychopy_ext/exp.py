@@ -208,7 +208,7 @@ class Task(TrialHandler):
 
     def __str__(self, **kwargs):
         """string representation of the object"""
-        return 'psychopy_ext.exp.Task'
+        return 'psychopy_ext.exp.Task'    
 
     def quit(self, message=''):
         """What to do when exit is requested.
@@ -248,6 +248,7 @@ class Task(TrialHandler):
         self.rp = self.parent.rp
         self.datafile.writeable = not self.rp['no_output']
 
+        self.set_seed()
         self.create_stimuli()
         self.create_trial()
         if not hasattr(self, 'trial'):
@@ -283,6 +284,34 @@ class Task(TrialHandler):
             self.exp_plan = self.set_autorun(self.exp_plan)
 
         self.get_blocks()
+        
+    def set_seed(self):
+        # re-initialize seed for each block of task
+        # (if there is more than one task or more than one block)
+        if len(self.parent.tasks) > 1 or len(self.blocks) > 1:
+            self.seed = int(core.getAbsTime())  # generate a new seed
+            date = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            
+            if not self.rp['no_output']:
+                try:
+                    message = 'Task %s: block %d' % (self.__str__, self.this_blockn+1)
+                except:
+                    message = 'Task %s' % self.__str__
+                    
+                self.logfile.write('\n')
+                self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
+                self.logfile.write('  #[[ %s ]] #---------\n' % message)
+                self.logfile.write('    taskRandomSeed.isSet: True\n')
+                self.logfile.write('    taskRandomSeed.string: %d\n' % self.seed)
+                self.logfile.write('    taskRunTime: %s\n' % date)
+                self.logfile.write('    taskRunTime.epoch: %d\n' % self.seed)
+                self.logfile.write('#[ PsychoPy2 RuntimeInfoappendEnd ]#\n')
+                self.logfile.write('\n')
+
+        else:
+            self.seed = self.parent.seed
 
     def show_text(self, text='', wait=0, wait_stim=None, auto=0):
         """
@@ -718,26 +747,9 @@ class Task(TrialHandler):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
-        """
-        # re-initialize seed for each block of task
-        # (if there is more than one task)
-        if len(self.parent.tasks) > 1 or len(self.blocks) > 1 is not None:
-            self.seed = int(core.getAbsTime())  # generate a new seed
-            date = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
-            random.seed(self.seed)
-            np.random.seed(self.seed)
-
-            if not self.rp['no_output']:
-                self.logfile.write('\n')
-                self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
-                self.logfile.write('  #[[ Task %s: block %d ]] #---------\n' % (self.__str__, self.this_blockn+1))
-                self.logfile.write('    taskRandomSeed.isSet: True\n')
-                self.logfile.write('    taskRandomSeed.string: %d\n' % self.seed)
-                self.logfile.write('    taskRunTime: %s\n' % date)
-                self.logfile.write('    taskRunTime.epoch: %d\n' % self.seed)
-                self.logfile.write('#[ PsychoPy2 RuntimeInfoappendEnd ]#\n')
-                self.logfile.write('\n')
-
+        """     
+        if len(self.blocks) > 1:
+            self.set_seed()   
         TrialHandler.__init__(self,
             trial_list,
             nReps=self.nReps,
@@ -764,8 +776,9 @@ class Task(TrialHandler):
         The output is stored in ``self.blocks``.
         """
         if self.blockcol is not None:
-            blocknos = [trial[self.blockcol] for trial in self.exp_plan]
-            blocknos = np.unique(blocknos).tolist()
+            blocknos = np.array([trial[self.blockcol] for trial in self.exp_plan])
+            _, idx = np.unique(blocknos, return_index=True)
+            blocknos = blocknos[np.sort(idx)].tolist()
             blocks = [None] * len(blocknos)
             for trialno, trial in enumerate(self.exp_plan):
                 blockno = blocknos.index(trial[self.blockcol])
@@ -776,7 +789,6 @@ class Task(TrialHandler):
                     blocks[blockno][1].append(trialno)
         else:
             blocks = [[self.exp_plan, range(len(self.exp_plan))]]
-
         self.blocks = blocks
 
     def before_task(self, text=None, wait=.5, wait_stim=None, **kwargs):
@@ -1313,9 +1325,10 @@ class Experiment(ExperimentHandler, Task):
 
             # Write system information first
             if writesys:
-                self.logfile.write('%s\n' % self.runtime_info)
-                self.logfile.write('\n\n' + '#'*40 + '\n\n')
-                self.logfile.write('$ python %s\n' % ' '.join(sys.argv))
+                self.logfile.write('%s' % self.runtime_info)
+            
+            self.logfile.write('\n\n\n' + '#'*40 + '\n\n')
+            self.logfile.write('$ python %s\n' % ' '.join(sys.argv))
         else:
             self.logfile = None
 
@@ -1447,14 +1460,14 @@ class Experiment(ExperimentHandler, Task):
         and a window is created.
         """
 
-        if not self.rp['no_output']:
-            self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
-                    randomSeed='set:time')
-            self.seed = int(self.runtime_info['experimentRandomSeed.string'])
-            np.random.seed(self.seed)
-        else:
-            self.runtime_info = None
-            self.seed = None
+        #if not self.rp['no_output']:
+        self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
+                randomSeed='set:time')
+        self.seed = int(self.runtime_info['experimentRandomSeed.string'])
+        np.random.seed(self.seed)
+        #else:
+            #self.runtime_info = None
+            #self.seed = None
 
         self.set_logging(self.paths['logs'] + self.info['subjid'])
         self.create_win(debug=self.rp['debug'])
@@ -1490,7 +1503,7 @@ class Experiment(ExperimentHandler, Task):
         if text is None:
             self.show_text(text=self.__doc__, wait=wait,
                            wait_stim=wait_stim, **kwargs)
-        elif isinstance(intro, str):
+        else:
             self.show_text(text=text, wait=wait, wait_stim=wait_stim,
                            **kwargs)
 
@@ -2156,12 +2169,12 @@ def get_unique_trials(trial_list, column='cond'):
     # return an ordered list
     return [unique[c] for c in order]
 
-def weighted_sample( probs):
+def weighted_sample(probs):
         warnings.warn("weighted_sample is deprecated; "
                       "use weighted_choice instead")
         return weighted_choice(weights=probs)
 
-def weighted_choice( choices=None, weights=None):
+def weighted_choice(choices=None, weights=None):
     """
     Chooses an element from a list based on it's weight.
 
