@@ -1,3 +1,10 @@
+v0.5.1 
+-----
+* FIXED: reoder
+* ADDED: testing for demos
+* FIXED: exp seed creation. Should now reinitialize seeds for each task and for each block.
+* FIXED: GUI auto fit to contents in no size passed
+
 v0.5, 2013-10-24
 ----------------
 First stable version, all tests pass.
