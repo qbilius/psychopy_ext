@@ -26,7 +26,7 @@ except:
 class Control(object):
     def __init__(self, exp_choices,
                  title='Project',
-                 size=(550,400)
+                 size=None
                  ):
         """
         Initializes user control interface.
@@ -41,8 +41,10 @@ class Control(object):
         :Kwargs:
             title (str, default: 'Project')
                 Title of the GUI app window.
-            size (tuple of two int, default: (350,400))
-                Size of a GUI app.
+            size (tuple of two int, default: None)
+                Size of a GUI app. If None, tries to fit the contents.
+                However, if you have multiple pages in the Listbook,
+                it will probably do a poor job.
         """
         # Some basic built-in functions
         try:
@@ -91,7 +93,12 @@ class Control(object):
         """
         Heavily stripped-down version of argparse.
         """
-        if len(exp_choices) == 1:  # if just a single choice then just take it
+        # if just a single choice then just take it
+        try:
+            third_is_arg = sys.argv[3].startswith('-')
+        except:
+            third_is_arg = True
+        if third_is_arg and len(exp_choices) == 1:
             input_mod_alias = None
             input_class_alias = sys.argv[1]
             input_func = sys.argv[2]
@@ -558,7 +565,6 @@ class Page(wx.Panel):
             if len(vstr.split(' ')) > 1:
                 vstr = '"%s"' % vstr
             params.append(vstr)
-        print params
         command = [sys.executable, sys.argv[0]] + opts + params
         subprocess.call(command, shell=False)  # no shell is safer
 
