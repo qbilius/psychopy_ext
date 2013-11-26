@@ -228,7 +228,9 @@ def reorder(agg, order, level=None, dim='columns'):
         - agg (pandas.DataFrame)
             Your (usually aggregated) data
         - order (list or dict)
-            Order of entries. A list is only accepted is `level` is given
+            Order of entries. A list is only accepted is `level` is 
+            given. Otherwise, order should be a dict with level names
+            (str) as keys and a list of order in values.
     :Kwargs:
         - level (str, default: None)
             Which level needs to be reordered. Levels must be str.
@@ -243,35 +245,38 @@ def reorder(agg, order, level=None, dim='columns'):
         orig_idx = agg.columns           
         
     if not isinstance(order, dict):
-        if level is None:
-            raise Exception('When "order" is a list, a "level" must be'
-                            'passed as well.')
-        else:
-            try:
-                order = {level: orig_idx[level].unique()}
-            except: # no levels
-                order = {level: orig_idx.unique()}
-                
+        #if level is None:
+            #raise Exception('When "order" is a list, a "level" must be'
+                            #'passed as well.')
+        #else:
+        try:
+            orderframe = pandas.DataFrame(orig_idx.tolist())
+            levelno = orig_idx.names.index(level)
+            order = {level: orderframe[levelno].unique()}
+        except: # no levels
+            order = {level: orig_idx.unique()}
             
-    for level in orig_idx.names:
-        if not level in order:
+    for levelno, levelname in enumerate(orig_idx.names):
+        if not levelname in order:
             # retain the existing order            
-            this_order = orig_idx[level].unique()
+            this_order = pandas.DataFrame(orig_idx.tolist()) #[lev[levelno] for lev in orig_idx]
+            this_order = this_order[levelno].unique()  # preserves order
+            #this_order = np.unique(this_order)
         else:
-            this_order = order[level]
+            this_order = order[levelname]
         # convert to a list
-        order[level] = [i for i in this_order]
+        order[levelname] = [i for i in this_order]
         
     data = np.zeros((len(orig_idx), len(orig_idx.names)))
     ind_sort = pandas.DataFrame(index=orig_idx, data=data, columns=orig_idx.names)
     for rowno, (rowidx, row) in enumerate(ind_sort.iterrows()):
         if not isinstance(rowidx, tuple):
-            level = row.index[0]
-            row[level] = order[level].index(rowidx)
+            levelname = row.index[0]
+            row[levelname] = order[levelname].index(rowidx)
         else:
             for i, item in enumerate(rowidx):
-                level = row.index[i]
-                row[level] = order[level].index(item)
+                levelname = row.index[i]
+                row[levelname] = order[levelname].index(item)
     ind_sort.sort(columns=ind_sort.columns.tolist(), inplace=True)
     multidx = ind_sort.index
 
