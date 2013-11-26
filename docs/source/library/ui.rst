@@ -30,3 +30,15 @@ Consider, for example, our demo script (``demos/scripts/main.py``). Suppose in t
 Next, the values that you provided are inserted in these parameters. So now ``info['subjid'] = 'test'``, and ``rp['debug'] = True``.
 
 Finally, the 'exp' class is initialized *again* by passing ``info`` and ``rp`` parameters to it. This is the reason why all classes that inherit from :class:`~psychopy_ext.exp.Experiment` should access both ``info`` and ``rp`` even if you are only going to use their default values. For other classes that do not inherit from :class:`~psychopy_ext.exp.Experiment`, this is not required.
+
+
+=================
+Input field types
+=================
+
+Input field type is chosen based on the default parameter value:
+
+- bool: wx.CheckBox (e.g., used for no_output)
+- int: wx.SpinCtrl (e.g., used for autorun)
+- tuple: wx.Choice (e.g., used for runtype)
+- otherwise: wx.TextCtrl (e.g., used for subjid)
