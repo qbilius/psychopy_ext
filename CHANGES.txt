@@ -4,6 +4,9 @@ v0.5.1
 * ADDED: testing for demos
 * FIXED: exp seed creation. Should now reinitialize seeds for each task and for each block.
 * FIXED: GUI auto fit to contents in no size passed
+* ADDED: write time stamp of the stat and finish of the experiment
+* ADDED: psychopy_ext version in log
+* FIXED: registering was not implemented even though Experiment was already using it
 
 v0.5, 2013-10-24
 ----------------
