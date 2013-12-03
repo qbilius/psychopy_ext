@@ -27,6 +27,7 @@ from psychopy import visual, core, event, logging, misc, monitors, data
 from psychopy.data import TrialHandler, ExperimentHandler
 
 import ui
+from psychopy_ext import __version__ as psychopy_ext_version
 
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
@@ -216,6 +217,12 @@ class Task(TrialHandler):
         print  # in case there was anything without \n
         logging.warning(message)
         self.win.close()
+        try:
+            self.logfile.write('End time: %s\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
+            self.logfile.write('end')
+        except:  # no logfile
+            pass
+            
         core.quit()
 
     def setup_task(self):
@@ -1328,7 +1335,8 @@ class Experiment(ExperimentHandler, Task):
                 self.logfile.write('%s' % self.runtime_info)
             
             self.logfile.write('\n\n\n' + '#'*40 + '\n\n')
-            self.logfile.write('$ python %s\n' % ' '.join(sys.argv))
+            self.logfile.write('$ python %s\n\n' % ' '.join(sys.argv))
+            self.logfile.write('Start time: %s\n\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
         else:
             self.logfile = None
 
@@ -1463,6 +1471,9 @@ class Experiment(ExperimentHandler, Task):
         #if not self.rp['no_output']:
         self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
                 randomSeed='set:time')
+        key, value = get_version()
+        self.runtime_info[key] = value  # updates with psychopy_ext version
+            
         self.seed = int(self.runtime_info['experimentRandomSeed.string'])
         np.random.seed(self.seed)
         #else:
@@ -1565,6 +1576,11 @@ class Experiment(ExperimentHandler, Task):
         if not hasattr(self.rp, 'autorun'):
             self.rp['autorun'] = 100
         self.run()
+        
+    def register(self, **kwargs):
+        """Alias to :func:`~psychopy_ext.exp.commit()`
+        """
+        return self.commit(**kwargs)
 
     def commit(self, message=None):
         """
@@ -2110,6 +2126,40 @@ def invert_dict(d):
     sortkeys = sorted(inv_dict.keys())
     inv_dict = OrderedDict([(k,inv_dict[k]) for k in sortkeys])
     return inv_dict
+    
+def get_version():
+    """Get psychopy_ext version
+    
+    If using a repository, then git head information is used.
+    Else version number is used.
+            
+    :Returns:
+        A key where to store version in `self.runtime_info` and
+        a string value of psychopy_ext version.
+    """
+    d = os.path.abspath(os.path.dirname(__file__))
+    githash = psychopy.info._getHashGitHead(dir=d) # should be .../psychopy/psychopy/
+    if not githash:  # a workaround when Windows cmd has no git
+        git_head_file = os.path.join(d, '../.git/HEAD')
+        try:
+            with open(git_head_file) as f:
+                pointer = f.readline()
+            pointer = pointer.strip('\r\n').split('ref: ')[-1]
+            git_branch = pointer.split('/')[-1]
+            pointer = os.path.join(d, '../.git', pointer)
+            with open(pointer) as f:
+                git_hash = f.readline()            
+            githash = git_branch + ' ' + git_hash.strip('\r\n') 
+        except:
+            pass
+            
+    if githash: 
+        key = 'pythonPsychopy_extGitHead'
+        value = githash
+    else:
+        key = 'pythonPsychopy_extVersion'
+        value = psychopy_ext_version
+    return key, value
 
 def get_mon_sizes(screen=None):
     """Get a list of resolutions for each monitor.
