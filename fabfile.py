@@ -106,7 +106,7 @@ def pypi_upload():
     """Upload package."""
     #with _dist_wrapper():
     local("python setup.py bdist_wininst upload", capture=False)
-    local("python setup.py sdist upload --formats=gztar,zip", capture=False)
+    local("python setup.py sdist --formats=gztar,zip upload", capture=False)
 
 
 ###############################################################################
