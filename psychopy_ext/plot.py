@@ -24,6 +24,7 @@ import fractions
 import numpy as np
 import scipy.stats
 import pandas
+import pandas.tools.plotting  # for rcParams
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -37,60 +38,13 @@ import stats
 # parameters for pretty plots in the ggplot style
 # from https://gist.github.com/huyng/816622
 # inspiration from mpltools
-# will soon be removed as pandas has this implemented in the dev versions
-s = {'axes.facecolor': '#eeeeee',
-     'axes.edgecolor': '#bcbcbc',
-     'axes.linewidth': 1,
-     'axes.grid': True,
-     'axes.titlesize': 'x-large',
-     'axes.labelsize': 'large',  # 'x-large'
-     'axes.labelcolor': '#555555',
-     'axes.axisbelow': True,
-     'axes.color_cycle': ['#348ABD', # blue
-                          '#7A68A6', # purple
-                          '#A60628', # red
-                          '#467821', # green
-                          '#CF4457', # pink
-                          '#188487', # turquoise
-                          '#E24A33'], # orange
-     'figure.facecolor': '0.85',
-     'figure.edgecolor': '0.5',
-     'figure.subplot.hspace': .5,
-
-     'font.family': 'monospace',
-     'font.size': 10,
-
-     'xtick.color': '#555555',
-     'xtick.direction': 'in',
-     'xtick.major.pad': 6,
-     'xtick.major.size': 0,
-     'xtick.minor.pad': 6,
-     'xtick.minor.size': 0,
-
-     'ytick.color': '#555555',
-     'ytick.direction': 'in',
-     'ytick.major.pad': 6,
-     'ytick.major.size': 0,
-     'ytick.minor.pad': 6,
-     'ytick.minor.size': 0,
-
-     'legend.fancybox': True,
-
-     'lines.antialiased': True,
-     'lines.linewidth': 1.0,
-
-     'patch.linewidth'        : .5,     # edge width in points
-     'patch.facecolor'        : '#348ABD', # blue
-     'patch.edgecolor'        : '#eeeeee',
-     'patch.antialiased'      : True,    # render patches in antialised (no jaggies)
-
-     }
+rc_params = pandas.tools.plotting.mpl_stylesheet
 
 
 class Plot(object):
 
     def __init__(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
-        plt.rcParams.update(s)
+        plt.rcParams.update(rc_params)
         self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
@@ -623,8 +577,8 @@ class Plot(object):
         if ax is None:
             ax = self.next()
 
-        mean, p_yerr = stats.confidence(agg)
-
+        mean, p_yerr = stats.confidence(agg)        
+        
         if mean.index.nlevels == 1:  # oops, nothing to unstack
             mean = pandas.DataFrame(mean)
             p_yerr = pandas.DataFrame(p_yerr)
@@ -1052,7 +1006,7 @@ class Plot(object):
             #ax.set_xticks(idx)
         ax.set_xticks(idx)# + width*n/2 + width/2)
         ax.legend(rects, data.columns.tolist())
-        ax.axhline(color=s['axes.edgecolor'])
+        ax.axhline(color=plt.rcParams['axes.edgecolor'])
 
         return ax
 
