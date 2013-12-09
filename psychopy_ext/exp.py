@@ -945,6 +945,8 @@ class Task(TrialHandler):
         """
         self.trial_clock.reset()
         self.this_trial['onset'] = self.glob_clock.getTime()
+        sys.stdout.write('\rtrial %s' % (self.thisTrialN+1))
+        sys.stdout.flush()
 
         self.this_trial['dur'] = 0
         for ev in self.trial:
@@ -957,9 +959,6 @@ class Task(TrialHandler):
             self.this_event = this_event
             self.event_no = event_no
             self.run_event()
-
-        sys.stdout.write('\rtrial %s' % (self.thisTrialN+1))
-        sys.stdout.flush()
 
         # if autorun and responses were not set yet, get them now
         if len(self.all_keys) == 0 and self.rp['autorun'] > 0:
@@ -1648,9 +1647,12 @@ class Event(object):
                 self.display = parent.fixation
         else:
             self.display = display
-        if not isinstance(self.display, (tuple, list)):
-            display = [self.display]
-
+            
+        if isinstance(self.display, tuple):
+            self.display = list(self.display)
+        elif not isinstance(self.display, list):
+            self.display = [self.display]
+            
         if func is None:
             self.func = parent.idle_event
         else:
