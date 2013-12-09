@@ -123,9 +123,13 @@ def aggregate(df, rows=None, cols=None, values=None,
     #names = agg.columns.names  # store it; will need it later
     for level, level_ord in order_full.items():
         if isinstance(level_ord, str):
-            if level_ord == 'natural':
-                col = '.'.join(level.split('.')[1:])
-                thisord = df[col].unique()
+            col = '.'.join(level.split('.')[1:])
+            if level_ord == 'natural':                
+                thisord = df[col].unique()  # preserves order
+            elif level_ord == 'sorted':
+                thisord = np.unique(df[col])  # doesn't preserve order
+            else:
+                raise Exception('Ordering %s not recognized.' % level_ord)
         else:
             thisord = level_ord
         order_full[level] = thisord
