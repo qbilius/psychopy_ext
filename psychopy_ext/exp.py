@@ -11,7 +11,7 @@ A library of helper functions for creating and running experiments.
 All experiment-related methods are kept here.
 """
 
-import sys, os, csv, glob, random, warnings
+import sys, os, csv, glob, random, warnings, copy
 from UserDict import DictMixin
 
 import numpy as np
@@ -21,6 +21,9 @@ import wx
 import pyglet
 import textwrap
 from HTMLParser import HTMLParser
+
+# for exporting stimuli to svg
+import svgwrite
 
 import psychopy.info
 from psychopy import visual, core, event, logging, misc, monitors, data
@@ -254,7 +257,8 @@ class Task(TrialHandler):
         self.info = self.parent.info
         self.rp = self.parent.rp
         self.datafile.writeable = not self.rp['no_output']
-
+        
+        self._set_keys_flat()
         self.set_seed()
         self.create_stimuli()
         self.create_trial()
@@ -291,6 +295,22 @@ class Task(TrialHandler):
             self.exp_plan = self.set_autorun(self.exp_plan)
 
         self.get_blocks()
+        
+    def _set_keys_flat(self):
+        #if keylist is None:
+        keylist = self.computer.default_keys.values()
+        #else:
+            #keylist.extend(self.computer.default_keys.values())
+        keys = []
+        for key in keylist:
+            if isinstance(key, (tuple, list)):
+                keys.append(key)
+            else:
+                keys.append([key])
+        # keylist might have key combinations; get rid of them for now
+        self.keylist_flat = []
+        for key in keys:
+            self.keylist_flat.extend(key)
         
     def set_seed(self):
         # re-initialize seed for each block of task
@@ -533,6 +553,61 @@ class Task(TrialHandler):
                     ])
         """
         raise NotImplementedError
+        
+    def get_mouse_resp(self, keyList=None, timeStamped=False):
+        """
+        Returns mouse clicks.
+        
+        If ``self.respmap`` is provided, records clicks only when clicked
+        inside respmap. This respmap is supposed to be a list of shape
+        objects that determine boundaries of where one can click.
+        Might change in the future if it gets incorporated in stimuli
+        themselves.
+        
+        Note that mouse implementation is a bit shaky in PsychoPy at
+        the moment. In particular, ``getPressed`` method returns
+        multiple key down events per click. Thus, when calling 
+        ``get_mouse_resp`` from a while loo[, it is best to limit 
+        sampling to, for example, 150 ms (see `Jeremy's response <https://groups.google.com/d/msg/psychopy-users/HG4L-UDG93Y/FvyuB-OrsqoJ>`_).
+        """
+        mdict = {0: 'left-click', 1: 'middle-click', 2: 'right-click'}
+        valid_mouse = [k for k,v in mdict.items() if v in self.computer.valid_responses]
+        valid_mouse.sort()
+        
+        if timeStamped:
+            mpresses, mtimes = self.mouse.getPressed(getTime=True)
+        else:
+            mpresses = self.mouse.getPressed(getTime=False)   
+            
+        resplist = []
+        if sum(mpresses) > 0:
+            for but in valid_mouse:
+                if mpresses[but] > 0:
+                    if timeStamped:
+                        resplist.append([mdict[but],mtimes[but]])
+                    else:
+                        resplist.append([mdict[but], None])
+            if hasattr(self, 'respmap'):
+                clicked = False
+                for box in self.respmap:
+                    if box.contains(self.mouse):
+                        resplist = [r+[box.name] for r in resplist]
+                        clicked = True
+                        break
+                if not clicked:
+                    resplist = []
+            
+        return resplist
+        
+    def get_resp(self, keyList=None, timeStamped=False):
+        resplist = event.getKeys(keyList=keyList, timeStamped=timeStamped)        
+        if resplist is None:
+            resplist = []
+        #else:
+            #resplist = 
+        resplist += self.get_mouse_resp(keyList=keyList, timeStamped=timeStamped)
+        
+        return resplist
 
     def last_keypress(self):
         """
@@ -544,24 +619,11 @@ class Task(TrialHandler):
             An str of the last pressed key or None if nothing has been
             pressed.
         """
-        #if keylist is None:
-        keylist = self.computer.default_keys.values()
-        #else:
-            #keylist.extend(self.computer.default_keys.values())
-        keys = []
-        for key in keylist:
-            if isinstance(key, (tuple, list)):
-                keys.append(key)
-            else:
-                keys.append([key])
-        # keylist might have key combinations; get rid of them for now
-        keylist_flat = []
-        for key in keys:
-            keylist_flat.extend(key)
-
-        this_keylist = event.getKeys(keyList=keylist_flat)
+        this_keylist = self.get_resp(keyList=self.keylist_flat)        
+        
         if len(this_keylist) > 0:
             this_key = this_keylist.pop()
+            #print this_key
             exit_keys = self.computer.default_keys['exit']
             if this_key in exit_keys:
                 if self._exit_key_no < len(exit_keys):
@@ -611,7 +673,7 @@ class Task(TrialHandler):
                 if self.trial_clock.getTime() > self.this_trial['autort']:
                     event_keys = [(self.this_trial['autoresp'], self.this_trial['autort'])]
             else:
-                event_keys = event.getKeys(
+                event_keys = self.get_resp(
                     keyList=self.computer.valid_responses.keys(),
                     timeStamped=self.trial_clock)
             self.last_keypress()
@@ -647,12 +709,15 @@ class Task(TrialHandler):
         """
         Gives feedback by changing fixation color.
 
-        Correct: fixation change to green
-
-        Wrong: fixation change to red
+        - Correct: fixation change to green
+        - Wrong: fixation change to red
         """
         this_resp = self.all_keys[-1]
-        subj_resp = self.computer.valid_responses[this_resp[0]]
+        if hasattr(self, 'respmap'):
+            subj_resp = this_resp[2]
+        else:
+            subj_resp = self.computer.valid_responses[this_resp[0]]
+        #subj_resp = this_resp[2]  #self.computer.valid_responses[this_resp[0]]
 
         # find which stimulus is fixation
         if isinstance(self.this_event.display, (list, tuple)):
@@ -964,7 +1029,7 @@ class Task(TrialHandler):
         if len(self.all_keys) == 0 and self.rp['autorun'] > 0:
             self.all_keys += [(self.this_trial['autoresp'], self.this_trial['autort'])]
 
-        self.post_trial(self.this_trial, self.all_keys)
+        self.post_trial()
 
         # correct timing if autorun
         if self.rp['autorun'] > 0:
@@ -987,7 +1052,7 @@ class Task(TrialHandler):
             self.exp_plan.append(self.this_trial)
 
 
-    def post_trial(self, this_trial, all_keys):
+    def post_trial(self):
         """A default function what to do after a trial is over.
 
         It records the participant's response as the last key pressed,
@@ -1009,10 +1074,15 @@ class Task(TrialHandler):
 
         """
         if len(self.all_keys) > 0:
-            this_resp = self.all_keys.pop()
-            self.this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
+            this_resp = self.all_keys.pop()            
+            if hasattr(self, 'respmap'):
+                subj_resp = this_resp[2]
+            else:
+                subj_resp = self.computer.valid_responses[this_resp[0]]
+            self.this_trial['subj_resp'] = subj_resp
+                        
             try:
-                acc = signal_det(self.this_trial['corr_resp'], self.this_trial['subj_resp'])
+                acc = signal_det(self.this_trial['corr_resp'], subj_resp)
             except:
                 pass
             else:
@@ -1033,6 +1103,8 @@ class Task(TrialHandler):
         """
         # go over each event in a trial
         self.event_clock.reset()
+        self.mouse.clickReset()
+        #self.mouse.count = 0
 
         # show stimuli
         event_keys = self.this_event.func()
@@ -1040,7 +1112,7 @@ class Task(TrialHandler):
         if event_keys is not None:
             self.all_keys += event_keys
         # this is to get keys if we did not do that during trial
-        self.all_keys += event.getKeys(
+        self.all_keys += self.get_resp(
             keyList=self.computer.valid_responses.keys(),
             timeStamped=self.trial_clock)
 
@@ -1059,6 +1131,215 @@ class Task(TrialHandler):
         """
         return get_behav_df(self.info['subjid'], pattern=pattern)
 
+
+class SVG(object):        
+    
+    def __init__(self, win, filename='image'):
+        visual.helpers.setColor(win, win.color)
+        win.contrast = 1
+        self.win = win     
+        self.aspect = self.win.size[0]/float(self.win.size[1])
+        self.open(filename)
+        
+    def open(self, filename):
+        filename = filename.split('.svg')[0]
+                         
+        self.svgfile = svgwrite.Drawing(profile='tiny',filename='%s.svg' % filename,
+                                size=('%dpx' % self.win.size[0],
+                                      '%dpx' % self.win.size[1]),
+                                # set default units to px; from http://stackoverflow.com/a/13008664
+                                viewBox=('%d %d %d %d' %
+                                         (0,0,
+                                          self.win.size[0],
+                                          self.win.size[1]))
+                                )
+        bkgr = self.svgfile.rect(insert=(0,0), size=('100%','100%'),
+                            fill=self.color2rgb255(self.win))
+        self.svgfile.add(bkgr)
+        
+    def save(self):
+        self.svgfile.save()
+        
+    def color2attr(self, stim, attr, color='black', colorSpace=None, kwargs = {}):                
+        col = self.color2rgb255(stim, color=color, colorSpace=colorSpace)
+        if col is None:
+            kwargs[attr + '_opacity'] = 0
+        else:
+            kwargs[attr] = col
+            kwargs[attr + '_opacity'] = 1
+        return kwargs
+        
+    def write(self, stim):        
+        if 'Circle' in str(stim):
+            color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
+                                       colorSpace=stim.lineColorSpace)
+            color_kw = self.color2attr(stim, 'fill', color=stim.fillColor,
+                                       colorSpace=stim.fillColorSpace,
+                                       kwargs=color_kw)            
+            svgstim = self.svgfile.circle(
+                            center=self.get_pos(stim),
+                            r=self.get_size(stim, stim.radius),
+                            stroke_width=stim.lineWidth,
+                            opacity=stim.opacity,
+                            **color_kw
+                            )
+        elif 'ImageStim' in str(stim):
+            raise NotImplemented
+        elif 'Line' in str(stim):
+            color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
+                                       colorSpace=stim.lineColorSpace)
+            svgstim = self.svgfile.line(
+                    start=self.get_pos(stim, stim.start),
+                    end=self.get_pos(stim, stim.end),
+                    stroke_width=stim.lineWidth,
+                    opacity=stim.opacity,
+                    **color_kw
+                    )
+        elif 'Polygon' in str(stim):
+            raise NotImplemented
+            #svgstim = self.svgfile.polygon(
+                    #points=...,
+                    #stroke_width=stim.lineWidth,
+                    #stroke=self.color2rgb255(stim, color=stim.lineColor,
+                                             #colorSpace=stim.lineColorSpace),
+                    #fill=self.color2rgb255(stim, color=stim.fillColor,
+                                           #colorSpace=stim.fillColorSpace)
+                    #)
+        elif 'Rect' in str(stim):
+            color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
+                                       colorSpace=stim.lineColorSpace)
+            color_kw = self.color2attr(stim, 'fill', color=stim.fillColor,
+                                       colorSpace=stim.fillColorSpace,
+                                       kwargs=color_kw)
+            svgstim = self.svgfile.rect(
+                    insert=self.get_pos(stim, offset=(-stim.width/2., -stim.height/2.)),
+                    size=(self.get_size(stim, stim.width), self.get_size(stim, stim.height)),
+                    stroke_width=stim.lineWidth,                   
+                    opacity=stim.opacity,
+                    **color_kw
+                    )
+        elif 'ThickShapeStim' in str(stim):
+            svgstim = stim.to_svg(self)
+        elif 'ShapeStim' in str(stim):            
+            points = self._calc_attr(stim, np.array(stim.vertices))
+            points[:, 1] *= -1
+            color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
+                                       colorSpace=stim.lineColorSpace)
+            color_kw = self.color2attr(stim, 'fill', color=stim.fillColor,
+                                       colorSpace=stim.fillColorSpace,
+                                       kwargs=color_kw)            
+            if stim.closeShape:
+                svgstim = self.svgfile.polygon(
+                        points=points,
+                        stroke_width=stim.lineWidth,               
+                        opacity=stim.opacity,
+                        **color_kw
+                        )  
+            else:
+                svgstim = self.svgfile.polyline(
+                        points=points,
+                        stroke_width=stim.lineWidth,                  
+                        opacity=stim.opacity,  
+                        **color_kw
+                        )
+            tr = self.get_pos(stim)
+            svgstim.translate(tr[0], tr[1])
+        elif 'SimpleImageStim' in str(stim):
+            raise NotImplemented
+        elif 'TextStim' in str(stim):
+            if stim.fontname == '':
+                font = 'arial'
+            else:
+                font = stim.fontname
+            svgstim = self.svgfile.text(text=stim.text,
+                                    insert=self.get_pos(stim) + np.array([0,stim.height/2.]),
+                                    fill=self.color2rgb255(stim),
+                                    font_family=font,
+                                    font_size=stim.heightPix,
+                                    text_anchor='middle',
+                                    opacity=stim.opacity
+                                    )
+            
+        else:
+            svgstim = stim.to_svg(self)
+        
+        if not isinstance(svgstim, list):
+            svgstim = [svgstim]
+        for st in svgstim:
+            self.svgfile.add(st)
+                    
+    def get_pos(self, stim, pos=None, offset=None):
+        if pos is None:
+            pos = stim.pos
+        if offset is not None:
+            offset = self._calc_attr(stim, np.array(offset))
+        else:
+            offset = np.array([0,0])        
+        pos = self._calc_attr(stim, pos)
+        pos = self.win.size/2 + np.array([pos[0], -pos[1]]) + offset
+        return pos
+        
+    def get_size(self, stim, size=None):
+        if size is None:
+            size = stim.size        
+        size = self._calc_attr(stim, size)
+        return size
+        
+    def _calc_attr(self, stim, attr):
+        if stim.units == 'height':
+            try:
+                len(attr) == 2
+            except:
+                out = (attr * stim.win.size[1])
+            else:
+                out = (attr * stim.win.size * np.array([1./self.aspect, 1]))
+                
+        elif stim.units == 'norm':
+            try:
+                len(attr) == 2                
+            except:
+                out = (attr * stim.win.size[1]/2)
+            else:
+                out = (attr * stim.win.size/2)
+        elif stim.units == 'pix':
+            out = attr
+        elif stim.units == 'cm':
+            out = misc.cm2pix(attr, stim.win.monitor)
+        elif stim.units in ['deg', 'degs']:
+            out = misc.deg2pix(attr, stim.win.monitor)
+        else:
+            raise NotImplementedError
+        return out
+        
+    def color2rgb255(self, stim, color=None, colorSpace=None):
+        """
+        Convert color to RGB255 while adding contrast
+        
+        #Requires self.color, self.colorSpace and self.contrast
+        Modified from psychopy.visual.BaseVisualStim._getDesiredRGB
+        """
+        if color is None:
+            color = stim.color        
+            
+        if isinstance(color, str) and stim.contrast == 1:
+            color = color.lower()  # keep the nice name
+        else:
+            # Ensure that we work on 0-centered color (to make negative contrast values work)
+            if colorSpace is None:
+                colorSpace = stim.colorSpace
+            
+            if colorSpace not in ['rgb', 'dkl', 'lms', 'hsv']:                
+                color = (color / 255.0) * 2 - 1
+                
+            # Convert to RGB in range 0:1 and scaled for contrast
+            # although the shader then has to convert it back it gets clamped en route otherwise
+            try:
+                color = (color * stim.contrast + 1) / 2.0 * 255
+                color = 'rgb(%d,%d,%d)' % (color[0],color[1],color[2])
+            except:
+                color = None
+
+        return color
 
 class Datafile(object):
 
@@ -1472,7 +1753,8 @@ class Experiment(ExperimentHandler, Task):
                 randomSeed='set:time')
         key, value = get_version()
         self.runtime_info[key] = value  # updates with psychopy_ext version
-            
+        
+        self._set_keys_flat()
         self.seed = int(self.runtime_info['experimentRandomSeed.string'])
         np.random.seed(self.seed)
         #else:
@@ -1481,6 +1763,8 @@ class Experiment(ExperimentHandler, Task):
 
         self.set_logging(self.paths['logs'] + self.info['subjid'])
         self.create_win(debug=self.rp['debug'])
+        self.mouse = event.Mouse(win=self.win)
+        self.mouse.count = 0
         self._initialized = True
         #if len(self.tasks) == 0:
             ##self.setup = Task.setup
@@ -1666,6 +1950,9 @@ class Event(object):
         This is only meant for backward compatibility and should not
         be used in general.
         """
+        if 'defaultFun' in entries:
+            entries['func'] = entries['defaultFun']
+            del entries['defaultFun']            
         return Event(parent, **entries)
         #self.__dict__.update(entries)
         #for key, value in dictionary.items():
@@ -1680,11 +1967,11 @@ class ThickShapeStim(visual.ShapeStim):
     PsychoPy has a bug in some configurations of not drawing lines thicker
     than 2px. This class fixes the issue. Note that it's really just a
     collection of rectanges so corners will not look nice.
-    """
+    """                     
     def __init__(self,
                  win,
                  units  ='',
-                 lineWidth=1.0,
+                 lineWidth=.01,
                  lineColor=(1.0,1.0,1.0),
                  lineColorSpace='rgb',
                  fillColor=None,
@@ -1695,57 +1982,96 @@ class ThickShapeStim(visual.ShapeStim):
                  size=1,
                  ori=0.0,
                  opacity=1.0,
+                 contrast=1.0,
                  depth  =0,
                  interpolate=True,
                  lineRGB=None,
                  fillRGB=None,
                  name='', autoLog=True):
+        """
+        :Parameters:
 
-        visual._BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=autoLog)
+            lineWidth : int (or float?)
+                specifying the line width in units of your choice
 
-        self.opacity = opacity
+            vertices : a list of lists or a numpy array (Nx2)
+                specifying xy positions of each vertex
+
+            closeShape : True or False
+                Do you want the last vertex to be automatically connected to the first?
+
+            interpolate : True or False
+                If True the edge of the line will be antialiased.
+                """
+        #what local vars are defined (these are the init params) for use by __repr__
+        self._initParams = dir()
+        self._initParams.remove('self')
+
+        # Initialize inheritance and remove unwanted methods
+        visual.BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
+        self.__dict__['setColor'] = None
+        self.__dict__['color'] = None
+        self.__dict__['colorSpace'] = None
+
+        self.contrast = float(contrast)
+        self.opacity = float(opacity)
         self.pos = np.array(pos, float)
         self.closeShape=closeShape
         self.lineWidth=lineWidth
         self.interpolate=interpolate
 
-        self._useShaders=False  #since we don't need to combine textures with colors
-        self.lineColorSpace=lineColorSpace
+        # Color stuff
+        self.useShaders=False#since we don't ned to combine textures with colors
+        self.__dict__['lineColorSpace'] = lineColorSpace
+        self.__dict__['fillColorSpace'] = fillColorSpace
+
         if lineRGB!=None:
             logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
             self.setLineColor(lineRGB, colorSpace='rgb')
         else:
             self.setLineColor(lineColor, colorSpace=lineColorSpace)
 
-        self.fillColorSpace=fillColorSpace
         if fillRGB!=None:
             logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
             self.setFillColor(fillRGB, colorSpace='rgb')
         else:
             self.setFillColor(fillColor, colorSpace=fillColorSpace)
 
+        # Other stuff
         self.depth=depth
         self.ori = np.array(ori,float)
         self.size = np.array([0.0,0.0])
-        self.setSize(size)
-        #self.size=size
+        self.setSize(size, log=False)
         self.setVertices(vertices)
-        # self._calcVerticesRendered()
-        # if len(self.stimulus) == 1: self.stimulus = self.stimulus[0]
+        #self._calcVerticesRendered()
 
-    #def __init__(self, *args, **kwargs):
-        #try:
-            #orig_vertices = kwargs['vertices']
-            #kwargs['vertices'] = [(-0.5,0),(0,+0.5)]#,(+0.5,0)),
-        #except:
-            #pass
-        ##import pdb; pdb.set_trace()
-        #visual.ShapeStim.__init__(self, *args, **kwargs)
-        #self.vertices = orig_vertices
+        #set autoLog (now that params have been initialised)
+        self.autoLog= autoLog
+        if autoLog:
+            logging.exp("Created %s = %s" %(self.name, str(self)))
+
 
     def draw(self):
         for stim in self.stimulus:
             stim.draw()
+            
+    def to_svg(self, svg):
+        rects = []
+        for stim, vertices in zip(self.stimulus,self.vertices):
+            size = svg.get_size(stim, np.abs(stim.vertices[0])*2)
+            points = svg._calc_attr(stim, np.array(vertices))
+            points[:, 1] *= -1
+            rect = svg.svgfile.polyline(
+                    points=points,
+                    stroke_width=svg._calc_attr(self,self.lineWidth),
+                    stroke=svg.color2rgb255(self, color=self.lineColor,
+                                colorSpace=self.lineColorSpace),
+                    fill_opacity=0
+                    )
+            tr = svg.get_pos(self)#+size/2.
+            rect.translate(tr[0], tr[1])
+            rects.append(rect)
+        return rects
 
     def setOri(self, newOri):
         # theta = (newOri - self.ori)/180.*np.pi
@@ -1790,7 +2116,16 @@ class ThickShapeStim(visual.ShapeStim):
             else:
                 numPairs = len(vertices)-1
 
-            wh = self.lineWidth/2. - misc.pix2deg(1,self.win.monitor)
+            if self.units == 'pix':
+                w = 1
+            elif self.units in ['height', 'norm']:
+                w = 1./self.win.size[1]
+            elif self.units == 'cm':
+                w = misc.pix2cm(1, self.win.monitor)
+            elif self.units in ['deg', 'degs']:
+                w = misc.pix2deg(1, self.win.monitor)
+            wh = self.lineWidth/2. - w
+            
             for i in range(numPairs):
                 thisPair = np.array([vertices[i],vertices[(i+1)%len(vertices)]])
                 thisPair_rot = np.dot(thisPair, rot.T)
@@ -2357,3 +2692,4 @@ def make_para(n=6):
         out.append(temp)
 
     return np.array(out)
+    

@@ -13,10 +13,12 @@ from psychopy_ext import ui
 __author__ = "Jonas Kubilius"
 __version__ = "0.1"
 exp_choices = [
+    ui.Choices('scripts.trivial', name='Quick demo'),
     ui.Choices('scripts.main', name='Simple exp.', alias='main', order=['exp','analysis']),
     ui.Choices('scripts.twotasks', name='Two tasks', order=['exp','analysis']),
     ui.Choices('scripts.staircase', name='Staircase', order=['exp','analysis']),
     ui.Choices('scripts.perclearn', name='Advanced', order=['exp','analysis']),
+    ui.Choices('scripts.mouse_resp', name='Mouse responses', order=['exp','analysis']),
     ui.Choices('scripts.fmri', name='fMRI')
     ]
 
