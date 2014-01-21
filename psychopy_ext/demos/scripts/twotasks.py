@@ -191,20 +191,20 @@ class _Train(exp.Task):
 
         return event_keys
 
-    def post_trial(self, this_trial, all_keys):
+    def post_trial(self):
         """ What to do after a trial is over.
         """
-        if len(all_keys) > 0:
-            if all_keys[0][0] != '':
-                this_trial['subj_resp'] = len(all_keys)
+        if len(self.all_keys) > 0:
+            if self.all_keys[0][0] != '':
+                self.this_trial['subj_resp'] = len(self.all_keys)
             else:
-                this_trial['subj_resp'] = ''
-            this_trial['rt'] = all_keys[-1][1]
+                self.this_trial['subj_resp'] = ''
+            self.this_trial['rt'] = self.all_keys[-1][1]
         else:
-            this_trial['subj_resp'] = ''
-            this_trial['rt'] = ''
+            self.this_trial['subj_resp'] = ''
+            self.this_trial['rt'] = ''
 
-        return this_trial
+        return self.this_trial
 
     def before_task(self):
         """We slightly redefine the default function so that full

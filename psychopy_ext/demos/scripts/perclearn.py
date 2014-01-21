@@ -313,23 +313,25 @@ class _Train(exp.Task):
 
         return event_keys
 
-    def post_trial(self, this_trial, all_keys):
+    def post_trial(self):
         """ What to do after a trial is over.
         """
         if self.rp['autorun'] > 0:
-            allKeys = [self.get_auto_resp(this_trial)]
+            all_keys = [self.get_auto_resp(self.this_trial)]
+        else:
+            all_keys = self.all_keys
 
         if len(all_keys) > 0:
             if all_keys[0][0] != '':
-                this_trial['subj_resp'] = len(all_keys)
+                self.this_trial['subj_resp'] = len(all_keys)
             else:
-                this_trial['subj_resp'] = ''
-            this_trial['rt'] = all_keys[-1][1]
+                self.this_trial['subj_resp'] = ''
+            self.this_trial['rt'] = all_keys[-1][1]
         else:
-            this_trial['subj_resp'] = ''
-            this_trial['rt'] = ''
+            self.this_trial['subj_resp'] = ''
+            self.this_trial['rt'] = ''
 
-        return this_trial
+        return self.this_trial
 
     def before_task(self):
         """We slightly redefine the default function so that full
@@ -572,19 +574,19 @@ class _TestQuest(_BaseTest):
                 ))
         self.blocks = blocks
 
-    def post_trial(self, this_trial, all_keys):
-        this_resp = all_keys.pop()
-        this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
-        acc = exp.signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
-        this_trial['accuracy'] = acc
-        this_trial['rt'] = this_resp[1]
+    def post_trial(self):
+        this_resp = self.all_keys.pop()
+        self.this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
+        acc = exp.signal_det(self.this_trial['corr_resp'], self.this_trial['subj_resp'])
+        self.this_trial['accuracy'] = acc
+        self.this_trial['rt'] = this_resp[1]
         if acc == 'correct':
             acc_int = 1
         else:
             acc_int = 0
-        if this_trial['corr_resp'] == 'diff':
+        if self.this_trial['corr_resp'] == 'diff':
             self.staircase.addData(acc_int)
-        return this_trial
+        return self.this_trial
 
     def run_task(self):
         self.setup_task()

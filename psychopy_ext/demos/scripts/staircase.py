@@ -195,18 +195,18 @@ class Staircase(exp.Experiment):
                 ('autort', rt(0.500))]
         return auto
         
-    def post_trial(self, this_trial, all_keys):
-        this_resp = all_keys.pop()
-        this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
-        acc = exp.signal_det(this_trial['corr_resp'], this_trial['subj_resp'])
-        this_trial['accuracy'] = acc
-        this_trial['rt'] = this_resp[1]
+    def post_trial(self):
+        this_resp = self.all_keys.pop()
+        self.this_trial['subj_resp'] = self.computer.valid_responses[this_resp[0]]
+        acc = exp.signal_det(self.this_trial['corr_resp'], self.this_trial['subj_resp'])
+        self.this_trial['accuracy'] = acc
+        self.this_trial['rt'] = this_resp[1]
         if acc == 'correct':
             acc_int = 1
         else:
             acc_int = 0
         self.staircase.addData(acc_int)
-        return this_trial
+        return self.this_trial
         
     def run_task(self):
         self.setup_task()
