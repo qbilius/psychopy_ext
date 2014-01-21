@@ -25,7 +25,7 @@ root = '.'  # means store output files here
 stereo = False  # not like in Psychopy; this merely creates two Windows
 default_keys = {'exit': ('lshift', 'escape'),  # key combination to exit
                 'trigger': 'space'}  # hit to start the experiment
-valid_responses = {'0': 0, '1': 1}  # organized as input value: output value
+valid_responses = {'f': 0, 'j': 1}  # organized as input value: output value
 # monitor defaults
 distance = 80
 width = 37.5
