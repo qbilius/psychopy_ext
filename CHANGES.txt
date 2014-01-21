@@ -1,5 +1,9 @@
 v0.5.1 
 -----
+* NEW: Experimental support for mouse inputs (with a demo)
+* NEW: Experimental support for exporting displays to SVG (Circle, Line, Rect, ShapeStim, TextStim, ThickShapeStim)
+* NEW: demo of the shortest  fully functional experiment possible
+* FIXED: ThickLineStim can now accept default units for lineWidth
 * FIXED: reoder
 * ADDED: testing for demos
 * FIXED: exp seed creation. Should now reinitialize seeds for each task and for each block.
@@ -7,6 +11,8 @@ v0.5.1
 * ADDED: write time stamp of the stat and finish of the experiment
 * ADDED: psychopy_ext version in log
 * FIXED: registering was not implemented even though Experiment was already using it
+* FIXED: trial number printed at the begining, not at the end of the trial
+* FIXED: GroupStim now properly converts stimuli to list
 
 v0.5, 2013-10-24
 ----------------
