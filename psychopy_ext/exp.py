@@ -256,6 +256,7 @@ class Task(TrialHandler):
         self.logfile = self.parent.logfile
         self.info = self.parent.info
         self.rp = self.parent.rp
+        self.mouse = self.parent.mouse
         self.datafile.writeable = not self.rp['no_output']
         
         self._set_keys_flat()
@@ -900,7 +901,7 @@ class Task(TrialHandler):
 
         If ``self.blockcol`` is defined, then runs block-by-block.
         """
-        self.setup_task()
+        self.setup_task()        
         self.before_task()
 
         self.datafile.open()
@@ -1104,7 +1105,6 @@ class Task(TrialHandler):
         # go over each event in a trial
         self.event_clock.reset()
         self.mouse.clickReset()
-        #self.mouse.count = 0
 
         # show stimuli
         event_keys = self.this_event.func()
@@ -1764,7 +1764,6 @@ class Experiment(ExperimentHandler, Task):
         self.set_logging(self.paths['logs'] + self.info['subjid'])
         self.create_win(debug=self.rp['debug'])
         self.mouse = event.Mouse(win=self.win)
-        self.mouse.count = 0
         self._initialized = True
         #if len(self.tasks) == 0:
             ##self.setup = Task.setup
