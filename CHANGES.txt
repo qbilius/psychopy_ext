@@ -1,5 +1,10 @@
+v0.5.1.1
+--------
+* FIXED: mouse inherited from Exp to Task
+* DEMOS: updated post_trial syntax
+
 v0.5.1 
------
+------
 * NEW: Experimental support for mouse inputs (with a demo)
 * NEW: Experimental support for exporting displays to SVG (Circle, Line, Rect, ShapeStim, TextStim, ThickShapeStim)
 * NEW: demo of the shortest  fully functional experiment possible
