@@ -515,8 +515,9 @@ class Page(wx.Panel):
         #actions = _get_methods(class_init)
         actions = _get_methods_byname(class_init)
         # buttons will sit on a grid of 2 columns and as many rows as necessary
-        buttons = wx.FlexGridSizer(rows=0, cols=2)
+        buttons_sizer = wx.FlexGridSizer(rows=0, cols=2)
         add = False
+        self.buttons = []
         for i, (label, action) in enumerate(actions):
             if hasattr(class_init, 'actions'):
                 if class_init.actions is not None:
@@ -527,12 +528,14 @@ class Page(wx.Panel):
             else:
                 add = True
             if add:
-                run = wx.Button(self, label=label, size=(150, 30))
-                buttons.Add(run, 1)
+                run = wx.Button(self, label=label, size=(150, 30))                
+                run._proc_running = False
+                buttons_sizer.Add(run, 1)
                 run.info = class_init.info  # when clicked, what to do
                 run.rp = class_init.rp
                 run.action = label
                 run.Bind(wx.EVT_BUTTON, self.OnButtonClick)
+                self.buttons.append(run)
                 if i==0: run.SetFocus()
 
         pagesizer = wx.BoxSizer(wx.VERTICAL)
@@ -542,32 +545,45 @@ class Page(wx.Panel):
         if class_init.rp is not None:
             pagesizer.Add(self.sb2.sizer)
         # put the buttons in the bottom
-        pagesizer.Add(buttons, 1, wx.ALL|wx.ALIGN_LEFT)
+        pagesizer.Add(buttons_sizer, 1, wx.ALL|wx.ALIGN_LEFT)
         self.SetSizer(pagesizer)
 
-    def OnButtonClick(self, event):
-        #module = event.GetEventObject().module
-        ## first update info and rp
-        button = event.GetEventObject()
-        if button.info is not None:
-            for key, field in zip(button.info.keys(), self.sb1.inputFields):
-                button.info[key] = field.GetValue()
-        if button.rp is not None:
-            for key, field in zip(button.rp.keys(), self.sb2.inputFields):
-                button.rp[key] = field.GetValue()
+    def OnButtonClick(self, event): 
+            button = event.GetEventObject()
+        #if button._proc_running:
+            #self.enable(button)
+            #self.proc.kill()
+        #else:
+            # first update info and rp            
+            if button.info is not None:
+                for key, field in zip(button.info.keys(), self.sb1.inputFields):
+                    button.info[key] = field.GetValue()
+            if button.rp is not None:
+                for key, field in zip(button.rp.keys(), self.sb2.inputFields):
+                    button.rp[key] = field.GetValue()
 
-        # call the relevant script
-        opts = [self.alias, self.class_alias, button.GetLabelText()]
-        params = []
-        for k,v in button.info.items() + button.rp.items():
-            params.append('--%s' % k)
-            vstr = '%s' % v
-            if len(vstr.split(' ')) > 1:
-                vstr = '"%s"' % vstr
-            params.append(vstr)
-        command = [sys.executable, sys.argv[0]] + opts + params
-        subprocess.call(command, shell=False)  # no shell is safer
-
+            # call the relevant script
+            opts = [self.alias, self.class_alias, button.GetLabelText()]
+            params = []
+            for k,v in button.info.items() + button.rp.items():
+                params.append('--%s' % k)
+                vstr = '%s' % v
+                if len(vstr.split(' ')) > 1:
+                    vstr = '"%s"' % vstr
+                params.append(vstr)
+            command = [sys.executable, sys.argv[0]] + opts + params
+            
+            #button._origlabel = opts[2]
+            #button.SetLabel('kill')            
+            #button._proc_running = True            
+            button.proc = subprocess.Popen(command, shell=False)  # no shell is safer      
+            
+            #if button.proc.poll() is not None:  # done yet?
+                #self.enable(button)
+            
+    def enable(self, button):
+        button.SetLabel(button._origlabel)
+        button._proc_running = False
 
 class Listbook(wx.Listbook):
     """
