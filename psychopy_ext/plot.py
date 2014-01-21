@@ -32,19 +32,25 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
+try:
+    import seaborn as sns   # hope you have it
+    _has_seaborn = True
+except:  # ok, stick to your ugly matplotlib then
+    # but I'm still gonna improve it using the ggplot style
+    # from https://gist.github.com/huyng/816622
+    # inspiration from mpltools
+    rc_params = pandas.tools.plotting.mpl_stylesheet
+
 import stats
-
-
-# parameters for pretty plots in the ggplot style
-# from https://gist.github.com/huyng/816622
-# inspiration from mpltools
-rc_params = pandas.tools.plotting.mpl_stylesheet
 
 
 class Plot(object):
 
     def __init__(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
-        plt.rcParams.update(rc_params)
+        try:
+            plt.rcParams.update(rc_params)
+        except:
+            pass
         self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
@@ -140,15 +146,22 @@ class Plot(object):
         return (self.fig, self.axes)
 
     def __getattr__(self, name):
-        """Pass on a `matplotlib` function that we haven't modified
+        """Pass on a `seaborn` or `matplotlib` function that we haven't modified
         """
         def method(*args, **kwargs):
-            return getattr(plt, name)(*args, **kwargs)
-
-        try:
-            return method  # is it a function?
-        except TypeError:  # so maybe it's just a self variable
+            try:
+                return getattr(sns, name)(*args, **kwargs)
+            except:
+                try:
+                    return getattr(plt, name)(*args, **kwargs)
+                except:
+                    return None
+        
+        meth = method  # is it a function?
+        if meth is None:  # maybe it's just a self variable
             return getattr(self, name)
+        else:
+            return meth
 
     def __getitem__(self, key):
         """Allow to get axes as Plot()[key]
@@ -1144,10 +1157,20 @@ class Plot(object):
         else:
             norm = None
         data = _unstack_levels(data, 'cols')
-        im = ax.imshow(data, norm=norm, interpolation='none', **kwargs)
-        ax.set_xticks(range(data.shape[1]))
-        ax.set_yticks(range(data.shape[0]))
+        im = ax.imshow(data, norm=norm, interpolation='none', 
+                       cmap='coolwarm', **kwargs)
+        #minor_ticks = np.linspace(-.5, nvars - 1.5, nvars)
+        #ax.set_xticks(minor_ticks, True)
+        #ax.set_yticks(minor_ticks, True)
+        ax.set_xticks(np.arange(data.shape[1])-.5, True)
+        ax.set_yticks(np.arange(data.shape[0])+.5, True)
+        ax.set_xticks(np.arange(data.shape[1]))
+        ax.set_yticks(np.arange(data.shape[0]))
+        ax.grid(False, which="major")
+        ax.grid(True, which="minor", linestyle="-")
+        
         self.axes[self.subplotno].cax.colorbar(im)
+        
 
         #divider = make_axes_locatable(ax)
         #cax = divider.append_axes("right", size="5%", pad=0.05)
