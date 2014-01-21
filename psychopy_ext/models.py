@@ -5,7 +5,20 @@
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
-"""A library of simple models of vision"""
+"""
+A library of simple models of vision
+
+Simple usage::
+
+    import glob
+    from psychopy_ext import models
+    ims = glob.glob('Example_set/*.jpg')  # get all jpg images
+    hmax = models.HMAX()
+    # if you want to see how similar your images are to each other
+    hmax.compare(ims) 
+    # or to simply get the output and use it further
+    out = hmax.run(ims)  
+"""
 
 import sys
 import itertools
@@ -163,14 +176,9 @@ class Model(object):
 
 
     def compare(self, ims):
-        output = []
+        print ims
         print 'processing image',
-        for imno, im in enumerate(ims):
-            print imno,
-            if type(im) == str:
-                im = scipy.misc.imread(im)
-            out = self.run(im)
-            output.append(out)
+        output = self.run(ims, oneval=True)
         dis = self.dissimilarity(output)
         print
         print 'Dissimilarity across stimuli'
@@ -202,16 +210,17 @@ class Zoccolan(Model):
     def __init__(self):
         # receptive field sizes in degrees
         #self.rfs = np.array([.6,.8,1.])
-        self.rfs = np.array([.2,.35,.5])
+        #self.rfs = np.array([.2,.35,.5])
+        self.rfs = [10, 20, 30]  # deg visual angle
+        self.oris = np.linspace(0, np.pi, 12)
+        self.phases = [0, np.pi]
+        self.sfs = range(1, 11)  # cycles per RF size
+        self.winsize = [5, 5]  # size of each patch on the grid
         # window size will be fixed in pixels and we'll adjust degrees accordingly
         # self.win_size_px = 300
 
     def get_gabors(self, rf):
-
-        oris = np.linspace(0,np.pi,12)
-        phases = [0,np.pi]
-        lams =  float(rf[0])/np.arange(1,11) # lambda = 1./sf  #1./np.array([.1,.25,.4])
-        #print lams
+        lams =  float(rf[0])/self.sfs # lambda = 1./sf  #1./np.array([.1,.25,.4])
         sigma = rf[0]/2./np.pi
         # rf = [100,100]
         gabors = np.zeros(( len(oris),len(phases),len(lams), rf[0], rf[1] ))
@@ -220,16 +229,13 @@ class Zoccolan(Model):
         #print i
         j = np.arange(-rf[1]/2+1,rf[1]/2+1)
         ii,jj = np.meshgrid(i,j)
-        for o, theta in enumerate(oris):
+        for o, theta in enumerate(self.oris):
             x = ii*np.cos(theta) + jj*np.sin(theta)
             y = -ii*np.sin(theta) + jj*np.cos(theta)
 
-            for p, phase in enumerate(phases):
+            for p, phase in enumerate(self.phases):
                 for s, lam in enumerate(lams):
-                    sigmaq = sigma#.56*lam
-                    fxx = np.cos(2*np.pi*x/lam + phase) * np.exp(-(x**2+y**2)/(2*sigmaq**2))
-                    # import pdb; pdb.set_trace()
-
+                    fxx = np.cos(2*np.pi*x/lam + phase) * np.exp(-(x**2+y**2)/(2*sigma**2))
                     fxx -= np.mean(fxx)
                     fxx /= np.linalg.norm(fxx)
 
@@ -242,9 +248,12 @@ class Zoccolan(Model):
         plt.show()
         return gabors
 
-    def run(self, im):
+    def run(self, ims):
+        ims = self.input2array(ims)
+        output = [self.test(im) for im in ims]
+             
+    def test(self, im):
         field = im.shape
-        # import pdb; pdb.set_trace()
         num_tiles = (15,15)#[field[0]/10.,field[0]/10.]
         size = (field[0]/num_tiles[0], field[0]/num_tiles[0])
 
