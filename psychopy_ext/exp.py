@@ -2007,7 +2007,10 @@ class ThickShapeStim(visual.ShapeStim):
         self._initParams.remove('self')
 
         # Initialize inheritance and remove unwanted methods
-        visual.BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
+        try:
+            visual.BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
+        except:  # PsychoPy prior to 1.79
+            visual._BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
         self.__dict__['setColor'] = None
         self.__dict__['color'] = None
         self.__dict__['colorSpace'] = None
