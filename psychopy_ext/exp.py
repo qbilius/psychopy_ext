@@ -212,7 +212,7 @@ class Task(TrialHandler):
 
     def __str__(self, **kwargs):
         """string representation of the object"""
-        return 'psychopy_ext.exp.Task'    
+        return 'psychopy_ext.exp.Task'
 
     def quit(self, message=''):
         """What to do when exit is requested.
@@ -225,7 +225,7 @@ class Task(TrialHandler):
             self.logfile.write('end')
         except:  # no logfile
             pass
-            
+
         core.quit()
 
     def setup_task(self):
@@ -258,7 +258,7 @@ class Task(TrialHandler):
         self.rp = self.parent.rp
         self.mouse = self.parent.mouse
         self.datafile.writeable = not self.rp['no_output']
-        
+
         self._set_keys_flat()
         self.set_seed()
         self.create_stimuli()
@@ -296,7 +296,7 @@ class Task(TrialHandler):
             self.exp_plan = self.set_autorun(self.exp_plan)
 
         self.get_blocks()
-        
+
     def _set_keys_flat(self):
         #if keylist is None:
         keylist = self.computer.default_keys.values()
@@ -312,7 +312,7 @@ class Task(TrialHandler):
         self.keylist_flat = []
         for key in keys:
             self.keylist_flat.extend(key)
-        
+
     def set_seed(self):
         # re-initialize seed for each block of task
         # (if there is more than one task or more than one block)
@@ -321,13 +321,13 @@ class Task(TrialHandler):
             date = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
             random.seed(self.seed)
             np.random.seed(self.seed)
-            
+
             if not self.rp['no_output']:
                 try:
                     message = 'Task %s: block %d' % (self.__str__, self.this_blockn+1)
                 except:
                     message = 'Task %s' % self.__str__
-                    
+
                 self.logfile.write('\n')
                 self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
                 self.logfile.write('  #[[ %s ]] #---------\n' % message)
@@ -411,6 +411,8 @@ class Task(TrialHandler):
             this_key = None
             while this_key != self.computer.default_keys['trigger']:
                 this_key = self.last_keypress()
+                if len(this_key) > 0:
+                    this_key = this_key.pop()
             if self.rp['autorun']:
                 wait /= self.rp['autorun']
         self.win.flip()
@@ -554,32 +556,32 @@ class Task(TrialHandler):
                     ])
         """
         raise NotImplementedError
-        
+
     def get_mouse_resp(self, keyList=None, timeStamped=False):
         """
         Returns mouse clicks.
-        
+
         If ``self.respmap`` is provided, records clicks only when clicked
         inside respmap. This respmap is supposed to be a list of shape
         objects that determine boundaries of where one can click.
         Might change in the future if it gets incorporated in stimuli
         themselves.
-        
+
         Note that mouse implementation is a bit shaky in PsychoPy at
         the moment. In particular, ``getPressed`` method returns
-        multiple key down events per click. Thus, when calling 
-        ``get_mouse_resp`` from a while loo[, it is best to limit 
+        multiple key down events per click. Thus, when calling
+        ``get_mouse_resp`` from a while loo[, it is best to limit
         sampling to, for example, 150 ms (see `Jeremy's response <https://groups.google.com/d/msg/psychopy-users/HG4L-UDG93Y/FvyuB-OrsqoJ>`_).
         """
         mdict = {0: 'left-click', 1: 'middle-click', 2: 'right-click'}
         valid_mouse = [k for k,v in mdict.items() if v in self.computer.valid_responses]
         valid_mouse.sort()
-        
+
         if timeStamped:
             mpresses, mtimes = self.mouse.getPressed(getTime=True)
         else:
-            mpresses = self.mouse.getPressed(getTime=False)   
-            
+            mpresses = self.mouse.getPressed(getTime=False)
+
         resplist = []
         if sum(mpresses) > 0:
             for but in valid_mouse:
@@ -592,43 +594,49 @@ class Task(TrialHandler):
                 clicked = False
                 for box in self.respmap:
                     if box.contains(self.mouse):
-                        resplist = [r+[box.name] for r in resplist]
+                        resplist = [r+[box] for r in resplist]
                         clicked = True
                         break
                 if not clicked:
                     resplist = []
-            
-        return resplist
-        
-    def get_resp(self, keyList=None, timeStamped=False):
-        resplist = event.getKeys(keyList=keyList, timeStamped=timeStamped)        
-        if resplist is None:
-            resplist = []
-        #else:
-            #resplist = 
-        resplist += self.get_mouse_resp(keyList=keyList, timeStamped=timeStamped)
-        
+
         return resplist
 
-    def last_keypress(self):
+    def get_resp(self, keyList=None, timeStamped=False):
+        resplist = event.getKeys(keyList=keyList, timeStamped=timeStamped)
+        if resplist is None:
+            resplist = []
+
+        resplist += self.get_mouse_resp(keyList=keyList, timeStamped=timeStamped)
+        return resplist
+
+    def last_keypress(self, keyList=None, timeStamped=False):
         """
         Extract the last key pressed from the event list.
 
         If exit key is pressed (default: 'Left Shift + Esc'), quits.
 
         :Returns:
-            An str of the last pressed key or None if nothing has been
-            pressed.
+            A list of keys pressed.
         """
-        this_keylist = self.get_resp(keyList=self.keylist_flat)        
-        
+        if keyList is None:
+            keyList = self.keylist_flat
+        this_keylist = self.get_resp(keyList=keyList+self.keylist_flat,
+                                     timeStamped=timeStamped)
+        keys = []
         if len(this_keylist) > 0:
             this_key = this_keylist.pop()
             #print this_key
+
+            if isinstance(this_key, tuple):
+                this_key_exit = this_key[0]
+            else:
+                this_key_exit = this_key
             exit_keys = self.computer.default_keys['exit']
-            if this_key in exit_keys:
+
+            if this_key_exit in exit_keys:
                 if self._exit_key_no < len(exit_keys):
-                    if exit_keys[self._exit_key_no] == this_key:
+                    if exit_keys[self._exit_key_no] == this_key_exit:
                         if self._exit_key_no == len(exit_keys) - 1:
                             self.quit('Premature exit requested by user.')
                         else:
@@ -639,7 +647,8 @@ class Task(TrialHandler):
                     self._exit_key_no = 0
             else:
                 self._exit_key_no = 0
-                return this_key
+                keys = [this_key]
+        return keys
 
     def before_event(self):
         for stim in self.this_event.display:
@@ -674,10 +683,10 @@ class Task(TrialHandler):
                 if self.trial_clock.getTime() > self.this_trial['autort']:
                     event_keys = [(self.this_trial['autoresp'], self.this_trial['autort'])]
             else:
-                event_keys = self.get_resp(
+                event_keys = self.last_keypress(
                     keyList=self.computer.valid_responses.keys(),
                     timeStamped=self.trial_clock)
-            self.last_keypress()
+
         return event_keys
 
     def idle_event(self, draw_stim=True):
@@ -760,9 +769,6 @@ class Task(TrialHandler):
             if keys is not None:
                 all_keys += keys
 
-        if len(all_keys) == 0:
-            all_keys = None
-
         return all_keys
 
     def check_continue(self):
@@ -820,9 +826,9 @@ class Task(TrialHandler):
         """
         Converts a list of trials into a `~psychopy.data.TrialHandler`,
         finalizing the experimental setup procedure.
-        """     
+        """
         if len(self.blocks) > 1:
-            self.set_seed()   
+            self.set_seed()
         TrialHandler.__init__(self,
             trial_list,
             nReps=self.nReps,
@@ -901,7 +907,7 @@ class Task(TrialHandler):
 
         If ``self.blockcol`` is defined, then runs block-by-block.
         """
-        self.setup_task()        
+        self.setup_task()
         self.before_task()
 
         self.datafile.open()
@@ -1075,13 +1081,13 @@ class Task(TrialHandler):
 
         """
         if len(self.all_keys) > 0:
-            this_resp = self.all_keys.pop()            
+            this_resp = self.all_keys.pop()
             if hasattr(self, 'respmap'):
                 subj_resp = this_resp[2]
             else:
                 subj_resp = self.computer.valid_responses[this_resp[0]]
             self.this_trial['subj_resp'] = subj_resp
-                        
+
             try:
                 acc = signal_det(self.this_trial['corr_resp'], subj_resp)
             except:
@@ -1108,11 +1114,15 @@ class Task(TrialHandler):
 
         # show stimuli
         event_keys = self.this_event.func()
+        if isinstance(event_keys, tuple):
+            event_keys = [event_keys]
+        elif event_keys is None:
+            event_keys = []
 
-        if event_keys is not None:
+        if len(event_keys) > 0:
             self.all_keys += event_keys
         # this is to get keys if we did not do that during trial
-        self.all_keys += self.get_resp(
+        self.all_keys += self.last_keypress(
             keyList=self.computer.valid_responses.keys(),
             timeStamped=self.trial_clock)
 
@@ -1132,18 +1142,18 @@ class Task(TrialHandler):
         return get_behav_df(self.info['subjid'], pattern=pattern)
 
 
-class SVG(object):        
-    
+class SVG(object):
+
     def __init__(self, win, filename='image'):
         visual.helpers.setColor(win, win.color)
         win.contrast = 1
-        self.win = win     
+        self.win = win
         self.aspect = self.win.size[0]/float(self.win.size[1])
         self.open(filename)
-        
+
     def open(self, filename):
         filename = filename.split('.svg')[0]
-                         
+
         self.svgfile = svgwrite.Drawing(profile='tiny',filename='%s.svg' % filename,
                                 size=('%dpx' % self.win.size[0],
                                       '%dpx' % self.win.size[1]),
@@ -1156,11 +1166,11 @@ class SVG(object):
         bkgr = self.svgfile.rect(insert=(0,0), size=('100%','100%'),
                             fill=self.color2rgb255(self.win))
         self.svgfile.add(bkgr)
-        
+
     def save(self):
         self.svgfile.save()
-        
-    def color2attr(self, stim, attr, color='black', colorSpace=None, kwargs = {}):                
+
+    def color2attr(self, stim, attr, color='black', colorSpace=None, kwargs = {}):
         col = self.color2rgb255(stim, color=color, colorSpace=colorSpace)
         if col is None:
             kwargs[attr + '_opacity'] = 0
@@ -1168,14 +1178,14 @@ class SVG(object):
             kwargs[attr] = col
             kwargs[attr + '_opacity'] = 1
         return kwargs
-        
-    def write(self, stim):        
+
+    def write(self, stim):
         if 'Circle' in str(stim):
             color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
                                        colorSpace=stim.lineColorSpace)
             color_kw = self.color2attr(stim, 'fill', color=stim.fillColor,
                                        colorSpace=stim.fillColorSpace,
-                                       kwargs=color_kw)            
+                                       kwargs=color_kw)
             svgstim = self.svgfile.circle(
                             center=self.get_pos(stim),
                             r=self.get_size(stim, stim.radius),
@@ -1214,32 +1224,32 @@ class SVG(object):
             svgstim = self.svgfile.rect(
                     insert=self.get_pos(stim, offset=(-stim.width/2., -stim.height/2.)),
                     size=(self.get_size(stim, stim.width), self.get_size(stim, stim.height)),
-                    stroke_width=stim.lineWidth,                   
+                    stroke_width=stim.lineWidth,
                     opacity=stim.opacity,
                     **color_kw
                     )
         elif 'ThickShapeStim' in str(stim):
             svgstim = stim.to_svg(self)
-        elif 'ShapeStim' in str(stim):            
+        elif 'ShapeStim' in str(stim):
             points = self._calc_attr(stim, np.array(stim.vertices))
             points[:, 1] *= -1
             color_kw = self.color2attr(stim, 'stroke', color=stim.lineColor,
                                        colorSpace=stim.lineColorSpace)
             color_kw = self.color2attr(stim, 'fill', color=stim.fillColor,
                                        colorSpace=stim.fillColorSpace,
-                                       kwargs=color_kw)            
+                                       kwargs=color_kw)
             if stim.closeShape:
                 svgstim = self.svgfile.polygon(
                         points=points,
-                        stroke_width=stim.lineWidth,               
+                        stroke_width=stim.lineWidth,
                         opacity=stim.opacity,
                         **color_kw
-                        )  
+                        )
             else:
                 svgstim = self.svgfile.polyline(
                         points=points,
-                        stroke_width=stim.lineWidth,                  
-                        opacity=stim.opacity,  
+                        stroke_width=stim.lineWidth,
+                        opacity=stim.opacity,
                         **color_kw
                         )
             tr = self.get_pos(stim)
@@ -1259,32 +1269,32 @@ class SVG(object):
                                     text_anchor='middle',
                                     opacity=stim.opacity
                                     )
-            
+
         else:
             svgstim = stim.to_svg(self)
-        
+
         if not isinstance(svgstim, list):
             svgstim = [svgstim]
         for st in svgstim:
             self.svgfile.add(st)
-                    
+
     def get_pos(self, stim, pos=None, offset=None):
         if pos is None:
             pos = stim.pos
         if offset is not None:
             offset = self._calc_attr(stim, np.array(offset))
         else:
-            offset = np.array([0,0])        
+            offset = np.array([0,0])
         pos = self._calc_attr(stim, pos)
         pos = self.win.size/2 + np.array([pos[0], -pos[1]]) + offset
         return pos
-        
+
     def get_size(self, stim, size=None):
         if size is None:
-            size = stim.size        
+            size = stim.size
         size = self._calc_attr(stim, size)
         return size
-        
+
     def _calc_attr(self, stim, attr):
         if stim.units == 'height':
             try:
@@ -1293,10 +1303,10 @@ class SVG(object):
                 out = (attr * stim.win.size[1])
             else:
                 out = (attr * stim.win.size * np.array([1./self.aspect, 1]))
-                
+
         elif stim.units == 'norm':
             try:
-                len(attr) == 2                
+                len(attr) == 2
             except:
                 out = (attr * stim.win.size[1]/2)
             else:
@@ -1310,27 +1320,27 @@ class SVG(object):
         else:
             raise NotImplementedError
         return out
-        
+
     def color2rgb255(self, stim, color=None, colorSpace=None):
         """
         Convert color to RGB255 while adding contrast
-        
+
         #Requires self.color, self.colorSpace and self.contrast
         Modified from psychopy.visual.BaseVisualStim._getDesiredRGB
         """
         if color is None:
-            color = stim.color        
-            
+            color = stim.color
+
         if isinstance(color, str) and stim.contrast == 1:
             color = color.lower()  # keep the nice name
         else:
             # Ensure that we work on 0-centered color (to make negative contrast values work)
             if colorSpace is None:
                 colorSpace = stim.colorSpace
-            
-            if colorSpace not in ['rgb', 'dkl', 'lms', 'hsv']:                
+
+            if colorSpace not in ['rgb', 'dkl', 'lms', 'hsv']:
                 color = (color / 255.0) * 2 - 1
-                
+
             # Convert to RGB in range 0:1 and scaled for contrast
             # although the shader then has to convert it back it gets clamped en route otherwise
             try:
@@ -1613,7 +1623,7 @@ class Experiment(ExperimentHandler, Task):
             # Write system information first
             if writesys:
                 self.logfile.write('%s' % self.runtime_info)
-            
+
             self.logfile.write('\n\n\n' + '#'*40 + '\n\n')
             self.logfile.write('$ python %s\n\n' % ' '.join(sys.argv))
             self.logfile.write('Start time: %s\n\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
@@ -1753,7 +1763,7 @@ class Experiment(ExperimentHandler, Task):
                 randomSeed='set:time')
         key, value = get_version()
         self.runtime_info[key] = value  # updates with psychopy_ext version
-        
+
         self._set_keys_flat()
         self.seed = int(self.runtime_info['experimentRandomSeed.string'])
         np.random.seed(self.seed)
@@ -1858,7 +1868,7 @@ class Experiment(ExperimentHandler, Task):
         if not hasattr(self.rp, 'autorun'):
             self.rp['autorun'] = 100
         self.run()
-        
+
     def register(self, **kwargs):
         """Alias to :func:`~psychopy_ext.exp.commit()`
         """
@@ -1930,12 +1940,12 @@ class Event(object):
                 self.display = parent.fixation
         else:
             self.display = display
-            
+
         if isinstance(self.display, tuple):
             self.display = list(self.display)
         elif not isinstance(self.display, list):
             self.display = [self.display]
-            
+
         if func is None:
             self.func = parent.idle_event
         else:
@@ -1951,7 +1961,7 @@ class Event(object):
         """
         if 'defaultFun' in entries:
             entries['func'] = entries['defaultFun']
-            del entries['defaultFun']            
+            del entries['defaultFun']
         return Event(parent, **entries)
         #self.__dict__.update(entries)
         #for key, value in dictionary.items():
@@ -1966,7 +1976,7 @@ class ThickShapeStim(visual.ShapeStim):
     PsychoPy has a bug in some configurations of not drawing lines thicker
     than 2px. This class fixes the issue. Note that it's really just a
     collection of rectanges so corners will not look nice.
-    """                     
+    """
     def __init__(self,
                  win,
                  units  ='',
@@ -2056,7 +2066,7 @@ class ThickShapeStim(visual.ShapeStim):
     def draw(self):
         for stim in self.stimulus:
             stim.draw()
-            
+
     def to_svg(self, svg):
         rects = []
         for stim, vertices in zip(self.stimulus,self.vertices):
@@ -2127,7 +2137,7 @@ class ThickShapeStim(visual.ShapeStim):
             elif self.units in ['deg', 'degs']:
                 w = misc.pix2deg(1, self.win.monitor)
             wh = self.lineWidth/2. - w
-            
+
             for i in range(numPairs):
                 thisPair = np.array([vertices[i],vertices[(i+1)%len(vertices)]])
                 thisPair_rot = np.dot(thisPair, rot.T)
@@ -2194,6 +2204,119 @@ class GroupStim(object):
 
     def __iter__(self):
         return self.stimuli.__iter__()
+
+
+class MouseRespGroup(object):
+
+    def __init__(self, win, stimuli, respmap=None, multisel=False,
+                 on_color='#ff7260', off_color='white', pos=(0,0), name=''):
+        #super(MouseRespGroup, self).__init__(stimuli=stimuli, name=name)
+        self.win = win
+        self.multisel = multisel
+        self.on_color = on_color
+        self.off_color = off_color
+        self.pos = pos
+        self.name = name
+
+        if isinstance(stimuli, str):
+            stimuli = [stimuli]
+        self.state = [False] * len(stimuli)
+        self.stimuli = []
+        for i, stim in enumerate(stimuli):
+            if isinstance(stim, str):
+                add = np.array([0, (i-len(stimuli)/2)*.2*1.5])
+                stim = visual.TextStim(self.win, text=stim, height=.2,
+                        pos=pos+add)
+                stim.size = (1, .2)
+                stim._calcSizeRendered()
+                size = (stim._sizeRendered[0]*1.2, stim._sizeRendered[1]*1.2)
+            else:
+                stim._calcSizeRendered()
+                size = stim._sizeRendered
+            stim._calcPosRendered()
+
+            stim.respbox = visual.Rect(
+                                    self.win,
+                                    name=stim.name,
+                                    lineColor=None,
+                                    fillColor=None,
+                                    pos=stim._posRendered,
+                                    height=size[1],
+                                    width=size[0],
+                                    units='pix'
+                                    )
+            stim.respbox.selected = False
+            self.stimuli.append(stim)
+
+    def setPos(self, newPos):
+        for stim in self.stimuli:
+            stim.pos += self.pos - newPos
+            stim.respbox.pos += self.pos - newPos
+
+    def draw(self):
+        for stim in self.stimuli:
+            stim.draw()
+            #stim.respbox.draw()
+
+    def contains(self, *args, **kwargs):
+        self.selected = [stim.respbox.contains(*args, **kwargs) for stim in self.stimuli]
+        #self.state = [(s and st) for s, st in zip(sel, self.state)]
+        return any(self.selected)
+
+    def select(self, stim=None):
+
+        if stim is None:
+            try:
+                idx = self.selected.index(True)
+            except:
+                return
+            else:
+                stim = self.stimuli[idx]
+            #if any(self.state):
+                #for stim, state in zip(self.stimuli, self.state):
+                    #if self.multisel:
+                        #self._try_set_color(stim, state)
+
+                    #else:
+                        #self._try_set_color(stim, False)
+                #if not self.multisel:
+
+                    #self._try_set_color(stim, True)
+        #else:
+        if not self.multisel:
+            for st in self.stimuli:
+                if st == stim:
+                    self._try_set_color(stim)
+                else:
+                    self._try_set_color(st, state=False)
+        else:
+            self._try_set_color(stim)
+
+    def reset(self):
+        for stim in self.stimuli:
+            self._try_set_color(stim, state=False)
+
+    def _try_set_color(self, stim, state=None):
+        if state is None:
+            if not stim.respbox.selected:
+                color = self.on_color
+                stim.respbox.selected = True
+            else:
+                color = self.off_color
+                stim.respbox.selected = False
+        else:
+            if state:
+                color = self.on_color
+                stim.respbox.selected = True
+            else:
+                color = self.off_color
+                stim.respbox.selected = False
+
+        try:
+            stim.setColor(color)
+        except:
+            stim.setLineColor(color)
+            stim.setFillColor(color)
 
 
 class OrderedDict(dict, DictMixin):
@@ -2465,13 +2588,13 @@ def invert_dict(d):
     sortkeys = sorted(inv_dict.keys())
     inv_dict = OrderedDict([(k,inv_dict[k]) for k in sortkeys])
     return inv_dict
-    
+
 def get_version():
     """Get psychopy_ext version
-    
+
     If using a repository, then git head information is used.
     Else version number is used.
-            
+
     :Returns:
         A key where to store version in `self.runtime_info` and
         a string value of psychopy_ext version.
@@ -2487,12 +2610,12 @@ def get_version():
             git_branch = pointer.split('/')[-1]
             pointer = os.path.join(d, '../.git', pointer)
             with open(pointer) as f:
-                git_hash = f.readline()            
-            githash = git_branch + ' ' + git_hash.strip('\r\n') 
+                git_hash = f.readline()
+            githash = git_branch + ' ' + git_hash.strip('\r\n')
         except:
             pass
-            
-    if githash: 
+
+    if githash:
         key = 'pythonPsychopy_extGitHead'
         value = githash
     else:
@@ -2694,4 +2817,4 @@ def make_para(n=6):
         out.append(temp)
 
     return np.array(out)
-    
+
