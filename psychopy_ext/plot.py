@@ -40,6 +40,8 @@ except:  # ok, stick to your ugly matplotlib then
     # from https://gist.github.com/huyng/816622
     # inspiration from mpltools
     rc_params = pandas.tools.plotting.mpl_stylesheet
+    rc_params['interactive'] = False  # doesn't display otherwise
+    plt.rcParams.update(rc_params)
 
 import stats
 
@@ -47,10 +49,6 @@ import stats
 class Plot(object):
 
     def __init__(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
-        try:
-            plt.rcParams.update(rc_params)
-        except:
-            pass
         self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
             ncols=ncols, **kwargs)
 
@@ -156,7 +154,7 @@ class Plot(object):
                     return getattr(plt, name)(*args, **kwargs)
                 except:
                     return None
-        
+
         meth = method  # is it a function?
         if meth is None:  # maybe it's just a self variable
             return getattr(self, name)
@@ -431,7 +429,7 @@ class Plot(object):
                 min_space = abs(yticks[1] - yticks[0])
                 lims[i,1,0] -= min_space
                 lims[i,1,1] += min_space
-                
+
                 #xran = lims[i,0,1] - lims[i,0,0]
                 #yran = lims[i,1,1] - lims[i,1,0]
                 #if xran > yran:
@@ -560,7 +558,7 @@ class Plot(object):
                 pass
         return axes
 
-    def _space_ticks(self, ticks, kind=None):        
+    def _space_ticks(self, ticks, kind=None):
         if len(ticks) <= 5:
             nbins = len(ticks)
         else:
@@ -590,8 +588,8 @@ class Plot(object):
         if ax is None:
             ax = self.next()
 
-        mean, p_yerr = stats.confidence(agg)        
-        
+        mean, p_yerr = stats.confidence(agg)
+
         if mean.index.nlevels == 1:  # oops, nothing to unstack
             mean = pandas.DataFrame(mean)
             p_yerr = pandas.DataFrame(p_yerr)
@@ -672,12 +670,12 @@ class Plot(object):
             labels = ax.get_xticklabels()
             new_labels = self._format_labels(labels=mean.index)
             if len(labels) > len(mean):
-                new_labels = [''] + new_labels            
+                new_labels = [''] + new_labels
             if kind == 'line':
                 try:  # don't set labels for number
                     mean.index[0] + 1
-                except:   
-                    ax.set_xticklabels(new_labels)                
+                except:
+                    ax.set_xticklabels(new_labels)
                 else:
                     loc = map(int, ax.xaxis.get_majorticklocs())
                     try:
@@ -755,7 +753,7 @@ class Plot(object):
             ymin -= xyrange / 3.
         if ymax != 0:
             ymax += xyrange / 3.
-            
+
         yticks = ax.get_yticks()
         min_space = abs(yticks[1] - yticks[0])
         ymin =  np.round(ymin/min_space) * min_space
@@ -795,7 +793,7 @@ class Plot(object):
                 vals_len = np.max([len(agg.columns.levels[col]) for col in cols])
             except:
                 vals_len = len(agg.columns)
-        
+
         if vals_len <= 2:  # if >2, cannot compute stats
             if isinstance(agg, pandas.DataFrame):
                 mean, p_yerr = stats.confidence(agg)
@@ -866,7 +864,7 @@ class Plot(object):
                     ax.text(ticks[rno], mn.max(), stats.get_star(p), ha='center')
                 if rlab is None:
                     rlab = ''
-                
+
                 try:
                     sig_t.append((rlab, t))
                     sig_p.append((rlab, p))
@@ -880,7 +878,7 @@ class Plot(object):
         leg = ax.get_legend()  # get an existing legend
         if leg is None:  # create a new legend
             leg = ax.legend() #loc='center left')
-        if leg is not None:            
+        if leg is not None:
             if kind == 'line':
                 handles, labels = ax.get_legend_handles_labels()
                 # remove the errorbars
@@ -888,7 +886,7 @@ class Plot(object):
                 leg = ax.legend(handles, labels)
 
             leg.legendPatch.set_alpha(0.5)
-            
+
             try:  # may or may not have any columns
                 leg.set_title(self._get_title(data, 'cols'))
             except:
@@ -957,7 +955,7 @@ class Plot(object):
         for num in nums:
             ax = self.get_ax(num)
             ax.axis('off')
-            
+
     def display_legend(self, nums, show=False):
         """
         Shows or hides (default) legends on given axes.
@@ -1003,7 +1001,7 @@ class Plot(object):
         idx = np.arange(len(data))
         width = .75 / n
         rects = []
-        
+
         for i, (label, column) in enumerate(data.iteritems()):
             rect = ax.bar(idx + i*width - .75/2, column, width,
                 label=str(label), yerr=yerr[label].tolist(),
@@ -1052,6 +1050,7 @@ class Plot(object):
             x = range(len(data))
         else:
             x = data.index.tolist()
+        import pdb; pdb.set_trace()
         for i, (label, column) in enumerate(data.iteritems()):
             ax.errorbar(x, column, yerr=yerr[label].tolist(),
                         label=str(label), fmt='-', ecolor='black', **kwargs)
@@ -1060,7 +1059,7 @@ class Plot(object):
         if xlim[0] != np.min(x) - step/2:  # if sharex, this might have been set
             ax.set_xlim((np.min(x) - step/2, np.max(x) + step/2))
             ax.set_xticks(x)
-        
+
         #try:
             #data.index[0] + 1
         #except:
@@ -1068,7 +1067,7 @@ class Plot(object):
         #else:
             #ax.set_xticklabels(data.index)
         #xticklabels = self._format_labels(labels=data.index)
-        #old_labels = ax.get_xticklabels()        
+        #old_labels = ax.get_xticklabels()
         #if len(xticklabels) < old_labels:
             #xticklabels = [''] + xticklabels
         #ax.set_xticklabels(xticklabels)
@@ -1157,7 +1156,7 @@ class Plot(object):
         else:
             norm = None
         data = _unstack_levels(data, 'cols')
-        im = ax.imshow(data, norm=norm, interpolation='none', 
+        im = ax.imshow(data, norm=norm, interpolation='none',
                        cmap='coolwarm', **kwargs)
         #minor_ticks = np.linspace(-.5, nvars - 1.5, nvars)
         #ax.set_xticks(minor_ticks, True)
@@ -1168,9 +1167,9 @@ class Plot(object):
         ax.set_yticks(np.arange(data.shape[0]))
         ax.grid(False, which="major")
         ax.grid(True, which="minor", linestyle="-")
-        
+
         self.axes[self.subplotno].cax.colorbar(im)
-        
+
 
         #divider = make_axes_locatable(ax)
         #cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -1612,7 +1611,7 @@ if __name__ == '__main__':
     #df = df.reindex_axis(['subplots','cond','name','levels','subjID','RT',
         #'accuracy'], axis=1)
     agg = stats.aggregate(df, subplots='subplots', rows=['cond', 'name'],
-        col='levels', yerr='subjID', values='RT')
+        cols='levels', yerr='subjID', values='RT')
     fig = Plot(ncols=2)
-    fig.plot(agg, subplots=True, yerr=True)
+    fig.plot(agg, subplots=True)
     fig.show()

@@ -18,7 +18,7 @@ import pandas
 import plot
 
 try:
-    import OrderedDict
+    from collections import OrderedDict
 except:
     from exp import OrderedDict
 
@@ -59,11 +59,11 @@ def aggregate(df, rows=None, cols=None, values=None,
         A `pandas.DataFrame` where data has been aggregated in the following
         MultiIndex format:
         - columns:
-        
+
           - level 0: subplots
           - level 1 to n-2: rows
           - level n-1: column
-          
+
         - rows:
             yerr
 
@@ -95,7 +95,7 @@ def aggregate(df, rows=None, cols=None, values=None,
 
     groups = [('subplots', [subplots]), ('rows', rows), ('cols', cols),
               ('yerr', yerr)]
-    index_names = agg.index.names
+    index_names = [i for i in agg.index.names]  # since it's FrozenList
     g = 0
     for group in groups:
         for item in group[1]:
@@ -112,19 +112,19 @@ def aggregate(df, rows=None, cols=None, values=None,
         agg = agg.T
     else:
         agg = pandas.DataFrame(agg).T
-        
+
     # sort data nicely
     if isinstance(order, dict):
         order_full = order
     else:
         order_full = dict([(col, order) for col in agg.columns.names])
-        
+
     #if order != 'sorted':
     #names = agg.columns.names  # store it; will need it later
     for level, level_ord in order_full.items():
         if isinstance(level_ord, str):
             col = '.'.join(level.split('.')[1:])
-            if level_ord == 'natural':                
+            if level_ord == 'natural':
                 thisord = df[col].unique()  # preserves order
             elif level_ord == 'sorted':
                 thisord = np.unique(df[col])  # doesn't preserve order
@@ -134,12 +134,12 @@ def aggregate(df, rows=None, cols=None, values=None,
             thisord = level_ord
         order_full[level] = thisord
     agg = reorder(agg, order=order_full)
-    #agg.columns.names = names  # buggy pandas        
-        
+    #agg.columns.names = names  # buggy pandas
+
     # rows should become rows, and cols should be cols if so desired
     if yerr[0] is None and unstack:
         agg = plot._stack_levels(agg, 'rows.')
-            
+
     if not add_names:
         names = []
         for name in agg.columns.names:
@@ -232,7 +232,7 @@ def reorder(agg, order, level=None, dim='columns'):
         - agg (pandas.DataFrame)
             Your (usually aggregated) data
         - order (list or dict)
-            Order of entries. A list is only accepted is `level` is 
+            Order of entries. A list is only accepted is `level` is
             given. Otherwise, order should be a dict with level names
             (str) as keys and a list of order in values.
     :Kwargs:
@@ -242,12 +242,12 @@ def reorder(agg, order, level=None, dim='columns'):
             Whether to reorder rows (or index) or columns.
     :Returns:
         Reordered pandas.DataFrame
-    """     
+    """
     if dim in ['index', 'rows']:
         orig_idx = agg.index
     else:
-        orig_idx = agg.columns           
-        
+        orig_idx = agg.columns
+
     if not isinstance(order, dict):
         #if level is None:
             #raise Exception('When "order" is a list, a "level" must be'
@@ -259,10 +259,10 @@ def reorder(agg, order, level=None, dim='columns'):
             order = {level: orderframe[levelno].unique()}
         except: # no levels
             order = {level: orig_idx.unique()}
-            
+
     for levelno, levelname in enumerate(orig_idx.names):
         if not levelname in order:
-            # retain the existing order            
+            # retain the existing order
             this_order = pandas.DataFrame(orig_idx.tolist()) #[lev[levelno] for lev in orig_idx]
             this_order = this_order[levelno].unique()  # preserves order
             #this_order = np.unique(this_order)
@@ -270,7 +270,7 @@ def reorder(agg, order, level=None, dim='columns'):
             this_order = order[levelname]
         # convert to a list
         order[levelname] = [i for i in this_order]
-        
+
     data = np.zeros((len(orig_idx), len(orig_idx.names)))
     ind_sort = pandas.DataFrame(index=orig_idx, data=data, columns=orig_idx.names)
     for rowno, (rowidx, row) in enumerate(ind_sort.iterrows()):
