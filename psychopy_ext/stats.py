@@ -83,7 +83,9 @@ def aggregate(df, rows=None, cols=None, values=None,
     if values is None:
         raise Exception('You must provide the name(s) of the column(s) that '
                         'is/are aggregated.')
-    allconds = [subplots] + rows + cols + yerr
+    if isinstance(subplots, str) or subplots is None:
+        subplots = [subplots]
+    allconds = subplots + rows + cols + yerr
     allconds = [c for c in allconds if c is not None]
 
     if isinstance(aggfunc, str):
@@ -91,9 +93,12 @@ def aggregate(df, rows=None, cols=None, values=None,
             aggfunc = getattr(np, aggfunc)
         except:
             raise
-    agg = df.groupby(allconds)[values].aggregate(aggfunc)
+    try:
+        agg = df.groupby(allconds)[values].aggregate(aggfunc)
+    except:
+        raise Exception
 
-    groups = [('subplots', [subplots]), ('rows', rows), ('cols', cols),
+    groups = [('subplots', subplots), ('rows', rows), ('cols', cols),
               ('yerr', yerr)]
     index_names = [i for i in agg.index.names]  # since it's FrozenList
     g = 0
@@ -105,6 +110,8 @@ def aggregate(df, rows=None, cols=None, values=None,
     agg.index.names = index_names
 
     if yerr[0] is not None:  # if yerr present, yerr is in rows, the rest in cols
+        if isinstance(values, list):
+            agg = agg[values[0]]
         for yr in yerr:
             agg = agg.unstack(level='yerr.'+yr)
         # seems like a pandas bug here for not naming levels properly
@@ -148,7 +155,10 @@ def aggregate(df, rows=None, cols=None, values=None,
                 names.append('.'.join(spl[1:]))
         agg.columns.names = names
 
-    agg.names = values
+    if isinstance(values, list):
+        agg.names = values[0]
+    else:
+        agg.names = values
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
@@ -191,21 +201,76 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     agg.names = values
     return agg
 
-def confidence(agg, kind='sem', nsamples=None, skipna=True):
-    if isinstance(agg, pandas.DataFrame):
-        mean = agg.mean(skipna=skipna)  # mean across items
-        if kind == 'sem':
-            p_yerr = agg.std(skipna=skipna) / np.sqrt(len(agg))  # std already has ddof=1
+def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
+               skipna=True):
+    """
+    Compute confidence of measurements, such as standard error of means (SEM)
+    or confidence intervals (CI).
 
-        # compute binomial distribution error bars if there is a single sample
-        # only (presumably the number of correct responses, i.e., successes)
-        # from http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval
+    :Args:
+        agg
+    :Kwargs:
+        - kind ('sem', 'ci', or 'binomial', default: 'sem')
+            .. warning:: Binomial not tested throroughly
+        - repmes (bool, default: True)
+            Choose True for repeated measures designs. It computes
+            within-subject confidence intervals using a method by
+            Loftus & Masson (1994) simplified by Cousinaueu (2005)
+            with Morey's (2008) correction.
+            Based on `Denis A. Engemann's gist <https://gist.github.com/dengemann/6030453>`_
+        - alpha (float, default: .05)
+            For CI and binomial. Computed for single-tail, so effectively
+            alpha/2.
+        - nsamples
+            For binomial distribution confidence intervals if there is
+            a single sample only (which presumably relfects the number
+            of correct responses, i.e., successes). See `Wikipedia
+            <http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval>`_
+        - skipna (defualt: True)
+            Whether to skip NA / null values or not.
+
+            .. warning:: Not tested thoroughly
+    :Returns:
+        mean, p_yerr
+    """
+    if isinstance(agg, pandas.DataFrame):
+        mean = agg.mean(skipna=skipna)  # mean across participants
+
+        if repmes:
+            rows = [r for r in agg.columns.names if r.startswith('rows.')]
+            # center data
+            try:
+                subj_mean = agg.mean(level=rows, skipna=skipna, axis=1)  # mean per subject
+            except:
+                subj_mean = agg.mean(skipna=skipna)
+            grand_mean = mean.mean(skipna=skipna)
+            center = subj_mean - grand_mean
+            cols = []
+            for col, value in center.iteritems():
+                cols.append((agg[col].T - value.T).T)
+
+            aggc = pandas.concat(cols, keys=agg.columns, axis=1)
+            aggc = pandas.DataFrame(aggc.values, index=agg.index, columns=agg.columns)
+            ddof = 0  # Morey's correction
+        else:
+            ddof = 1
+
+        if skipna:
+            count = agg.count()  # skips NA by default
+        else:
+            count = len(agg)
+
+        confint = 1 - alpha/2.
+        if kind == 'sem':
+            p_yerr = agg.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
+        elif kind == 'ci':
+            p_yerr = agg.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
+            p_yerr *= scipy.stats.t.ppf(confint, count-1)
         elif kind == 'binomial':
-            alpha = .05
-            z = scipy.stats.norm.ppf(1-alpha/2.)
+            z = scipy.stats.norm.ppf(confint)
             p_yerr = z * np.sqrt(mean * (1-mean) / nsamples)
-    else:
-        #mean, p_yerr = self.errorbars(agg, kind='binomial')
+
+    else:  # if there's only one condition? Not sure #FIXME
         mean = agg
         p_yerr = np.zeros((len(agg), 1))
 
@@ -248,23 +313,27 @@ def reorder(agg, order, level=None, dim='columns'):
     else:
         orig_idx = agg.columns
 
-    if not isinstance(order, dict):
-        #if level is None:
-            #raise Exception('When "order" is a list, a "level" must be'
-                            #'passed as well.')
-        #else:
-        try:
-            orderframe = pandas.DataFrame(orig_idx.tolist())
-            levelno = orig_idx.names.index(level)
-            order = {level: orderframe[levelno].unique()}
-        except: # no levels
-            order = {level: orig_idx.unique()}
+    #if not isinstance(order, dict):
+        ##if level is None:
+            ##raise Exception('When "order" is a list, a "level" must be'
+                            ##'passed as well.')
+        ##else:
+        #try:
+            #orderframe = pandas.DataFrame(orig_idx.tolist())
+            #levelno = orig_idx.names.index(level)
+            #order = {level: orderframe[levelno].unique()}
+        #except: # no levels
+            #order = {level: orig_idx.unique()}
 
+    if not isinstance(order, dict):
+        order = {level: order}
+
+    #import pdb; pdb.set_trace()
     for levelno, levelname in enumerate(orig_idx.names):
         if not levelname in order:
             # retain the existing order
             this_order = pandas.DataFrame(orig_idx.tolist()) #[lev[levelno] for lev in orig_idx]
-            this_order = this_order[levelno].unique()  # preserves order
+            this_order = this_order.iloc[:, levelno].unique()  # preserves order
             #this_order = np.unique(this_order)
         else:
             this_order = order[levelname]
