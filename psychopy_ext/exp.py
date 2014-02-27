@@ -30,7 +30,7 @@ from psychopy import visual, core, event, logging, misc, monitors, data
 from psychopy.data import TrialHandler, ExperimentHandler
 
 import ui
-from psychopy_ext import __version__ as psychopy_ext_version
+from version import __version__ as psychopy_ext_version
 
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
@@ -624,31 +624,44 @@ class Task(TrialHandler):
         this_keylist = self.get_resp(keyList=keyList+self.keylist_flat,
                                      timeStamped=timeStamped)
         keys = []
-        if len(this_keylist) > 0:
-            this_key = this_keylist.pop()
-            #print this_key
+        for this_key in this_keylist:
+            isexit = self._check_if_exit(this_key)
+            if not isexit:
+                self._exit_key_no = 0
+                keys.append(this_key)
+        return keys
 
-            if isinstance(this_key, tuple):
-                this_key_exit = this_key[0]
-            else:
-                this_key_exit = this_key
-            exit_keys = self.computer.default_keys['exit']
+    def _check_if_exit(self, this_key):
+        """
+        Checks if there one of the exit keys was pressed.
 
-            if this_key_exit in exit_keys:
-                if self._exit_key_no < len(exit_keys):
-                    if exit_keys[self._exit_key_no] == this_key_exit:
-                        if self._exit_key_no == len(exit_keys) - 1:
-                            self.quit('Premature exit requested by user.')
-                        else:
-                            self._exit_key_no += 1
+        :Args:
+            this_key (str or tuple)
+                Key or time-stamped key to check
+        :Returns:
+            True if any of the ``self.computer.default_keys['exit']``
+            keys were pressed, False otherwise.
+        """
+        exit_keys = self.computer.default_keys['exit']
+
+        if isinstance(this_key, tuple):
+            this_key_exit = this_key[0]
+        else:
+            this_key_exit = this_key
+
+        if this_key_exit in exit_keys:
+            if self._exit_key_no < len(exit_keys):
+                if exit_keys[self._exit_key_no] == this_key_exit:
+                    if self._exit_key_no == len(exit_keys) - 1:
+                        self.quit('Premature exit requested by user.')
                     else:
-                        self._exit_key_no = 0
+                        self._exit_key_no += 1
                 else:
                     self._exit_key_no = 0
             else:
                 self._exit_key_no = 0
-                keys = [this_key]
-        return keys
+
+        return self._exit_key_no > 0
 
     def before_event(self):
         for stim in self.this_event.display:
@@ -1015,6 +1028,8 @@ class Task(TrialHandler):
     def run_trial(self):
         """Presents a trial.
         """
+        self.before_trial()
+
         self.trial_clock.reset()
         self.this_trial['onset'] = self.glob_clock.getTime()
         sys.stdout.write('\rtrial %s' % (self.thisTrialN+1))
@@ -1494,8 +1509,8 @@ class Experiment(ExperimentHandler, Task):
                      ('debug', False),  # not fullscreen presentation etc
                      ('autorun', 0),  # if >0, will autorun at the specified speed
                      ('unittest', False),  # like autorun but no breaks at show_instructions
-                     ('register', False),  # add and commit changes, like new data files?
-                     ('push', False),  # add, commit and push to a hg repo?
+                     ('repository', ('do nothing', 'commit and push', 'only commit')),  # add, commit and push to a hg repo?
+                                                                          # add and commit changes, like new data files?
                      ]
 
             - actions (list of function names, default: None)
@@ -1539,6 +1554,7 @@ class Experiment(ExperimentHandler, Task):
                     info = OrderedDict(info)
                 except:
                     info = OrderedDict([info])
+
             self.info.update(info)
 
         self.rp = OrderedDict([  # these control how the experiment is run
@@ -1546,8 +1562,8 @@ class Experiment(ExperimentHandler, Task):
             ('debug', False),  # not fullscreen presentation etc
             ('autorun', 0),  # if >0, will autorun at the specified speed
             ('unittest', False),  # like autorun but no breaks when instructions shown
-            ('register', False),  # add and commit changes, like new data files?
-            ('push', False),  # add, commit and push to a hg repo?
+            ('repository', ('do nothing', 'commit & push', 'only commit')),  # add, commit and push to a hg repo?
+                                                                 # add and commit changes, like new data files?
             ])
         if rp is not None:
             if isinstance(rp, (tuple, list)):
@@ -1832,10 +1848,7 @@ class Experiment(ExperimentHandler, Task):
                 task(self).run_task()
 
         self.after_exp()
-        if self.rp['register']:
-            self.register()
-        elif self.rp['push']:
-            self.commitpush()
+        self.repo_action()
         self.quit()
 
     def after_exp(self, text=None, auto=1, **kwargs):
@@ -1868,6 +1881,26 @@ class Experiment(ExperimentHandler, Task):
         if not hasattr(self.rp, 'autorun'):
             self.rp['autorun'] = 100
         self.run()
+
+    def repo_action(self):
+        if self.rp['repository'] == 'commit & push':
+            text = 'committing data and pushing to remote server...'
+        elif self.rp['repository'] == 'only commit':
+            text = 'commiting data...'
+
+        if self.rp['repository'] != 'do nothing':
+            textstim = visual.TextStim(self.win, text=text, height=.3)
+            textstim.draw()
+            timer = core.CountdownTimer(2)
+            self.win.flip()
+
+        if self.rp['repository'] == 'commit & push':
+            self.commitpush()
+        elif self.rp['repository'] == 'only commit':
+            self.commit()
+
+        while timer.getTime() > 0 and len(self.last_keypress()) == 0:
+            pass
 
     def register(self, **kwargs):
         """Alias to :func:`~psychopy_ext.exp.commit()`
@@ -2817,4 +2850,3 @@ def make_para(n=6):
         out.append(temp)
 
     return np.array(out)
-
