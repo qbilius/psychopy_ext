@@ -7,13 +7,18 @@
 
 """Basic command-line and graphic user interface"""
 
-import wx, sys, os, inspect, shutil, subprocess
+import sys, os, inspect, shutil, subprocess
 from types import ModuleType
 
 try:
-    from agw import advancedsplash as AS
-except ImportError: # if it's not there locally, try the wxPython lib.
-    import wx.lib.agw.advancedsplash as AS
+    import wx
+    try:
+        from agw import advancedsplash as AS
+    except ImportError: # if it's not there locally, try the wxPython lib.
+        import wx.lib.agw.advancedsplash as AS
+    has_wx = True
+except:
+    has_wx = False
 
 from psychopy import core
 
@@ -22,6 +27,7 @@ try:
     from collections import OrderedDict
 except:
     from exp import OrderedDict
+
 
 class Control(object):
     def __init__(self, exp_choices,
@@ -204,7 +210,7 @@ class Control(object):
 
                     else:
                         try:
-                            input_value = sys.argv[i+1]
+                            input_value = sys.argv[i+1].lstrip('"').rstrip('"')
                         except IndexError:
                             sys.exit('Expected a value after %s but got nothing'
                                  % input_key)
@@ -267,6 +273,8 @@ class Control(object):
                                 input_func)
 
     def app(self, exp_choices=[], title='Experiment', size=None):
+        if not has_wx:
+            raise Exception('You must have wx to open a psychopy_ext app.')
         app = MyApp()
 
         # initial frame with a gauge on it
@@ -275,7 +283,7 @@ class Control(object):
         panel = wx.Panel(frame)
 
         if len(exp_choices) > 1:
-            lb = Listbook(panel, exp_choices)
+            lb = Listbook(panel, exp_choices, frame)
             # add pages to the listbook
             for num, choice in enumerate(exp_choices):
                 pagepanel = wx.Panel(lb)
@@ -286,7 +294,7 @@ class Control(object):
             panelsizer.Add(booktype, 1,  wx.EXPAND|wx.ALL)
             panel.SetSizer(panelsizer)
         else:  # if there's only one Notebook, don't create a listbook
-            setup_page(exp_choices[0], panel)
+            setup_page(exp_choices[0], panel, frame)
         # nicely size the entire window
         app.splash.Close()
         panel.Fit()
@@ -492,11 +500,13 @@ class Page(wx.Panel):
     corresponding to info and rp in :class:`exp.Experiment`, and
     buttons which, when clicked, runs a corresponding method.
     """
-    def __init__(self, parent, class_obj, alias, class_alias):
+    def __init__(self, parent, class_obj, alias, class_alias, frame, pagepanel):
         wx.Panel.__init__(self, parent, -1)
         self.class_obj = class_obj
         self.alias = alias
         self.class_alias = class_alias
+        self.frame = frame
+        self.pagepanel = pagepanel
 
         class_init = class_obj()
         if not hasattr(class_init, 'info'):
@@ -509,6 +519,16 @@ class Page(wx.Panel):
         if class_init.rp is not None:
             self.sb2 = StaticBox(self, label="Parameters",
                 content=class_init.rp)
+
+        #collpane = wx.CollapsiblePane(self, wx.ID_ANY, "Details:")#, style=wx.CP_DEFAULT_STYLE|wx.CP_NO_TLW_RESIZE)
+        #collpane.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self.OnPaneChanged)
+        ## now add a test label in the collapsible pane using a sizer to layout it:
+        #win = collpane.GetPane()
+        #paneSz = wx.BoxSizer(wx.VERTICAL)
+        #paneSz.Add(wx.StaticText(win, wx.ID_ANY, "test!"), 1, wx.GROW | wx.ALL, 2)
+        #win.SetSizer(paneSz)
+        #paneSz.SetSizeHints(win)
+        ##collpane.Collapse()
 
         # generate buttons
         # each button launches a function in a given class
@@ -528,7 +548,7 @@ class Page(wx.Panel):
             else:
                 add = True
             if add:
-                run = wx.Button(self, label=label, size=(150, 30))                
+                run = wx.Button(self, label=label, size=(150, 30))
                 run._proc_running = False
                 buttons_sizer.Add(run, 1)
                 run.info = class_init.info  # when clicked, what to do
@@ -548,13 +568,18 @@ class Page(wx.Panel):
         pagesizer.Add(buttons_sizer, 1, wx.ALL|wx.ALIGN_LEFT)
         self.SetSizer(pagesizer)
 
-    def OnButtonClick(self, event): 
+        # add the pane with a zero proportion value to the 'sz' sizer which contains it
+        #pagesizer.Add(collpane, 1, wx.GROW | wx.ALL, 5)
+        #pagesizer.Add( collpane, 2, wx.RIGHT|wx.LEFT|wx.EXPAND, 5 )
+
+
+    def OnButtonClick(self, event):
             button = event.GetEventObject()
         #if button._proc_running:
             #self.enable(button)
             #self.proc.kill()
         #else:
-            # first update info and rp            
+            # first update info and rp
             if button.info is not None:
                 for key, field in zip(button.info.keys(), self.sb1.inputFields):
                     button.info[key] = field.GetValue()
@@ -572,37 +597,50 @@ class Page(wx.Panel):
                     vstr = '"%s"' % vstr
                 params.append(vstr)
             command = [sys.executable, sys.argv[0]] + opts + params
-            
+
             #button._origlabel = opts[2]
-            #button.SetLabel('kill')            
-            #button._proc_running = True            
-            button.proc = subprocess.Popen(command, shell=False)  # no shell is safer      
-            
+            #button.SetLabel('kill')
+            #button._proc_running = True
+            button.proc = subprocess.Popen(command, shell=False)  # no shell is safer
+
             #if button.proc.poll() is not None:  # done yet?
                 #self.enable(button)
-            
+
     def enable(self, button):
         button.SetLabel(button._origlabel)
         button._proc_running = False
+
+    #def OnPaneChanged(self, evt):
+        ## redo the layout
+        #self.GetSizer().Layout()
+        #self.Fit()
+        #self.pagepanel.GetSizer().Layout()
+        #self.pagepanel.Layout()
+        #self.pagepanel.Fit()
+        #self.frame.Layout()
+        #self.frame.Fit()
+
+
 
 class Listbook(wx.Listbook):
     """
     Listbook class
     """
-    def __init__(self, parent, exp_choices):
+    def __init__(self, parent, exp_choices, frame):
         wx.Listbook.__init__(self, parent, id=wx.ID_ANY)
         self.exp_choices = exp_choices
         self.ready = []
         self.Bind(wx.EVT_LISTBOOK_PAGE_CHANGING, self.OnPageChanging)
+        self.frame = frame
 
     def OnPageChanging(self, event):
         new = event.GetSelection()
         if new not in self.ready:
-            success = setup_page(self.exp_choices[new], self.GetPage(new))
+            success = setup_page(self.exp_choices[new], self.GetPage(new), self.frame)
             if success:
                 self.ready.append(new)
 
-def setup_page(choice, pagepanel):
+def setup_page(choice, pagepanel, frame):
     """
     Creates a :class:`Page` inside a :class:`Notebook`.
 
@@ -624,8 +662,10 @@ def setup_page(choice, pagepanel):
         class_aliases, class_obj = _get_classes(choice.module, class_order=choice.order)
 
     nb = wx.Notebook(pagepanel)
+
+
     for class_alias, class_obj in class_aliases:
-        nb.AddPage(Page(nb, class_obj, choice.alias, class_alias), class_alias)
+        nb.AddPage(Page(nb, class_obj, choice.alias, class_alias, frame, pagepanel), class_alias)
     panelsizer = wx.BoxSizer()
     panelsizer.Add(nb, 1,  wx.EXPAND|wx.ALL)
     pagepanel.SetSizer(panelsizer)
@@ -840,3 +880,70 @@ class Report(object):
         self.htmlfile.write('<%s>%s</%s>\n' % (h, text, h))
 
 
+class Arg(dict):
+    def __init__(self, key, value, advanced=True, label=None, guess=False):
+        self.dict = {#key: key,
+                     #value: value,
+                     'advanced': advanced,
+                     'label': label,
+                     'guess': guess}
+        super(Arg, self).__init__(self.dict)
+        self.__dict__ = self
+        self.key = key
+        self.value = value
+
+class Params(OrderedDict):
+
+    def __init__(self, params):
+
+        #for p in params:
+            #self.update({p.key: p})
+            #self[p.key] = p
+
+        if isinstance(params, (dict, OrderedDict)):
+            params = [Arg(k,v) for k,v in params.items()]
+            #if isinstance(p, (dict, OrderedDict)):
+                #p = Arg(p)
+
+        dict_vals = [(p.key, p) for p in params]
+        super(Params, self).__init__(dict_vals)
+        #import pdb; pdb.set_trace()
+        self.params = params
+
+        #self.update(dict_vals)
+
+        #self.__dict__ = self
+
+    def __getitem__(self, key):
+        return super(Params, self).__getitem__(key).value
+
+    def __getattr__(self, key):
+        if key in self:
+            return super(Params, self).__getitem__(key)
+        else:
+            return super(Params, self).__getattr__(key)
+
+    #def __setitem__(self, key, value):
+        #super(Params,self).__setitem__(key, value)
+
+    def update(self, new_dict):
+        #import pdb; pdb.set_trace()
+        #if isinstance(new_dict, (OrderedDict, dict)):
+            ##import pdb; pdb.set_trace()
+            #new_dict = Params(new_dict)
+        for key in new_dict:
+            try:
+                new_item = getattr(new_dict, key)
+            except:
+                new_item = Arg(key, new_dict[key])
+                #import pdb; pdb.set_trace()
+
+            if key in self:
+                #
+                #super(Params, self).update(
+                item = getattr(self, key)
+                #import pdb; pdb.set_trace()
+                item.update(new_item)
+            else:
+                #import pdb; pdb.set_trace()
+                self[key] = new_item
