@@ -95,8 +95,8 @@ def aggregate(df, rows=None, cols=None, values=None,
             raise
     try:
         agg = df.groupby(allconds)[values].aggregate(aggfunc)
-    except:
-        raise Exception
+    except:  # can't aggregate over given values
+        raise
 
     groups = [('subplots', subplots), ('rows', rows), ('cols', cols),
               ('yerr', yerr)]
