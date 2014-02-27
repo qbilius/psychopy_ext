@@ -9,6 +9,7 @@ class Analyzer( analyzer_gui.MyFrame ):
         self.window_canvas.frame = self
         self.list_data.window_canvas = self.window_canvas
         self.list_data.list_data_headers = self.list_data_headers
+        self.list_data.frame = self
         self.button_addfiles.Bind(wx.EVT_BUTTON, self.OnFileButton)
 
         self.plot_type.Bind(wx.EVT_RADIOBOX, self.window_canvas.changePlot)
@@ -23,6 +24,7 @@ class Analyzer( analyzer_gui.MyFrame ):
 
         self.list_datafiles.Bind(wx.EVT_LIST_INSERT_ITEM, self.list_data.append_data)
         self.list_datafiles.Bind(wx.EVT_LIST_DELETE_ITEM, self.list_data.load_data)
+        self.list_datafiles.Bind(wx.EVT_LIST_DELETE_ALL_ITEMS, self.list_data.load_data)
 
     def OnFileButton(self, evt):
         dlg = wx.FileDialog(

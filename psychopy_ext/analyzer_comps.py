@@ -108,6 +108,10 @@ class DragList(wx.ListCtrl):
             for itemcount, item in enumerate(df.columns):
                 self.InsertStringItem(itemcount, str(item))
 
+    def delete_all_items(self):
+        self.DeleteAllItems()
+        self.DeleteColumn(0)
+
 
 class ListDrop(wx.PyDropTarget):
     """ Drop target for simple lists.
@@ -287,6 +291,11 @@ class DataList(wx.ListCtrl):
             self.set_data(self.df)
         else:
             self.df = None
+            self.frame.list_subplots.delete_all_items()
+            self.frame.list_rows.delete_all_items()
+            self.frame.list_cols.delete_all_items()
+            self.frame.list_values.delete_all_items()
+            self.frame.list_yerr.delete_all_items()
 
         self.list_data_headers.set_data(self.df)
         self.window_canvas.df = self.df
@@ -341,9 +350,15 @@ class DataFileList(wx.ListCtrl):
 
     def delete_items(self, event):
         if event.KeyCode == 127:  # 'del'
-            sel = []
-            for i in range(self.GetSelectedItemCount()):
-                idx = self.GetFirstSelected(0)
-                del self.items[idx]
-                self.DeleteItem(idx)
+            if self.GetSelectedItemCount() == self.GetItemCount():
+                self.items = []
+                self.DeleteAllItems()
+            else:
+                sel = []
+                for i in range(self.GetSelectedItemCount()):
+                    idx = self.GetFirstSelected(0)
+                    del self.items[idx]
+                    self.DeleteItem(idx)
+
+
 
