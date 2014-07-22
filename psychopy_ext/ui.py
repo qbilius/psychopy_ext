@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2014 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -28,8 +26,11 @@ try:
 except:
     from exp import OrderedDict
 
+import report
+
 
 class Control(object):
+
     def __init__(self, exp_choices,
                  title='Project',
                  size=None
@@ -67,7 +68,7 @@ class Control(object):
 
         if len(sys.argv) > 1:  # command line interface desired
             if sys.argv[1] == 'report':
-                report(exp_choices, sys.argv)
+                self.report(exp_choices, sys.argv)
             else:
                 self.cmd(exp_choices)
         else:
@@ -115,7 +116,6 @@ class Control(object):
             input_mod_alias = sys.argv[1]
             input_class_alias = sys.argv[2]
             input_func = sys.argv[3]
-            class_order = exp_choices[0].order
             arg_start = 4
             avail_mods = [e.alias for e in exp_choices]
             try:
@@ -123,6 +123,7 @@ class Control(object):
             except:
                 sys.exit("module '%s' not recognized" % input_mod_alias)
             module = exp_choices[idx].module
+            class_order = exp_choices[idx].order
 
         if input_mod_alias is not None:
             if input_mod_alias.startswith('-'):
@@ -317,29 +318,30 @@ class Control(object):
 def report(exp_choices, args):
     reports = []
     if len(args) == 2:
-        argnames = [ch[2] for ch in exp_choices]
+        argnames = [ch.alias for ch in exp_choices]
     else:
         argnames = args[2:]
 
     for ch in exp_choices:
-        if ch[2] in argnames:
-            choice = ch[1]
+        if ch.alias in argnames:
+            choice = ch.module
             if isinstance(choice, str):
                 try:
                     __import__(choice)
                 except:
-                    module = None
+                    raise #module = None
                 else:
                     module = sys.modules[choice]
             else:
                 module = choice
             if module is not None:
-                functions = inspect.getmembers(module, inspect.isfunction)
-                for name, func in functions:
+                classes = inspect.getmembers(module, inspect.isclass)
+                for name, cls in classes:
                     if name == 'report':
-                        reports.append((ch[0], func))
+                        reports.append((ch.name, cls))
                         break
-    Report().make(reports)
+    rep = report.Report()
+    rep.make(reports=reports)
 
 def _get_classes(module, input_class_alias=None, class_order=None):
     """
@@ -465,13 +467,22 @@ class StaticBox(wx.StaticBox):
                                            )
             #if len(color): inputLabel.SetForegroundColour(color)
             grid.Add(inputLabel, 1, wx.ALIGN_LEFT)
+
             #create input control
-            if isinstance(initial, bool):
+            if isinstance(initial, bool):  # check box for true/false
                 inputBox = wx.CheckBox(parent, -1)
                 inputBox.SetValue(initial)
-            elif isinstance(initial, int):
-                inputBox = wx.SpinCtrl(parent, size=(60, -1), initial=initial)
-            elif isinstance(initial, tuple):
+            elif isinstance(initial, int): # spin field for ints
+                imin = 0  # wx default
+                imax = 100  # wx default
+                if initial > imax:
+                    imax = initial
+                elif initial < imin:
+                    imin = initial
+
+                inputBox = wx.SpinCtrl(parent, size=(60, -1), initial=initial,
+                                       min=imin, max=imax)
+            elif isinstance(initial, tuple):  # choice for tuples
                 inputBox = wx.Choice(parent, -1,
                             choices=[str(option) for option in initial])
                 ## Somewhat dirty hack that allows us to treat the choice just like
@@ -482,7 +493,7 @@ class StaticBox(wx.StaticBox):
                 #else:
                     #initial = 0
                 inputBox.SetSelection(0)
-            else:
+            else:  # plain text label for eveything else
                 inputLength = wx.Size(max(50, 9*len(unicode(initial))+16), 25)
                 inputBox = wx.TextCtrl(parent,-1,unicode(initial),size=inputLength)
 
@@ -579,17 +590,23 @@ class Page(wx.Panel):
             #self.enable(button)
             #self.proc.kill()
         #else:
-            # first update info and rp
-            if button.info is not None:
+            # if info has tuples, select only one option
+            if button.info is not None and button.info != {}:
                 for key, field in zip(button.info.keys(), self.sb1.inputFields):
                     button.info[key] = field.GetValue()
+            else:
+                button.info = {}
+            # if info has tuples, select only one option
             if button.rp is not None:
                 for key, field in zip(button.rp.keys(), self.sb2.inputFields):
                     button.rp[key] = field.GetValue()
+            else:
+                button.rp = {}
 
             # call the relevant script
             opts = [self.alias, self.class_alias, button.GetLabelText()]
             params = []
+
             for k,v in button.info.items() + button.rp.items():
                 params.append('--%s' % k)
                 vstr = '%s' % v
@@ -802,82 +819,6 @@ class Choices(object):
             self.alias = alias
 
         self.order = order
-
-
-class Report(object):
-
-    def __init__(self, output='html', path='report'):
-        self.path = path+'/'
-        #if not os.path.isdir(self.paths['report']):
-            #os.makedirs(self.paths['report'])
-        #self.rp['plot'] = False
-        #self.rp['saveplot'] = True
-        #self.rp['html'] = True
-
-    def write(self, text):
-        self.htmlfile.write(text)
-
-    def make(self, reports):
-        if not os.path.isdir(self.path):
-            os.makedirs(self.path)
-        else:
-            for root, dirs, files in os.walk(self.path):
-                #for f in files:
-                    #try:
-                          #os.unlink(os.path.join(root, f))
-                    #except:
-                        #pass
-                for d in dirs:
-                    try:
-                          shutil.rmtree(os.path.join(root, d))
-                    except:
-                        pass
-
-        src = os.path.dirname(__file__)
-        src = os.path.join(src, 'resources/')
-        import glob
-        for f in glob.glob(src+'*'):
-            if os.path.isfile(f):
-                if os.path.basename(f) != 'index.html':
-                    shutil.copy2(f)
-            else:
-                dst = os.path.join(self.path, os.path.basename(f))
-                shutil.copytree(f, dst,
-                    ignore=shutil.ignore_patterns('index.html'))
-        with open(src + 'index.html', 'rb') as tmp:
-            template = tmp.read().split('####REPLACE####')
-        self.htmlfile = open(self.path + 'index.html', 'wb')
-        self.write(template[0])
-        for name, report in reports:
-            self.writeh(name, h='h1')
-            report(self)
-
-        self.write(template[1])
-        self.htmlfile.close()
-
-    def writeimg(self, names, caption=None, plt=None, win=None):
-        if isinstance(names, str):
-            names = [names]
-        fname = '_'.join(names) + '.png'
-        imgdir = self.path + self.imgpath
-        if plt is not None or win is not None:
-            if not os.path.isdir(imgdir):
-                os.makedirs(imgdir)
-            if plt is not None:
-                plt.savefig(imgdir + fname, bbox_inches='tight')
-            elif win is not None:
-                win.saveMovieFrames(imgdir + fname)
-        if caption is None:
-            caption = ' '.join(names)
-        self.htmlfile.write(
-            '<figure>\n'
-            '    <img src="%s" />\n'
-            '    <figcaption><strong>Figure.</strong> %s</figcaption>\n'
-            '</figure>\n' % (self.imgpath + fname, caption)
-            )
-
-    def writeh(self, text, h='h1'):
-        self.htmlfile.write('<%s>%s</%s>\n' % (h, text, h))
 
 
 class Arg(dict):
