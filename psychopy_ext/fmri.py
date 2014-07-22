@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2014 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -401,8 +401,13 @@ class Analysis(object):
                         evds = evds[evds.sa.targets != self.fix]
                         header, result = self.svm(evds, nIter=100)
                     else:
-                        raise NotImplementedError('Analysis for %s values is not '
-                                                  'implemented')
+                        try:
+                            func = getattr(self, method)
+                        except:
+                            raise NotImplementedError('Analysis for %s '
+                                    'values is not implemented' % values)
+                        else:
+                            header, result = func(evds, values)
 
                     header = ['subjid', 'roi'] + header
                     for line in result:
