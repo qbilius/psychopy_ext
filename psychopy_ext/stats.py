@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2014 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -24,7 +24,7 @@ except:
 
 
 def aggregate(df, rows=None, cols=None, values=None,
-    subplots=None, yerr=None, aggfunc='mean', unstack=False,
+    subplots=None, yerr=None, aggfunc='mean', unstacked=False,
     order='natural', add_names=True):
     """
     Aggregates data over specified columns.
@@ -46,7 +46,7 @@ def aggregate(df, rows=None, cols=None, values=None,
         - aggfunc (str or a 1d function)
             A function to use for aggregation. If a string, it is interpreted
             as a `numpy` function.
-        - unstack (bool, default: False)
+        - unstacked (bool, default: False)
             If True, returns an unstacked version of aggregated data (i.e.,
             rows in rows and columns in columns)). Useful for printing and
             other non-plotting tasks.
@@ -93,10 +93,8 @@ def aggregate(df, rows=None, cols=None, values=None,
             aggfunc = getattr(np, aggfunc)
         except:
             raise
-    try:
-        agg = df.groupby(allconds)[values].aggregate(aggfunc)
-    except:  # can't aggregate over given values
-        raise
+
+    agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
     groups = [('subplots', subplots), ('rows', rows), ('cols', cols),
               ('yerr', yerr)]
@@ -113,7 +111,7 @@ def aggregate(df, rows=None, cols=None, values=None,
         if isinstance(values, list):
             agg = agg[values[0]]
         for yr in yerr:
-            agg = agg.unstack(level='yerr.'+yr)
+            agg = unstack(agg, level='yerr.'+yr)
         # seems like a pandas bug here for not naming levels properly
         agg.columns.names = ['yerr.'+yr for yr in yerr]
         agg = agg.T
@@ -140,11 +138,12 @@ def aggregate(df, rows=None, cols=None, values=None,
         else:
             thisord = level_ord
         order_full[level] = thisord
+
     agg = reorder(agg, order=order_full)
     #agg.columns.names = names  # buggy pandas
 
     # rows should become rows, and cols should be cols if so desired
-    if yerr[0] is None and unstack:
+    if yerr[0] is None and unstacked:
         agg = plot._stack_levels(agg, 'rows.')
 
     if not add_names:
@@ -191,6 +190,8 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
         correct = [correct]
     if isinstance(incorrect, str):
         incorrect = [incorrect]
+    if isinstance(values, list):
+        values = values[0]
     corr = df[df[values].isin(correct)]
     if len(corr) == 0:
         raise Exception('There are no %s responses' % correct[0])
@@ -201,7 +202,7 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     agg.names = values
     return agg
 
-def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
+def confidence(agg, kind='sem', within=None, alpha=.05, nsamples=None,
                skipna=True):
     """
     Compute confidence of measurements, such as standard error of means (SEM)
@@ -212,8 +213,10 @@ def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
     :Kwargs:
         - kind ('sem', 'ci', or 'binomial', default: 'sem')
             .. warning:: Binomial not tested throroughly
-        - repmes (bool, default: True)
-            Choose True for repeated measures designs. It computes
+        - within (str or list, default: None)
+            For repeated measures designs, error bars are too large.
+            Specify which dimensions come from repeated measures
+            (rows, cols, and/or subplots). It computes
             within-subject confidence intervals using a method by
             Loftus & Masson (1994) simplified by Cousinaueu (2005)
             with Morey's (2008) correction.
@@ -226,7 +229,7 @@ def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
             a single sample only (which presumably relfects the number
             of correct responses, i.e., successes). See `Wikipedia
             <http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Normal_approximation_interval>`_
-        - skipna (defualt: True)
+        - skipna (default: True)
             Whether to skip NA / null values or not.
 
             .. warning:: Not tested thoroughly
@@ -236,23 +239,37 @@ def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
     if isinstance(agg, pandas.DataFrame):
         mean = agg.mean(skipna=skipna)  # mean across participants
 
-        if repmes:
-            rows = [r for r in agg.columns.names if r.startswith('rows.')]
+        if within is not None:
+            if not isinstance(within, list):
+                within = [within]
+
+            levels = []
+            for dim in within:
+                tmp = [r for r in agg.columns.names if not r.startswith(dim + '.')]
+                levels += tmp
+            if len(levels) > 0:
+                #raise Exception('Could not find levels that start with any of the following: %s' % within)
             # center data
-            try:
-                subj_mean = agg.mean(level=rows, skipna=skipna, axis=1)  # mean per subject
-            except:
+            #try:
+                try:
+                    subj_mean = agg.mean(level=levels, skipna=skipna, axis=1)  # mean per subject
+                except:
+                    subj_mean = agg.mean(skipna=skipna)
+            else:
                 subj_mean = agg.mean(skipna=skipna)
             grand_mean = mean.mean(skipna=skipna)
             center = subj_mean - grand_mean
-            cols = []
-            for col, value in center.iteritems():
-                cols.append((agg[col].T - value.T).T)
 
-            aggc = pandas.concat(cols, keys=agg.columns, axis=1)
-            aggc = pandas.DataFrame(aggc.values, index=agg.index, columns=agg.columns)
+            aggc = pandas.DataFrame(index=agg.index, columns=agg.columns)
+            for colname, value in center.iteritems():
+                try:
+                    aggc[colname]  # what a cool bug -- crashes without this line!
+                except:
+                    import pdb; pdb.set_trace()
+                aggc[colname] = (agg[colname].T - value.T).T
             ddof = 0  # Morey's correction
         else:
+            aggc = agg.copy()
             ddof = 1
 
         if skipna:
@@ -262,9 +279,9 @@ def confidence(agg, kind='sem', repmes=True, alpha=.05, nsamples=None,
 
         confint = 1 - alpha/2.
         if kind == 'sem':
-            p_yerr = agg.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
+            p_yerr = aggc.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
         elif kind == 'ci':
-            p_yerr = agg.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
+            p_yerr = aggc.std(skipna=skipna, ddof=ddof) / np.sqrt(count)
             p_yerr *= scipy.stats.t.ppf(confint, count-1)
         elif kind == 'binomial':
             z = scipy.stats.norm.ppf(confint)
@@ -358,6 +375,46 @@ def reorder(agg, order, level=None, dim='columns'):
     else:
         agg_new = agg.reindex(columns=multidx)
     return agg_new
+
+
+def unstack(data, level=-1):
+    """
+    Unstacking that preserves label order, unlike in pandas.
+    """
+    if not isinstance(level, (list, tuple)):
+        levels = [level]
+    else:
+        levels = level
+
+    unstacked = data.unstack(level=level)
+
+    # reorder the newly unstacked levels
+    for level in levels:
+        order = data.index.get_level_values(level).unique()
+        unstacked = reorder(unstacked, order=order, level=level, dim='columns')
+
+    #for level in levels:
+        #order = data.columns.get_level_values(lev).unique()
+        #unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+
+    return unstacked
+
+def stack(data, level=-1):
+    """
+    Stacking that preserves label order, unlike in pandas.
+    """
+    if not isinstance(level, (list, tuple)):
+        levels = [level]
+    else:
+        levels = level
+
+    stacked = data.stack(level=level)
+
+    for level in levels:
+        order = data.columns.get_level_values(level).unique()
+        stacked = reorder(stacked, order=order, level=level, dim='index')
+
+    return stacked
 
 def df_fromdict(data, repeat=1):
     """
@@ -472,7 +529,7 @@ def _aggregate_panel(df, rows=None, cols=None, values=None,
             elif func == 'median':
                 agg = df.groupby(allconds)[values].median()
 
-        agg = agg.unstack(yerr)
+        agg = unstack(agg, level=yerr) #agg.unstack(yerr)
         columns = agg.columns
         panel = {}
 
