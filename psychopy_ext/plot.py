@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2014 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -29,6 +29,7 @@ import pandas.tools.plotting  # for rcParams
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import ImageGrid
+import matplotlib.gridspec as gridspec
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import MultipleLocator
 
@@ -48,17 +49,19 @@ import stats
 
 class Plot(object):
 
-    def __init__(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
-        self._create_subplots(kind=kind, figsize=figsize, nrows=nrows,
-            ncols=ncols, **kwargs)
+    def __init__(self, kind='', gridtype='', figsize=None, nrows=1, ncols=1, **kwargs):
+        self._create_subplots(kind=kind, gridtype=gridtype, figsize=figsize,
+                              nrows=nrows, ncols=ncols, **kwargs)
 
-    def _create_subplots(self, kind='', figsize=None, nrows=1, ncols=1, **kwargs):
+    def _create_subplots(self, kind='', gridtype='', figsize=None,
+                         nrows=1, ncols=1, **kwargs):
         """
         :Kwargs:
-            - kind (str, default: '')
+            - kind ({'', 'matrix', 'imagegrid', 'gridspec'}, default: '')
                 The kind of plot. For plotting matrices or images
-                (`matplotlib.pyplot.imshow`), choose `matrix`, otherwise leave
-                blank.
+                (`matplotlib.pyplot.imshow`), choose `matrix` (or `imagegrid`),
+                for customizing subplot location and aspect ratios,
+                use `gridspec`, otherwise leave blank for simple subplots.
             - figsize (tuple, defaut: None)
                 Size of the figure.
             - nrows (int, default: 1)
@@ -88,7 +91,7 @@ class Plot(object):
         except:
             num = None
 
-        if kind == 'matrix':
+        if kind == 'matrix' or gridtype.lower() == 'imagegrid':
             if 'sharex' in kwargs and 'sharey' in kwargs:
                 if kwargs['sharex'] and kwargs['sharey']:
                     kwargs['share_all'] = True
@@ -115,6 +118,18 @@ class Plot(object):
                                   )
             self.naxes = len(self.axes.axes_all)
 
+        elif gridtype.lower() == 'gridspec':
+            # useful for specifying subplot composition and
+            # no sharex, sharey support
+            if 'width_ratios' not in kwargs:
+                kwargs['width_ratios'] = None
+            if 'height_ratios' not in kwargs:
+                kwargs['height_ratios'] = None
+            self.fig = self.figure(figsize=figsize, num=num)
+            gs = gridspec.GridSpec(nrows_ncols[0], nrows_ncols[1], **kwargs)
+            self.axes = [plt.subplot(s) for s in gs]
+            self.naxes = len(self.axes)
+
         else:
             self.fig, self.axes = plt.subplots(
                 nrows=nrows_ncols[0],
@@ -128,6 +143,7 @@ class Plot(object):
             except:
                 self.axes = [self.axes]
             self.naxes = len(self.axes)
+
         self.kind = kind
         self.subplotno = -1  # will get +1 after the plot command
         self.nrows = nrows_ncols[0]
@@ -285,7 +301,7 @@ class Plot(object):
                    no_yerr=no_yerr, numb=numb, autoscale=autoscale, **kwargs)
 
     def plot(self, agg, kind='bar', subplots=None, subplots_order=None,
-            autoscale=True, title=None, errkind='sem',
+            autoscale=True, title=None, errkind='sem', within=None,
             xlim=None, ylim=None, xlabel=None, ylabel=None, popmean=0,
             numb=False, **kwargs):
         """
@@ -335,19 +351,19 @@ class Plot(object):
 
             if s_idx is not None:  # subplots implicit in agg
                 try:
-                    sbp = agg.columns.levels[s_idx[0]]
+                    sbp = agg.columns.get_level_values(s_idx[0]).unique() #agg.columns.levels[s_idx[0]]
                 except:
                     if len(s_idx) > 0:
                         sbp = agg.columns
                     else:
                         sbp = None
             elif subplots:  # get subplots from the top level column
-                sbp = agg.columns.levels[0]
+                sbp = agg.columns.get_level_values(0).unique() #agg.columns.levels[0]
             else:
                 sbp = None
-
+        #import pdb; pdb.set_trace()
         if sbp is None:
-            axes = self._plot_ax(agg, kind=kind, errkind=errkind, **kwargs)
+            axes = self._plot_ax(agg, kind=kind, errkind=errkind, within=within, **kwargs)
             agg.names = values_name
             axes.agg = agg
             #axes, xmin, xmax, ymin, ymax = self._label_ax(agg, mean, p_yerr, axes, kind=kind,
@@ -382,7 +398,9 @@ class Plot(object):
             for no, subname in enumerate(sbp):
 
                 if title is None:
-                    title = subname
+                    sbp_title = subname
+                else:
+                    sbp_title = title
 
                 #if 'title' not in kwargs:
                     #title = subname
@@ -392,13 +410,14 @@ class Plot(object):
                         #title = subname
 
 
-                ax = self._plot_ax(agg[subname], kind=kind, errkind=errkind, **kwargs)
+                ax = self._plot_ax(agg[subname], kind=kind, errkind=errkind,
+                                   within=within, **kwargs)
                 #ax, xmin, xmax, ymin, ymax = self._label_ax(agg[subname],
                                         #mean, p_yerr, ax, kind=kind,
                                         #legend=legend, autoscale=autoscale, **kwargs)
                 ax.agg = agg[subname]
                 ax.agg.names = values_name
-                ax.set_title(title)
+                ax.set_title(sbp_title)
                 #ax.mean = mean
 
                 #xmins.append(xmin)
@@ -409,7 +428,8 @@ class Plot(object):
         #if 'ylabel' not in kwargs:
             #kwargs['ylabel'] = values_name
         self.decorate(axes, kind=kind, xlim=xlim, ylim=ylim,
-                 xlabel=xlabel, ylabel=ylabel, popmean=popmean, numb=numb)
+                 xlabel=xlabel, ylabel=ylabel, popmean=popmean, numb=numb,
+                 within=within, errkind=errkind)
         if len(axes) == 1:
             return axes[0]
         else:
@@ -421,7 +441,9 @@ class Plot(object):
         plt.show()
 
     def decorate(self, axes, kind='bar', xlim=None, ylim=None,
-                 xlabel=None, ylabel=None, popmean=0, numb=False):
+                 xlabel=None, ylabel=None, popmean=0,
+                 within=None, errkind='sem',
+                 numb=False):
         if kind == 'matrix':
             lims = np.zeros((len(axes),3,2))
         else:
@@ -532,7 +554,8 @@ class Plot(object):
 
             if kind == 'bar':
                 try:  # not always possible to compute significance
-                    self.draw_sig(ax.agg, ax, popmean=popmean)
+                    self.draw_sig(ax.agg, ax, popmean=popmean,
+                                  within=within, errkind=errkind)
                 except:
                     pass
 
@@ -592,11 +615,12 @@ class Plot(object):
         except:
             pass
 
-    def _plot_ax(self, agg, ax=None, kind='bar', order=None, errkind='sem', **kwargs):
+    def _plot_ax(self, agg, ax=None, kind='bar', order=None, errkind='sem',
+                 within=None, **kwargs):
         if ax is None:
             ax = self.next()
-
-        mean, p_yerr = stats.confidence(agg, kind=errkind)
+        #import pdb; pdb.set_trace()
+        mean, p_yerr = stats.confidence(agg, kind=errkind, within=within)
 
         if mean.index.nlevels == 1:  # oops, nothing to unstack
             mean = pandas.DataFrame(mean)#, columns=mean.columns, index=mean.index)
@@ -789,26 +813,32 @@ class Plot(object):
         title = ', '.join(title)
         return title
 
-    def draw_sig(self, agg, ax, popmean=0):
+    def draw_sig(self, agg, ax, popmean=0, errkind='sem', within=None):
 
         # find out how many columns per group there are
         try:
             cols = [i for i,n in enumerate(agg.columns.names) if n.startswith('cols.')]
-        except:
+        except:  # no cols -> everything considered to be separate
             vals_len = 1
         else:
-            try:
-                vals_len = np.max([len(agg.columns.levels[col]) for col in cols])
-            except:
-                vals_len = len(agg.columns)
-
+            if len(cols) == 0:
+                vals_len = 1
+            else:
+                try:
+                    vals_len = np.max([len(agg.columns.levels[col]) for col in cols])
+                except:
+                    vals_len = len(agg.columns)
         if vals_len <= 2:  # if >2, cannot compute stats
             if isinstance(agg, pandas.DataFrame):
-                mean, p_yerr = stats.confidence(agg)
+                mean, p_yerr = stats.confidence(agg, kind=errkind, within=within)
             else:
                 mean = agg
             r = mean.max().max() - mean.min().min()
             ebars = np.where(np.isnan(p_yerr), r/3., p_yerr)
+            if isinstance(p_yerr, pandas.Series):
+                ebars = pandas.Series(ebars, index=p_yerr.index)
+            else:
+                ebars = pandas.DataFrame(ebars, columns=p_yerr.columns, index=p_yerr.index)
             #eb = np.max([r/6., 1.5*np.max(ebars)/2])
             ylim = ax.get_ylim()
             eb_gap = abs(ylim[0] - ylim[1]) / 8.
@@ -834,7 +864,7 @@ class Plot(object):
                 elif len(inds) == 0:  # no rows at all
                     rlabels = [None]
                 else:
-                    rlabels = agg.mean().unstack(inds).columns
+                    rlabels = stats.unstack(agg.mean(), level=inds).columns
             ticks = ax.get_xticks()
 
             sig_t = []
@@ -856,7 +886,6 @@ class Plot(object):
                         #d = d[r]
                         #m = m[r]
                         #e = e[r]
-
                 if d.ndim == 1:
                     d = d.dropna() #d[pandas.notnull(d)]
                     t, p = scipy.stats.ttest_1samp(d, popmean=popmean)
@@ -866,6 +895,7 @@ class Plot(object):
                 elif d.ndim == 2 and d.shape[1] == 2:
                     d1 = d.iloc[:,0].dropna()
                     d2 = d.iloc[:,1].dropna()
+                    # two-tailed paired-samples t-test
                     t, p = scipy.stats.ttest_rel(d1, d2)
                     mn = m + np.sign(m) * (e + eb_gap)
                     #import pdb; pdb.set_trace()
@@ -1127,11 +1157,9 @@ class Plot(object):
 
     def histogram(self, data, ax=None, bins=100, **kwargs):
         data = pandas.DataFrame(data)
-        #import pdb; pdb.set_trace()
         if ax is None:
             self.subplotno += 1
             ax = self.get_ax()
-        #import pdb; pdb.set_trace()
         #data.ndim == 1
         ax.hist(np.array(data), bins=bins, **kwargs)
         return ax
@@ -1156,7 +1184,6 @@ class Plot(object):
         """
         #if ax is None: ax = self.next()
         #from mpl_toolkits.axes_grid1 import make_axes_locatable
-        #import pdb; pdb.set_trace()
         import matplotlib.colors
         if normalize != 'auto':
             norm = matplotlib.colors.normalize(vmin=data.min().min(),
@@ -1522,10 +1549,10 @@ def _unstack_levels(data, pref):
                 rlevs = None #['']#levels
 
 
-            unstacked = data.unstack(levels[0])
+            unstacked = stats.unstack(data,level=levels[0])
             if len(levels) > 1:
                 for lev in levels[1:]:
-                    unstacked = unstacked.unstack(lev)
+                    unstacked = stats.unstack(unstacked, level=lev)
 
             if isinstance(unstacked, pandas.Series):
                 unstacked = pandas.DataFrame(unstacked).T
@@ -1568,11 +1595,10 @@ def _stack_levels(data, pref):
                 rlevs = data.index.names + levels #[n for n in data.index.names if n not in levels]
             except:
                 rlevs = levels
-            #import pdb; pdb.set_trace()
             #if len(levels) == 1:
                 #stacked = data.stack(levels)
             #else:
-            stacked = data.stack(levels)
+            stacked = stats.stack(data, level=levels)
             stacked = pandas.DataFrame(stacked)
             #unused = [n for n in data.index.names if not n.startswith(pref+'.')]
             if clevs is not None:
