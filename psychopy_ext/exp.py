@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2014 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -23,7 +21,12 @@ import textwrap
 from HTMLParser import HTMLParser
 
 # for exporting stimuli to svg
-import svgwrite
+try:
+    import svgwrite
+except:
+    no_svg = True
+else:
+    no_svg = False
 
 import psychopy.info
 from psychopy import visual, core, event, logging, misc, monitors, data
@@ -594,7 +597,7 @@ class Task(TrialHandler):
                 clicked = False
                 for box in self.respmap:
                     if box.contains(self.mouse):
-                        resplist = [r+[box] for r in resplist]
+                        resplist = [tuple(r+[box]) for r in resplist]
                         clicked = True
                         break
                 if not clicked:
@@ -607,7 +610,9 @@ class Task(TrialHandler):
         if resplist is None:
             resplist = []
 
-        resplist += self.get_mouse_resp(keyList=keyList, timeStamped=timeStamped)
+        mresp = self.get_mouse_resp(keyList=keyList, timeStamped=timeStamped)
+
+        resplist += mresp
         return resplist
 
     def last_keypress(self, keyList=None, timeStamped=False):
@@ -628,7 +633,9 @@ class Task(TrialHandler):
             isexit = self._check_if_exit(this_key)
             if not isexit:
                 self._exit_key_no = 0
-                keys.append(this_key)
+                isin_keylist = self._check_if_in_keylist(this_key, keyList)
+                if isin_keylist:  # don't want to accept triggers and such
+                    keys.append(this_key)
         return keys
 
     def _check_if_exit(self, this_key):
@@ -662,6 +669,13 @@ class Task(TrialHandler):
                 self._exit_key_no = 0
 
         return self._exit_key_no > 0
+
+    def _check_if_in_keylist(self, this_key, keyList):
+        if isinstance(this_key, tuple):
+            this_key_check = this_key[0]
+        else:
+            this_key_check = this_key
+        return this_key_check in keyList
 
     def before_event(self):
         for stim in self.this_event.display:
@@ -831,7 +845,7 @@ class Task(TrialHandler):
             # here you could do if/else to assign different values to
             # different conditions according to your hypothesis
             trial['autoresp'] = random.choice(inverse_resp.values())
-            trial['autort'] = rt(.5,)
+            trial['autort'] = rt(.5)
         return exp_plan
 
 
@@ -1160,6 +1174,8 @@ class Task(TrialHandler):
 class SVG(object):
 
     def __init__(self, win, filename='image'):
+        if no_svg:
+            raise ImportError("Module 'svgwrite' not found.")
         visual.helpers.setColor(win, win.color)
         win.contrast = 1
         self.win = win
@@ -1883,6 +1899,9 @@ class Experiment(ExperimentHandler, Task):
         self.run()
 
     def repo_action(self):
+        if isinstance(self.rp['repository'], tuple):
+            self.rp['repository'] = self.rp['repository'][0]
+
         if self.rp['repository'] == 'commit & push':
             text = 'committing data and pushing to remote server...'
         elif self.rp['repository'] == 'only commit':
@@ -1894,13 +1913,13 @@ class Experiment(ExperimentHandler, Task):
             timer = core.CountdownTimer(2)
             self.win.flip()
 
-        if self.rp['repository'] == 'commit & push':
-            self.commitpush()
-        elif self.rp['repository'] == 'only commit':
-            self.commit()
+            if self.rp['repository'] == 'commit & push':
+                self.commitpush()
+            elif self.rp['repository'] == 'only commit':
+                self.commit()
 
-        while timer.getTime() > 0 and len(self.last_keypress()) == 0:
-            pass
+            while timer.getTime() > 0 and len(self.last_keypress()) == 0:
+                pass
 
     def register(self, **kwargs):
         """Alias to :func:`~psychopy_ext.exp.commit()`
@@ -2253,11 +2272,10 @@ class MouseRespGroup(object):
 
         if isinstance(stimuli, str):
             stimuli = [stimuli]
-        self.state = [False] * len(stimuli)
         self.stimuli = []
         for i, stim in enumerate(stimuli):
             if isinstance(stim, str):
-                add = np.array([0, (i-len(stimuli)/2)*.2*1.5])
+                add = np.array([0, (len(stimuli)/2-i)*.2*1.5])
                 stim = visual.TextStim(self.win, text=stim, height=.2,
                         pos=pos+add)
                 stim.size = (1, .2)
@@ -2280,6 +2298,9 @@ class MouseRespGroup(object):
                                     )
             stim.respbox.selected = False
             self.stimuli.append(stim)
+        self.selected = [False for stim in self.stimuli]
+        self.clicked_on = [False for stim in self.stimuli]
+
 
     def setPos(self, newPos):
         for stim in self.stimuli:
@@ -2292,15 +2313,15 @@ class MouseRespGroup(object):
             #stim.respbox.draw()
 
     def contains(self, *args, **kwargs):
-        self.selected = [stim.respbox.contains(*args, **kwargs) for stim in self.stimuli]
+        self.clicked_on = [stim.respbox.contains(*args, **kwargs) for stim in self.stimuli]
         #self.state = [(s and st) for s, st in zip(sel, self.state)]
-        return any(self.selected)
+        return any(self.clicked_on)
 
     def select(self, stim=None):
 
         if stim is None:
             try:
-                idx = self.selected.index(True)
+                idx = self.clicked_on.index(True)
             except:
                 return
             else:
@@ -2344,6 +2365,7 @@ class MouseRespGroup(object):
             else:
                 color = self.off_color
                 stim.respbox.selected = False
+        self.selected = [s.respbox.selected for s in self.stimuli]
 
         try:
             stim.setColor(color)
