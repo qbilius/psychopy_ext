@@ -106,6 +106,6 @@ Functions in **bold** are mandatory to define. Everything else *just works*.
   - Simulation:
   
     - Get images of stimuli
-    - Choose a model from :mod:`~pshychopy_ext.models`
+    - Choose a model from :mod:`~psychopy_ext.models`
     - Run it, e.g., :func:`~psychopy_ext.models.Model.run()`
     

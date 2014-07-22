@@ -35,7 +35,7 @@ What to do
 
 Start a new project ``myproject`` by copying the contents of the ``demos`` folder (in ``psychopy_ext/``) to ``myproject``. Observe the structure of this folder. Note that ``psychopy_ext`` encourages all project-related resources (scripts, data, logs, paper) to reside within a single project folder. Your experiments will reside in the ``scripts`` folder.
 
-The easiest way to create a new experiment is by using ``scripts/main.py`` as a template. If you need something more complex, try ``scripts/twotasks.py`` or ``scripts/staircase.py``. Refer to :class:`~psychopy_Ext.exp.Experiment` and :class:`~psychopy_Ext.exp.Task` to learn about various built-in functions.
+The easiest way to create a new experiment is by using ``scripts/main.py`` as a template. If you need something more complex, try ``scripts/twotasks.py`` or ``scripts/staircase.py``. Refer to :class:`~psychopy_ext.exp.Experiment` and :class:`~psychopy_ext.exp.Task` to learn about various built-in functions.
 
 When done with the experiment, run the project by executing ``run.py`` file. (In Windows, you can simply double-click on ``run.bat`` intead.)
 
