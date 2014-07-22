@@ -1,5 +1,6 @@
 import os, cPickle
-import wx, numpy, pandas
+import wx, pandas
+import numpy as np
 
 import matplotlib
 from matplotlib.figure import Figure
@@ -145,6 +146,98 @@ class ListDrop(wx.PyDropTarget):
         return d
 
 
+class RadioBoxValueType(wx.RadioBox):
+    """
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        wx.RadioBox.__init__(self, *args, **kwargs)
+        self.Bind(wx.EVT_RADIOBOX, self.enable_corr)
+
+    def enable_corr(self, event):
+        if event.GetString() == 'accuracy':
+            self.frame.panel_corr.Show()
+        else:
+            self.frame.panel_corr.Hide()
+
+
+class CheckListBox(wx.CheckListBox):
+
+    def __init__(self, *args, **kwargs):
+        wx.CheckListBox.__init__(self, *args, **kwargs)
+
+class ValueAcc(wx.Panel):
+
+    def __init__(self, *args, **kwargs):
+        wx.Panel.__init__(self, *args, **kwargs)
+
+    def destroy_insides(self, event=None):
+        try:
+            self.bSizer191.Destroy()
+            self.text_correct.Destroy()
+            self.check_correct.Destroy()
+            self.text_incorrect.Destroy()
+            self.check_incorrect.Destroy()
+        except:  # don't exist yet
+            pass
+        self.frame.window_canvas.changePlot()
+
+    def set_insides(self, event=None):
+        self.destroy_insides()
+
+        self.bSizer191 = wx.BoxSizer( wx.VERTICAL )
+
+        self.text_correct = wx.StaticText( self, wx.ID_ANY, u"correct", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.text_correct.Wrap( -1 )
+
+        self.bSizer191.Add( self.text_correct, 0, wx.ALL, 5 )
+
+        if event is None:
+            values = self.frame.window_canvas._get_items(self.frame.list_values)
+        else:
+            values = [event.GetText()]
+        check_choices = map(str, np.unique(self.frame.list_data.df[values[0]]))
+
+        self.check_correct = CheckListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.Size( 100,-1 ), check_choices, wx.LB_MULTIPLE )
+        self.check_correct.SetMaxSize( wx.Size( -1, 100 ) )
+        self.Bind(wx.EVT_CHECKLISTBOX, self.frame.window_canvas.changePlot)
+        #self.check_correct.frame = self.frame
+
+        self.bSizer191.Add( self.check_correct, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+
+        self.text_incorrect = wx.StaticText( self, wx.ID_ANY, u"incorrect", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self.text_incorrect.Wrap( -1 )
+
+        self.bSizer191.Add( self.text_incorrect, 0, wx.ALL, 5 )
+
+        self.check_incorrect = CheckListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.Size( 100,-1 ), check_choices, wx.LB_MULTIPLE )
+        self.check_incorrect.SetMaxSize( wx.Size( -1, 100 ) )
+        self.Bind(wx.EVT_CHECKLISTBOX, self.frame.window_canvas.changePlot)
+
+
+        corr = ['correct', 'true', '1']
+        incorr = ['incorrect', 'false', '0']
+        for i, item in enumerate(check_choices):
+            if item.lower() in corr:
+                self.check_correct.Check(i)
+            if item.lower() in incorr:
+                self.check_incorrect.Check(i)
+
+        self.bSizer191.Add( self.check_incorrect, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+
+
+        self.SetSizer( self.bSizer191 )
+        self.Layout()
+        self.bSizer191.Fit( self )
+
+        if self.frame.value_type.GetString(self.frame.value_type.GetSelection()) != 'accuracy':
+            self.Hide()
+        else:
+            self.Show()
+        self.frame.window_canvas.changePlot()
+
+
 class MatplotPanel(wx.Panel):
     """
     From http://stackoverflow.com/a/19898295/1109980
@@ -176,7 +269,7 @@ class MatplotPanel(wx.Panel):
         plt = plot.Plot()
         kind = self.frame.plot_type.GetItemLabel(self.frame.plot_type.GetSelection())
         errkind = self.frame.err_type.GetItemLabel(self.frame.err_type.GetSelection())
-        plt.plot(agg, kind=kind, errkind=errkind.lower())
+        plt.plot(agg, kind=kind, errkind=errkind.lower())#, within='rows')
 
         self.canvas = FigureCanvas(self, -1, plt.fig)
         self.toolbar = NavigationToolbar(self.canvas)
@@ -197,23 +290,25 @@ class MatplotPanel(wx.Panel):
         self.sizer.Add(self.canvas, 1, wx.GROW)
         self.Layout()
 
-    def _get_items(self, parent, event):
+    def _get_items(self, parent, event=None):
         """
         #Parent is the list where the item is being inserted
         """
         items = []
         if parent.GetItemCount() > 0:
             items += [parent.GetItemText(i) for i in range(parent.GetItemCount())]
-        if event.GetEventType() == wx.EVT_LIST_DELETE_ITEM.evtType[0]:
-            if parent == event.GetEventObject():
-                idx = items.index(event.GetText())
-                del items[idx]
+
+        if event is not None:
+            if event.GetEventType() == wx.EVT_LIST_DELETE_ITEM.evtType[0]:
+                if parent == event.GetEventObject():
+                    idx = items.index(event.GetText())
+                    del items[idx]
 
         if len(items) == 0:
             items = None
         return items
 
-    def changePlot(self, event):
+    def changePlot(self, event=None):
         self.subplots = self._get_items(self.frame.list_subplots, event)
         self.rows = self._get_items(self.frame.list_rows, event)
         self.cols = self._get_items(self.frame.list_cols, event)
@@ -225,8 +320,17 @@ class MatplotPanel(wx.Panel):
         if self.values is None or (self.cols is None and self.rows is None):
             self.draw_empty()
         else:
-            agg = stats.aggregate(self.df, subplots=self.subplots, rows=self.rows,
-                                  cols=self.cols, yerr=self.yerr, values=self.values)
+            value_type = self.frame.value_type.GetItemLabel(self.frame.value_type.GetSelection())
+            if value_type == 'metric':
+                agg = stats.aggregate(self.df, subplots=self.subplots, rows=self.rows,
+                                      cols=self.cols, yerr=self.yerr, values=self.values)
+            elif value_type == 'accuracy':
+                correct = list(self.frame.panel_corr.check_correct.GetCheckedStrings())
+                incorrect = list(self.frame.panel_corr.check_incorrect.GetCheckedStrings())
+                agg = stats.accuracy(self.df, subplots=self.subplots, rows=self.rows,
+                                      cols=self.cols, yerr=self.yerr, values=self.values,
+                                      correct=correct, incorrect=incorrect)
+                #import pdb; pdb.set_trace()
             self.redraw(agg)
             self.frame.list_agg.DeleteAllItems()
             for i in range(self.frame.list_agg.GetColumnCount()):
@@ -295,7 +399,6 @@ class DataList(wx.ListCtrl):
             self.frame.list_rows.delete_all_items()
             self.frame.list_cols.delete_all_items()
             self.frame.list_values.delete_all_items()
-            self.frame.list_yerr.delete_all_items()
 
         self.list_data_headers.set_data(self.df)
         self.window_canvas.df = self.df

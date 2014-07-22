@@ -9,6 +9,8 @@
 
 from analyzer_comps import MatplotPanel
 from analyzer_comps import DragList
+from analyzer_comps import RadioBoxValueType
+from analyzer_comps import ValueAcc
 from analyzer_comps import Shell
 from analyzer_comps import DataList
 from analyzer_comps import DataFileList
@@ -22,7 +24,7 @@ import wx.xrc
 class MyFrame ( wx.Frame ):
 	
 	def __init__( self, parent ):
-		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Analyzer", pos = wx.DefaultPosition, size = wx.Size( 1148,815 ), style = wx.DEFAULT_FRAME_STYLE )
+		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"Analyzer", pos = wx.DefaultPosition, size = wx.Size( 1000,700 ), style = wx.DEFAULT_FRAME_STYLE )
 		
 		self.SetSizeHintsSz( wx.DefaultSize, wx.DefaultSize )
 		
@@ -75,13 +77,32 @@ class MyFrame ( wx.Frame ):
 		self.list_values = DragList( self.m_panel151, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,20 ), wx.LC_LIST )
 		bSizer19.Add( self.list_values, 0, wx.ALIGN_RIGHT|wx.ALL, 5 )
 		
+		value_typeChoices = [ u"metric", u"accuracy" ]
+		self.value_type = RadioBoxValueType( self.m_panel151, wx.ID_ANY, u"type", wx.DefaultPosition, wx.DefaultSize, value_typeChoices, 1, wx.RA_SPECIFY_COLS )
+		self.value_type.SetSelection( 0 )
+		bSizer19.Add( self.value_type, 0, wx.ALL, 5 )
+		
+		self.panel_corr = ValueAcc( self.m_panel151, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,-1 ), wx.TAB_TRAVERSAL )
+		bSizer19.Add( self.panel_corr, 0, wx.ALL, 5 )
+		
 		
 		self.m_panel151.SetSizer( bSizer19 )
 		self.m_panel151.Layout()
 		bSizer19.Fit( self.m_panel151 )
-		bSizer121.Add( self.m_panel151, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+		bSizer121.Add( self.m_panel151, 1, wx.ALL|wx.ALIGN_RIGHT|wx.EXPAND, 5 )
 		
-		self.m_panel14 = wx.Panel( self.m_panel12, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+		
+		self.m_panel12.SetSizer( bSizer121 )
+		self.m_panel12.Layout()
+		bSizer121.Fit( self.m_panel12 )
+		bSizer131.Add( self.m_panel12, 0, wx.ALIGN_RIGHT|wx.ALL|wx.EXPAND, 5 )
+		
+		self.m_panel18 = wx.Panel( self.window_plot, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+		self.m_panel18.SetMaxSize( wx.Size( 150,-1 ) )
+		
+		bSizer181 = wx.BoxSizer( wx.VERTICAL )
+		
+		self.m_panel14 = wx.Panel( self.m_panel18, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
 		bSizer26 = wx.BoxSizer( wx.VERTICAL )
 		
 		self.m_staticText11 = wx.StaticText( self.m_panel14, wx.ID_ANY, u"subplots", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -95,25 +116,9 @@ class MyFrame ( wx.Frame ):
 		self.m_panel14.SetSizer( bSizer26 )
 		self.m_panel14.Layout()
 		bSizer26.Fit( self.m_panel14 )
-		bSizer121.Add( self.m_panel14, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+		bSizer181.Add( self.m_panel14, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
 		
-		self.m_panel152 = wx.Panel( self.m_panel12, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-		bSizer24 = wx.BoxSizer( wx.VERTICAL )
-		
-		self.m_staticText12 = wx.StaticText( self.m_panel152, wx.ID_ANY, u"x axis", wx.DefaultPosition, wx.DefaultSize, 0 )
-		self.m_staticText12.Wrap( -1 )
-		bSizer24.Add( self.m_staticText12, 0, wx.ALL, 5 )
-		
-		self.list_rows = DragList( self.m_panel152, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,-1 ), wx.LC_LIST )
-		bSizer24.Add( self.list_rows, 0, wx.ALIGN_RIGHT|wx.ALL, 5 )
-		
-		
-		self.m_panel152.SetSizer( bSizer24 )
-		self.m_panel152.Layout()
-		bSizer24.Fit( self.m_panel152 )
-		bSizer121.Add( self.m_panel152, 1, wx.EXPAND |wx.ALL, 5 )
-		
-		self.m_panel15 = wx.Panel( self.m_panel12, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+		self.m_panel15 = wx.Panel( self.m_panel18, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
 		bSizer22 = wx.BoxSizer( wx.VERTICAL )
 		
 		self.m_staticText13 = wx.StaticText( self.m_panel15, wx.ID_ANY, u"legend", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -127,9 +132,25 @@ class MyFrame ( wx.Frame ):
 		self.m_panel15.SetSizer( bSizer22 )
 		self.m_panel15.Layout()
 		bSizer22.Fit( self.m_panel15 )
-		bSizer121.Add( self.m_panel15, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+		bSizer181.Add( self.m_panel15, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
 		
-		self.m_panel13 = wx.Panel( self.m_panel12, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+		self.m_panel152 = wx.Panel( self.m_panel18, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+		bSizer24 = wx.BoxSizer( wx.VERTICAL )
+		
+		self.m_staticText12 = wx.StaticText( self.m_panel152, wx.ID_ANY, u"x axis", wx.DefaultPosition, wx.DefaultSize, 0 )
+		self.m_staticText12.Wrap( -1 )
+		bSizer24.Add( self.m_staticText12, 0, wx.ALL, 5 )
+		
+		self.list_rows = DragList( self.m_panel152, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,-1 ), wx.LC_LIST )
+		bSizer24.Add( self.list_rows, 0, wx.ALIGN_RIGHT|wx.ALL, 5 )
+		
+		
+		self.m_panel152.SetSizer( bSizer24 )
+		self.m_panel152.Layout()
+		bSizer24.Fit( self.m_panel152 )
+		bSizer181.Add( self.m_panel152, 1, wx.EXPAND |wx.ALL, 5 )
+		
+		self.m_panel13 = wx.Panel( self.m_panel18, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
 		bSizer201 = wx.BoxSizer( wx.VERTICAL )
 		
 		self.m_staticText14 = wx.StaticText( self.m_panel13, wx.ID_ANY, u"error bars", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -139,7 +160,7 @@ class MyFrame ( wx.Frame ):
 		self.list_yerr = DragList( self.m_panel13, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,20 ), wx.LC_LIST )
 		bSizer201.Add( self.list_yerr, 0, wx.ALIGN_RIGHT|wx.ALL, 5 )
 		
-		err_typeChoices = [ u"SEM", u"CI" ]
+		err_typeChoices = [ u"CI", u"SEM" ]
 		self.err_type = wx.RadioBox( self.m_panel13, wx.ID_ANY, u"type", wx.DefaultPosition, wx.DefaultSize, err_typeChoices, 1, wx.RA_SPECIFY_COLS )
 		self.err_type.SetSelection( 0 )
 		bSizer201.Add( self.err_type, 1, wx.ALL|wx.EXPAND, 5 )
@@ -148,13 +169,13 @@ class MyFrame ( wx.Frame ):
 		self.m_panel13.SetSizer( bSizer201 )
 		self.m_panel13.Layout()
 		bSizer201.Fit( self.m_panel13 )
-		bSizer121.Add( self.m_panel13, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
+		bSizer181.Add( self.m_panel13, 0, wx.ALL|wx.ALIGN_RIGHT, 5 )
 		
 		
-		self.m_panel12.SetSizer( bSizer121 )
-		self.m_panel12.Layout()
-		bSizer121.Fit( self.m_panel12 )
-		bSizer131.Add( self.m_panel12, 0, wx.ALIGN_RIGHT|wx.ALL, 5 )
+		self.m_panel18.SetSizer( bSizer181 )
+		self.m_panel18.Layout()
+		bSizer181.Fit( self.m_panel18 )
+		bSizer131.Add( self.m_panel18, 0, wx.ALL, 5 )
 		
 		
 		self.window_plot.SetSizer( bSizer131 )
@@ -168,7 +189,7 @@ class MyFrame ( wx.Frame ):
 		self.window_notrow.Layout()
 		bSizer14.Fit( self.window_notrow )
 		self.window_shell = Shell( self.window_3, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-		self.window_3.SplitHorizontally( self.window_notrow, self.window_shell, 624 )
+		self.window_3.SplitHorizontally( self.window_notrow, self.window_shell, 547 )
 		bSizer13.Add( self.window_3, 1, wx.EXPAND, 0 )
 		
 		
@@ -179,13 +200,15 @@ class MyFrame ( wx.Frame ):
 		bSizer20 = wx.BoxSizer( wx.HORIZONTAL )
 		
 		self.list_data_headers = DragList( self.window_list, wx.ID_ANY, wx.DefaultPosition, wx.Size( 100,-1 ), wx.LC_REPORT )
+		self.list_data_headers.SetMinSize( wx.Size( 100,-1 ) )
+		
 		bSizer20.Add( self.list_data_headers, 1, wx.ALL|wx.EXPAND, 5 )
 		
 		
 		self.window_list.SetSizer( bSizer20 )
 		self.window_list.Layout()
 		bSizer20.Fit( self.window_list )
-		self.window_page_splitter.SplitVertically( self.window_plotter, self.window_list, 1017 )
+		self.window_page_splitter.SplitVertically( self.window_plotter, self.window_list, 860 )
 		bSizer12.Add( self.window_page_splitter, 1, wx.EXPAND, 0 )
 		
 		
@@ -213,7 +236,9 @@ class MyFrame ( wx.Frame ):
 		self.m_panel32 = wx.Panel( self.m_splitter5, wx.ID_ANY, wx.DefaultPosition, wx.Size( -1,-1 ), wx.TAB_TRAVERSAL )
 		bSizer17 = wx.BoxSizer( wx.VERTICAL )
 		
-		self.list_datafiles = DataFileList( self.m_panel32, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LC_LIST|wx.LC_NO_HEADER )
+		self.list_datafiles = DataFileList( self.m_panel32, wx.ID_ANY, wx.DefaultPosition, wx.Size( 100,-1 ), wx.LC_LIST|wx.LC_NO_HEADER )
+		self.list_datafiles.SetMinSize( wx.Size( 100,-1 ) )
+		
 		bSizer17.Add( self.list_datafiles, 1, wx.ALL|wx.EXPAND, 5 )
 		
 		self.button_addfiles = wx.Button( self.m_panel32, wx.ID_ANY, u"Choose data files", wx.DefaultPosition, wx.DefaultSize, 0 )
@@ -223,7 +248,7 @@ class MyFrame ( wx.Frame ):
 		self.m_panel32.SetSizer( bSizer17 )
 		self.m_panel32.Layout()
 		bSizer17.Fit( self.m_panel32 )
-		self.m_splitter5.SplitVertically( self.m_panel34, self.m_panel32, 937 )
+		self.m_splitter5.SplitVertically( self.m_panel34, self.m_panel32, 860 )
 		bSizer21.Add( self.m_splitter5, 1, wx.EXPAND, 5 )
 		
 		
@@ -253,11 +278,11 @@ class MyFrame ( wx.Frame ):
 		pass
 	
 	def window_page_splitterOnIdle( self, event ):
-		self.window_page_splitter.SetSashPosition( 1017 )
+		self.window_page_splitter.SetSashPosition( 860 )
 		self.window_page_splitter.Unbind( wx.EVT_IDLE )
 	
 	def window_3OnIdle( self, event ):
-		self.window_3.SetSashPosition( 624 )
+		self.window_3.SetSashPosition( 547 )
 		self.window_3.Unbind( wx.EVT_IDLE )
 	
 	def window_row_plot_splitterOnIdle( self, event ):
@@ -265,7 +290,7 @@ class MyFrame ( wx.Frame ):
 		self.window_row_plot_splitter.Unbind( wx.EVT_IDLE )
 	
 	def m_splitter5OnIdle( self, event ):
-		self.m_splitter5.SetSashPosition( 937 )
+		self.m_splitter5.SetSashPosition( 860 )
 		self.m_splitter5.Unbind( wx.EVT_IDLE )
 	
 
