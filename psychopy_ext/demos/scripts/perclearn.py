@@ -85,11 +85,7 @@ class PercLearn(exp.Experiment):
             if expno != self.nsessions - 1:
                 self.show_text(pause_instr)
         self.after_exp()
-
-        if self.rp['register']:
-            self.register()
-        elif self.rp['push']:
-            self.commitpush()
+        self.repo_action()
         self.quit()
 
 class _Train(exp.Task):
