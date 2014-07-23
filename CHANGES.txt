@@ -1,9 +1,24 @@
+v0.5.2
+--------
+* NEW: A prototype of Analyzer for an interactive data analysis! (undocumented; you can try it with ``import psychopy_ext.analyzer; psychopy_ext.analyzer.run())
+* NEW: MouseRespGroup for mouse response displays.
+* NEW: Error bars and confidence intervals for repeated measures using Loftus & Masson (1994).
+* NEW: GridSpec support in plot.
+* FIXED: Installation requirements are more loose now. Pure Python packages are installed on the go with pip. Non-pure required Python packages stop installation and tell you what to install manually. Non-pure recommended Python packages allow you to install psychopy_ext but give a warning about what's missing. Also, tries to complain about missing dependencies only when you explicitly need them.
+* CHANGED: Info parameter now has 'repository' parameter instead of 'register' and 'push'. You can choose to either 'commit and push' (default) or 'only commit'. This should be more transparent. Moreover, exp.Experiment.run_exp() has been changes such that the whole committing and pushing thing occurs in the exp.Experiment.after_exp().
+* CHANGED: keyword 'unstack' in ``stats.aggregate()`` is now 'unstacked' because of the new ``stats.unstack()`` function
+* FIXED: In older PsychoPy versions, BaseVisualStim is _BaseVisualStim, so now accepting both.
+* IMPROVED: last_keypress now always returns a list (that might be empty)
+* IMPROVED: can call a custom method for analyzing fMRI data
+* FIXED: Plotting and stats are more robust now.
+* FIXED: compactibility with pandas 0.13+ (FrozenList issues and interactive plots causing no display)
+
 v0.5.1.1
 --------
 * FIXED: mouse inherited from Exp to Task
 * DEMOS: updated post_trial syntax
 
-v0.5.1 
+v0.5.1
 ------
 * NEW: Experimental support for mouse inputs (with a demo)
 * NEW: Experimental support for exporting displays to SVG (Circle, Line, Rect, ShapeStim, TextStim, ThickShapeStim)

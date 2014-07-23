@@ -34,7 +34,7 @@ class TestExp(unittest.TestCase):
         line.setVertices(value=[(-.5,0),(0,.5),(.5,0),(.7,.9)])
         line.draw()
         win.close()
-        
+
     def test_GroupStim(self):
         win = visual.Window([128,128])
         line1 = visual.ShapeStim(win)
@@ -47,15 +47,15 @@ class TestExp(unittest.TestCase):
         group1.draw()
         group2.draw()
         win.close()
-        
+
     def test_invert_dict(self):
         d = {1: 2, -3: 4, 0: 'a'}
         invd = exp.invert_dict(d)
         self.assertEqual(invd, OrderedDict([(2,1), (4,-3), ('a',0)]))
-        
+
     def test_other(self):
         self.assertEqual(exp.signal_det('5', '5'), 'correct')
-        exp.get_mon_sizes()        
+        exp.get_mon_sizes()
 
 
 class MyExp(exp.Experiment):
