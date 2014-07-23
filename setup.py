@@ -10,10 +10,10 @@ exec(open('psychopy_ext/version.py').read())
 # required pip-installable packages
 pip_reqs = ['docutils', 'svgwrite', 'seaborn>=0.3']
 # required non-pip-installable packages
-reqs = [('psychopy', '1.80'), ('pandas', '0.12')]
+reqs = [('psychopy', '1.79.01'), ('pandas', '0.12')]
 # recommended non-pip-installable packages
 recs = [('nibabel', None, 'fMRI analyses'),
-        ('mvpa2', '2.0', 'fMRI analyses')]
+        ('mvpa2', '2.3', 'fMRI analyses')]
 
 def try_import(package, version, descr=None):
     """Looks for a requested package
