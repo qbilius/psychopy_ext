@@ -57,11 +57,15 @@ class Analyzer( analyzer_gui.MyFrame ):
         dlg.Destroy()
 
 
-if __name__ == '__main__':
+def run():
     app = wx.App()
     frame = Analyzer(None)
     frame.Center()
     frame.Show()
     #frame.Maximize()
     app.MainLoop()
+
+
+if __name__ == '__main__':
+    run()
 
