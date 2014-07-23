@@ -1176,7 +1176,7 @@ class SVG(object):
     def __init__(self, win, filename='image'):
         if no_svg:
             raise ImportError("Module 'svgwrite' not found.")
-        visual.helpers.setColor(win, win.color)
+        #visual.helpers.setColor(win, win.color)
         win.contrast = 1
         self.win = win
         self.aspect = self.win.size[0]/float(self.win.size[1])
