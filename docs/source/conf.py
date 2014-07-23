@@ -12,6 +12,7 @@
 # serve to show the default.
 
 import sys, os
+import sphinx_bootstrap_theme
 
 # check if we're on ReadTheDocs
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
@@ -71,7 +72,8 @@ extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary',
               'sphinx.ext.coverage', 'sphinx.ext.viewcode',
               'matplotlib.sphinxext.only_directives',
               'matplotlib.sphinxext.plot_directive',
-              'sphinx.ext.doctest', 'edit_on_github']
+              'sphinx.ext.doctest',
+              'edit_on_github', 'local_toctree']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -91,7 +93,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'psychopy_ext'
-copyright = u'2010-2013, Jonas Kubilius'
+copyright = u'2010-2014, Jonas Kubilius'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -100,7 +102,7 @@ copyright = u'2010-2013, Jonas Kubilius'
 # The short X.Y version.
 version = '0.5'
 # The full version, including alpha/beta/rc tags.
-release = '0.5'
+release = '0.5.2'
 
 # Generate summaries
 autosummary_generate = True
@@ -138,7 +140,7 @@ exclude_patterns = []
 #show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = 'autumn'
 
 # A list of ignored prefixes for module index sorting.
 #modindex_common_prefix = []
@@ -151,15 +153,77 @@ pygments_style = 'sphinx'
 if on_rtd:
     html_theme = 'default'
 else:
-    html_theme = 'pyramid'
+    html_theme = 'bootstrap'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {
+    # Navigation bar title. (Default: ``project`` value)
+    'navbar_title': "psychopy_ext",
+
+    # Tab name for entire site. (Default: "Site")
+    'navbar_site_name': "Sites",
+
+    # A list of tuples containing pages or urls to link to.
+    # Valid tuples should be in the following forms:
+    #    (name, page)                 # a link to a page
+    #    (name, "/aa/bb", 1)          # a link to an arbitrary relative url
+    #    (name, "http://example.com", True) # arbitrary absolute url
+    # Note the "1" or "True" value above as the third argument to indicate
+    # an arbitrary url.
+    #'navbar_links': [
+        #("Examples", "examples"),
+        #("Link", "http://example.com", True),
+    #],
+
+    # Render the next and previous page links in navbar. (Default: true)
+    'navbar_sidebarrel': False,
+
+    # Render the current pages TOC in the navbar. (Default: true)
+    'navbar_pagenav': False,
+
+    # Tab name for the current pages TOC. (Default: "Page")
+    #'navbar_pagenav_name': "Page",
+
+    # Global TOC depth for "site" navbar tab. (Default: 1)
+    # Switching to -1 shows all levels.
+    'globaltoc_depth': 1,
+
+    # Include hidden TOCs in Site navbar?
+    #
+    # Note: If this is "false", you cannot have mixed ``:hidden:`` and
+    # non-hidden ``toctree`` directives in the same page, or else the build
+    # will break.
+    #
+    # Values: "true" (default) or "false"
+    'globaltoc_includehidden': "true",
+
+    # HTML navbar class (Default: "navbar") to attach to <div> element.
+    # For black navbar, do "navbar navbar-inverse"
+    'navbar_class': "navbar",
+
+    # Fix navigation bar to top of page?
+    # Values: "true" (default) or "false"
+    'navbar_fixed_top': "true",
+
+    # Location of link to source.
+    # Options are "nav" (default), "footer" or anything else to exclude.
+    'source_link_position': "",
+
+    # Bootswatch (http://bootswatch.com/) theme.
+    #
+    # Options are nothing with "" (default) or the name of a valid theme
+    # such as "amelia" or "cosmo".
+    'bootswatch_theme': "cosmo",
+
+    # Choose Bootstrap version.
+    # Values: "3" (default) or "2" (in quotes)
+    'bootstrap_version': "3",
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
-#html_theme_path = []
+html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
@@ -180,7 +244,7 @@ else:
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# html_static_path = ['_static']
+html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -191,10 +255,11 @@ else:
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-html_sidebars = {
-   '**': ['globaltoc.html', 'sourcelink.html', 'searchbox.html'],
-   #'using/windows': ['windowssidebar.html', 'searchbox.html'],
-}
+#html_sidebars = {
+   #'**': ['globaltoc.html', 'sourcelink.html', 'searchbox.html'],
+   ##'using/windows': ['windowssidebar.html', 'searchbox.html'],
+#}
+html_sidebars = {'**': ['localtoc.html', 'sourcelink.html', 'searchbox.html']}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
@@ -276,7 +341,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'psychopy_ext', u'psychopy_ext Documentation',
+    ('index', '', u'psychopy_ext Documentation',
      [u'Jonas Kubilius'], 1)
 ]
 
@@ -311,7 +376,7 @@ texinfo_documents = [
 epub_title = u'psychopy_ext'
 epub_author = u'Jonas Kubilius'
 epub_publisher = u'Jonas Kubilius'
-epub_copyright = u'2013, Jonas Kubilius'
+epub_copyright = u'2014, Jonas Kubilius'
 
 # The language of the text. It defaults to the language option
 # or en if the language is not set.

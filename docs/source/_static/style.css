@@ -1,0 +1,104 @@
+/* General */
+a, a:hover {
+  color: #c95039;
+}
+.gray {
+  background-color: #eaedf1;
+  padding: 50px 0;
+}
+
+/* FEATURED AREA */
+.featured-area {
+  background-color: transparent;
+}
+.navbar {
+  border-top-width: 5px;
+  border-top-color: #c95039;
+  border-top-style: solid;
+}
+.jumbotron {
+  text-align: center;
+  background-color: transparent;
+}
+.jumbotron .lead {
+  margin-bottom: 11px;
+}
+.pip {
+  padding: 10px 0 21px 0;
+}
+.pip code {
+  background-color: transparent;
+  color: #c95039;
+}
+.jumbotron .btn {
+  font-size: 21px;
+  padding: 14px 24px;
+}
+.jumbotron .btn-success {
+  background-color: #c95039;
+}
+.glyphicon {
+  font-size: 56px;
+  color: #c95039;
+}
+
+/* MARKETING CONTENT
+-------------------------------------------------- */
+.features h1{
+  text-align: center;
+  margin: 100px 0 100px 0;
+  font-size: 56px;
+}
+
+/* Pad the edges of the mobile views a bit */
+.marketing {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+/* Center align the text within the three columns below the carousel */
+.marketing .col-lg-4 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.marketing h2 {
+  font-weight: normal;
+}
+.marketing .col-lg-4 p {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+/* Other
+------------------------- */
+.other {
+  padding-left: 50px;
+  padding-right: 50px;
+}
+.cite {
+  padding-left: 50px;
+}
+
+div.documentwrapper {
+    float: left;
+    width: 100%;
+}
+div.bodywrapper {
+    margin: 0 0 0 300px;
+}
+
+/* Footer
+------------------------- */
+footer {
+  background-color: #292929;
+  padding: 30px 0;
+  color: #999999;
+}
+footer .col-md-5 {
+  text-align: center;
+  margin-top: 30px;
+}
+footer .author {
+  font-size: 13px;
+  font-weight: 300;
+}

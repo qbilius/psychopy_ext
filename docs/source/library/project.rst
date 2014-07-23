@@ -23,7 +23,7 @@ Observe the typical structure of a project::
 
 Now find the ``run.py`` file, and run it (:ref:`how? <how-run-demo>`). You'll see an app appear for the *Demo Project*:
 
-    .. image:: ../gui.png
+    .. image:: ../intro/gui.png
         :width: 300px
 
 Experiments belonging to this project are listed on the left, and options for each experiment are listed in tabs. You can choose various parameters how to run the experiment, such as entering the participant ID or determining if the experiment should run in full screen. Note that ``psychopy_ext`` generates these apps completely automatically by collecting information within your project. (For command-line ninjas, a powerful command-line interface is provided too.)
@@ -42,7 +42,7 @@ The ``run.py`` file is simple -- it only calls the app generator (or the command
     __author__ = "Jonas Kubilius"
     __version__ = "0.1"
     exp_choices = [
-        ui.Choices('scripts.main',  # path to the 
+        ui.Choices('scripts.main',  # path to the
                    name='Simple',
                    alias='main',  # alias to call it from CLI
                    order=['exp','analysis']),  # order of tabs in GUI
@@ -52,13 +52,13 @@ The ``run.py`` file is simple -- it only calls the app generator (or the command
 When all is set, you call the graphic user interface (GUI) or the command-line interpreter (CLI)::
 
     ui.Control(exp_choices, title='Demo Project')
-    
+
 By default, a GUI as we saw above is opened, and you can then choose options how to run the experiment and an analysis. We will see where these options come from in the :ref:`exp` section.
 
 However, it may be faster to run your scripts using a CLI. To do so, you will have to enter options in the terminal (or the command line)::
 
     python run.py main exp run --subjid confsup_01 --no_output
-    
+
 Input structure:
 
 * ``python run.py`` - Python runs the specified script

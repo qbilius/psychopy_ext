@@ -1,22 +1,31 @@
-.. psychopy_ext documentation master file, created by
-   sphinx-quickstart on Thu Mar  7 10:38:04 2013.
-
-Welcome to psychopy_ext documentation!
-======================================
+Introduction
+============
 
 ``psychopy_ext`` is a framework for a rapid reproducible design, analysis and plotting of experiments in neuroscience and psychology.
 
 Unlike ``PsychoPy``, ``PyMVPA`` or ``matplotlib`` that are very flexible and support multiple options to suit everyone’s needs, the underlying philosophy of ``psychopy_ext`` is to act as the glue at a higher level of operation by choosing reasonable defaults for these packages and providing patterns for common tasks with a minimal user intervention. Set up your stimuli, trial structure and go! Everything else is already done for you.
 
+Getting started
+---------------
+
+.. toctree::
+   :maxdepth: 2
+
+   demo
+   quickstart
+   architecture
+   whyuse
+   faq
+
 
 License
 -------
 
-Copyright 2010-2013 Jonas Kubilius (http://klab.lt)
+Copyright 2010-2014 Jonas Kubilius (`http://klab.lt <http://klab.lt>`_)
 
 Laboratories of Biological and Experimental Psychology, KU Leuven (Belgium)
 
-[GNU General Public License v3 or later](http://www.gnu.org/licenses/)
+`GNU General Public License v3 or later <http://www.gnu.org/licenses/>`_
 
 Included external packages and functions (covered by a compatible license): combinations, combinations_with_replacement, OrderedDict, HMAX, GaborJet
 
