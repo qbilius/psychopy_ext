@@ -1773,8 +1773,9 @@ class Experiment(ExperimentHandler, Task):
                     kwargs['size'] = tuple(res)
                 else:
                     kwargs['size'] = (res[0]/2, res[1]/2)
-        for key in ['monitor', 'fullscr', 'allowGUI', 'screen', 'viewScale']:
-            del kwargs[key]
+        for key in kwargs:
+            if key in ['monitor', 'fullscr', 'allowGUI', 'screen', 'viewScale']:
+                del kwargs[key]
 
         self.win = visual.Window(
             monitor=monitor,
@@ -1802,6 +1803,9 @@ class Experiment(ExperimentHandler, Task):
         except:
             author = 'None'
             version = 'None'
+        else:
+            author = None
+            version = None
         #if not self.rp['no_output']:
         self.runtime_info = psychopy.info.RunTimeInfo(author=author,
                 version=version, verbose=True, win=False, randomSeed='set:time')
