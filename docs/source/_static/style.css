@@ -87,6 +87,10 @@ div.bodywrapper {
     margin: 0 0 0 300px;
 }
 
+div.sourcelink {
+    foont-size: 13px;
+}
+
 /* Footer
 ------------------------- */
 footer {

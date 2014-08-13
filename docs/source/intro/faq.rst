@@ -10,7 +10,9 @@ Frequently asked questions
 Installation with pip is failing
 --------------------------------
 
-Certain packages, such as numpy, scipy, pandas, and pymvpa, need to be compiled when installing via pip, and that process commonly fails. If you find yourself in this situation, try installing the packages that pip failed to install manually by following the installation procedure carefully (:ref:`installation`).
+Certain packages, such as numpy, scipy, pandas, and pymvpa, need to be compiled when installing via pip, and that process commonly fails. If you find yourself in this situation (maybe you tried to pip-install seaborn but didn't have pandas on which it depends), try installing the packages that pip failed to install manually by downloading required packages as listed in (:ref:`installation`).
+
+*Still no luck?* Okay, you don't have PsychoPy and don't know how to install it because it has a million dependencies? Welcome to the *batteries included* Python. There is no simple solution but try following `this tutorial on the many options you have <http://gestaltrevision.be/wiki/python/pythoninstall>`_.
 
 
 .. _where-is-demo:
