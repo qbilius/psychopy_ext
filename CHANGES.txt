@@ -1,5 +1,11 @@
+v0.5.3
+------
+* NEW: Generate synthetic fMRI data using ``fmri.GenHRF()``.
+* IMPROVED: ploting ROIs, chunks, datasets
+* CHANGED: ``exp.create_win`` takes kwargs
+
 v0.5.2
---------
+------
 * NEW: A prototype of Analyzer for an interactive data analysis! (undocumented; you can try it with ``import psychopy_ext.analyzer; psychopy_ext.analyzer.run())
 * NEW: MouseRespGroup for mouse response displays.
 * NEW: Error bars and confidence intervals for repeated measures using Loftus & Masson (1994).
