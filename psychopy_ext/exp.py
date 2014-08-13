@@ -1037,6 +1037,8 @@ class Task(TrialHandler):
             self.show_text(text=text, **kwargs)
 
     def before_trial(self):
+        """What to do before trial -- nothing by default.
+        """
         pass
 
     def run_trial(self):
@@ -1742,7 +1744,8 @@ class Experiment(ExperimentHandler, Task):
                       'use exp.get_mon_sizes instead')
         return get_mon_sizes(screen=screen)
 
-    def create_win(self, debug=False, color='DimGray'):
+    def create_win(self, debug=False, color='DimGray', units='deg',
+                   winType='pyglet', **kwargs):
         """Generates a :class:`psychopy.visual.Window` for presenting stimuli.
 
         :Kwargs:
@@ -1761,23 +1764,28 @@ class Experiment(ExperimentHandler, Task):
         logging.console.setLevel(current_level)
         res = get_mon_sizes(self.computer.screen)
         monitor.setSizePix(res)
-        try:
-            size = self.computer.win_size
-        except:
-            if not debug:
-                size = tuple(res)
-            else:
-                size = (res[0]/2, res[1]/2)
+
+        if 'size' not in kwargs:
+            try:
+                kwargs['size'] = self.computer.win_size
+            except:
+                if not debug:
+                    kwargs['size'] = tuple(res)
+                else:
+                    kwargs['size'] = (res[0]/2, res[1]/2)
+        for key in ['monitor', 'fullscr', 'allowGUI', 'screen', 'viewScale']:
+            del kwargs[key]
+
         self.win = visual.Window(
-            size=size,
-            monitor = monitor,
-            units = 'deg',
-            fullscr = not debug,
-            allowGUI = debug, # mouse will not be seen unless debugging
-            color = color,
-            winType = 'pyglet',
-            screen = self.computer.screen,
-            viewScale = self.computer.view_scale
+            monitor=monitor,
+            units=units,
+            fullscr=not debug,
+            allowGUI=debug, # mouse will not be seen unless debugging
+            color=color,
+            winType=winType,
+            screen=self.computer.screen,
+            viewScale=self.computer.view_scale,
+            **kwargs
         )
 
     def setup(self):
@@ -1789,10 +1797,14 @@ class Experiment(ExperimentHandler, Task):
         Also, runtime information is fully recorded, log file is set
         and a window is created.
         """
-
+        try:
+            with open(sys.argv[0], 'r') as f: lines = f.read()
+        except:
+            author = 'None'
+            version = 'None'
         #if not self.rp['no_output']:
-        self.runtime_info = psychopy.info.RunTimeInfo(verbose=True, win=False,
-                randomSeed='set:time')
+        self.runtime_info = psychopy.info.RunTimeInfo(author=author,
+                version=version, verbose=True, win=False, randomSeed='set:time')
         key, value = get_version()
         self.runtime_info[key] = value  # updates with psychopy_ext version
 
