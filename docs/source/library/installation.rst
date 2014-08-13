@@ -7,7 +7,7 @@ Get ``psychopy_ext``
 Quick installation::
 
     pip install psychopy_ext
-    
+
 Or clone the `github repository <https://github.com/qbilius/psychopy_ext>`_::
 
     git clone https://github.com/qbilius/psychopy_ext.git
@@ -20,17 +20,18 @@ Dependencies
 
 *Required*
 
-* `Python 2.6+ <http://python.org/download/>`_ (but tested only with 2.7)
-* `PsychoPy 1.7+ <http://sourceforge.net/projects/psychpy/files/>`_
+* `Python 2.7 <http://python.org/download/>`_
+* `PsychoPy 1.79.01+ <http://sourceforge.net/projects/psychpy/files/>`_
 * `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
+* `seaborn 0.3+ <https://pypi.python.org/pypi/seaborn>`_ (pretty plots; not really mandatory but required for the benefit of your eyes)
 * `docutils <https://pypi.python.org/pypi/docutils>`_ (technically it is not mandatory but it will allow rendering docstrings on screen by the ``exp`` class)
+* `svgwrite <https://pypi.python.org/pypi/svgwrite>`_ (it's used to export stimuli to SVG format, so it's also not super mandatory but given its pip-installable, why not?)
 
 *Optional*
 
-* `PyMVPA 2.0+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class)
-* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class)
-
-(Note: if there isn't a binary package for your Windows platform and your Python version, try `Christoph Gohlke's Unofficial Binaries <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
+* `PyMVPA 2.3.1+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class; `Windows version for Python 2.7 here <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
+* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class; install with ``pip install nibabel``)
+* `h5py <https://pypi.python.org/pypi/h5py>`_ (required for the `fmri` class; install with ``pip install h5py``)
 
 
 ----------------------------
@@ -85,7 +86,7 @@ Others
 Many users will be satisfied by merely installing ``psychopy_ext`` from PyPI::
 
     pip install psychopy_ext
-    
+
 However, to have an easy access to ``psychopy_ext`` and customize it to your own needs, I recommend downloading the source code and placing it where you keep your other projects. There are two possibilities then to use the package:
 
 - In `run.py` add a line `sys.path.insert(0, '../psychopy_ext/')` (i.e., a relative path to the ``psychopy_ext`` folder)

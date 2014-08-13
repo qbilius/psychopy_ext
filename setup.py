@@ -8,12 +8,13 @@ description = ('A framework for a rapid reproducible design, analysis and '
 exec(open('psychopy_ext/version.py').read())
 
 # required pip-installable packages
-pip_reqs = ['docutils', 'svgwrite', 'seaborn>=0.3']
+pip_reqs = ['docutils', 'svgwrite']
 # required non-pip-installable packages
-reqs = [('psychopy', '1.79.01'), ('pandas', '0.12')]
+reqs = [('psychopy', '1.79.01'), ('pandas', '0.12'), ('seaborn', '0.3')]
 # recommended non-pip-installable packages
 recs = [('nibabel', None, 'fMRI analyses'),
-        ('mvpa2', '2.3', 'fMRI analyses')]
+        ('h5py', None, 'fMRI analyses'),
+        ('mvpa2', '2.3.1', 'fMRI analyses')]
 
 def try_import(package, version, descr=None):
     """Looks for a requested package
