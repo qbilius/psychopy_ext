@@ -19,6 +19,7 @@ from datetime import datetime
 import cPickle as pickle
 
 import numpy as np
+import scipy.stats
 import pandas
 
 try:
@@ -37,7 +38,11 @@ except:
     from exp import OrderedDict
 
 # stuff from psychopy_ext
-import exp, plot, stats
+from psychopy_ext import exp, plot, stats
+import seaborn as sns
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 
 class Analysis(object):
@@ -127,9 +132,8 @@ class Analysis(object):
             ('plot', True),
             ('saveplot', False),
             ('visualize', False),
-            ('force', False),
+            ('force', None),
             ('dry', False),
-            ('reuserois', True),
             ])
         if info is not None:
             self.info.update(info)
@@ -140,15 +144,15 @@ class Analysis(object):
         self.tr = tr
         self.fmri_prefix = fmri_prefix
         self.fix = fix
-        self.rois = make_roi_pattern(rp['rois'])
+        self.rois = make_roi_pattern(rois)
+        self.offset = offset
         if self.rp['method'] == 'timecourse':
             self.rp['values'] = 'raw'
             if offset is None:
                 self.offset = 0
-            else:
-                self.offset = offset
         else:
-            self.offset = None
+            if offset is None:
+                self.offset = 2
         self.dur = dur
         self.condlabel = condlabel
         self.durlabel = durlabel
@@ -158,7 +162,7 @@ class Analysis(object):
         A wrapper for running an analysis specified in `self.rp`.
 
         Steps:
-            - Try to load a saved analysis, unless a `force` flag is given
+            - Try to load a saved analysis, unless any `force` flag is given
             - Otherwise, either generate synthetic data (values = `sim`) or
               extract it from the real data using :func:`run_method`.
             - Save a `pandas.DataFrame` in the analysis folder with the
@@ -178,7 +182,7 @@ class Analysis(object):
         df_fname = (self.paths['analysis']+'df_%s_%s.pkl' %
                     (self.rp['method'], self.rp['values']))
         try:
-            if self.rp['force']:
+            if self.rp['force'] is not None:
                 raise  # redo the analysis
             else:
                 df = pickle.load(open(df_fname,'rb'))
@@ -282,8 +286,20 @@ class Analysis(object):
     #def get_data(self, df):
         #raise NotImplementedError
 
-    def get_agg(self, df, **kwargs):
-        raise NotImplementedError('You should define get_agg method yourself.')
+    def get_agg(self, df, kind=None, **kwargs):
+        #raise NotImplementedError('You should define get_agg method yourself.')
+        if kind == 'matrix':
+            agg = stats.aggregate(df, values='subj_resp',
+                                        cols=['stim1.cond'],
+                                        rows=['stim2.cond'],
+                                        yerr='subjid')
+        else:
+            df['group'] = 'within'
+            df['group'][df['stim1.cond'] != df['stim2.cond']] = 'across'
+            agg = stats.aggregate(df, values='subj_resp',
+                                        cols='group',
+                                        yerr='subjid')
+        return agg
 
     def run_method(self, subjids, runtype, rois, method='svm', values='raw',
                 offset=None, dur=None, filename = 'RENAME.pkl', simds=None):
@@ -311,6 +327,9 @@ class Analysis(object):
                 Which run type should be taken. Usually you have a few runs,
                 such as main experimental runs and localizer runs. They should
                 have be labeled data file
+            - rois (list of dict)
+                Names of ROIs to use, formatted with
+                :func:``~psychopy_ext.fmri.make_roi_pattern()``
 
         :Kwargs:
             - method: {'timecourse', 'univariate', 'signal', 'corr',  'svm'} (default: 'svm'}
@@ -349,18 +368,21 @@ class Analysis(object):
             try:
                 out_fname = filename % (method, values, subjid)
             except:
-                pass
+                raise
             loaded = False
             if method in ['corr', 'svm']:
                 try:
-                    header, result = pickle.load(open(out_fname,'rb'))
-                    results.extend(result)
-                    # result = pickle.load(open(filename,'rb'))
-                    # header = [i[0] for i in result[0]]
-                    # for res in result:
-                    #     results.append([r[1] for r in res])
-                    print ': loaded stored %s results' % values
-                    loaded = True
+                    if self.rp['force'] in ['all', 'retrain']:
+                        raise  # redo the analysis
+                    else:
+                        header, result = pickle.load(open(out_fname,'rb'))
+                        results.extend(result)
+                        # result = pickle.load(open(filename,'rb'))
+                        # header = [i[0] for i in result[0]]
+                        # for res in result:
+                        #     results.append([r[1] for r in res])
+                        print ': loaded stored %s results' % values
+                        loaded = True
                 except:
                     print
                     print "Could not load or find the results file %s" % out_fname
@@ -373,16 +395,17 @@ class Analysis(object):
                     if simds is not None:
                         values = 'sim'
                     else:
-                        ds = self.extract_samples(subjid, runtype, ROI_list,
-                                                  values=values)
-                    if values.startswith('raw'):
-                        ds = self.detrend(ds)
                         if type(offset) == dict:  # different offsets for ROIs
                             off = offset[ROI_list[1]]
                         else:
                             off = offset
+                        ds = self.extract_samples(subjid, runtype, ROI_list,
+                                                  values=values, offset=off)
+
+                    if values.startswith('raw'):
+                        ds = self.detrend(ds)
                         #ds = np.nan_to_num(ds, value=0)
-                        evds = self.ds2evds(ds, offset=off, dur=dur)
+                        evds = self.ds2evds(ds, dur=dur)
                     elif values in ['t', 'beta', 'sim']:
                         # SPM sets certain voxels to NaNs
                         # we just gonna convert them to 0
@@ -390,16 +413,17 @@ class Analysis(object):
                         evds = ds
 
                     if method == 'timecourse':
-                        header, result = self.timecourse(evds)
+                        header, result = self.timecourse(evds, offset=off)
                     elif method in ['signal', 'univariate']:
                         header, result = self.signal(evds, values)
-                        #print result
                     elif method == 'corr':
                         evds = evds[evds.sa.targets != self.fix]
                         header, result = self.correlation(evds, nIter=100)
                     elif method == 'svm':
                         evds = evds[evds.sa.targets != self.fix]
                         header, result = self.svm(evds, nIter=100)
+                    elif method is None:
+                        sys.exit()
                     else:
                         try:
                             func = getattr(self, method)
@@ -424,7 +448,6 @@ class Analysis(object):
                         pass
 
                     pickle.dump([header,temp_res], open(out_fname,'wb'))
-        #import pdb; pdb.set_trace()
         return header, results
 
     #def time_course(self):
@@ -474,9 +497,9 @@ class Analysis(object):
                 A filename of data to load
         """
         nim = nb.load(filename)
-        data = nim.get_data()
+        data = get_data_world(nim)
         # reorient data based on the affine information in the header
-        ori = nb.io_orientation(nim.get_affine())
+        #ori = nb.io_orientation(nim.get_affine())
         #data = nb.apply_orientation(data, ori)
         data = np.squeeze(data)  # remove singular dimensions (useful for ROIs)
         return data
@@ -486,7 +509,8 @@ class Analysis(object):
         # runno,
         runtype,
         ROIs,
-        values='raw'
+        values='raw',
+        offset=0
         ):
         """
         Produces a detrended dataset with info for classifiers.
@@ -502,9 +526,12 @@ class Analysis(object):
                 A pattern of ROI file patterns to be combined into one ROI
 
         :Kwargs:
-            values (str, default: 'raw')
+            - values (str, default: 'raw')
                 What kind of values should be used. Usually you
                 have 'raw', 'beta', and 't'.
+            - offset (int, default: 0)
+                Offset to be applied to the signal (only used for 'raw'
+                values).
 
         :Returns:
             ds (Dataset)
@@ -516,10 +543,10 @@ class Analysis(object):
             add = '_' + values
         suffix = ROIs[1] + add + '.gz.hdf5'
         roiname = self.paths['data_rois'] %subjid + suffix
-        if self.rp['reuserois'] and os.path.isfile(roiname):
-            ds = mvpa2.suite.h5load(roiname)
-            print '(loaded)',
-            return ds
+        #if self.rp['reuserois'] and os.path.isfile(roiname):
+            #ds = mvpa2.suite.h5load(roiname)
+            #print '(loaded)',
+            #return ds
 
         # else
         # make a mask by combining all ROIs
@@ -533,8 +560,7 @@ class Analysis(object):
 
         # add together all ROIs -- and they should not overlap too much
         thismask = sum([self.get_mri_data(roi) for roi in allROIs])
-
-        thismask = thismask[::-1]
+        #thismask = thismask[::-1]
 
         if values.startswith('raw'):
             # find all functional runs of a given runtype
@@ -543,7 +569,7 @@ class Analysis(object):
             allimg.sort()
             data_path = self.paths['data_behav']+'data_%02d_%s.csv'
             labels = self.extract_labels(allimg, data_path, subjid, runtype)
-            ds = self.fmri_dataset(allimg, labels, thismask)
+            ds = self.fmri_dataset(allimg, labels, thismask, offset=offset)
         elif values == 'beta':
             data_path = self.paths['data_behav'] + 'data_*_%s.csv'
             behav_data = self.read_csvs(data_path %(subjid, runtype))
@@ -619,21 +645,22 @@ class Analysis(object):
 
         return labels
 
-    def fmri_dataset(self, samples, labels, thismask=None):
+    def fmri_dataset(self, samples, labels, thismask=None, offset=0):
         """
         Create a dataset from an fMRI timeseries image.
 
         Overrides `mvpa2.datasets.mri.fmri_dataset` which has a buggy multiple
         images reading.
         """
-        # Load in data for all runs and all ROIs
+        ## Load in data for all runs and all ROIs
         chunkcount = 0
         first = True
+        mvpa2.datasets.mri._img2data = _img2data
         for thisimg, thislabel in zip(samples,labels):
             # load the appropriate func file with a mask
             tempnim = mvpa2.suite.fmri_dataset(
                     samples = thisimg,
-                    targets = thislabel,
+                    targets = np.roll(thislabel, offset),
                     chunks = chunkcount,  #FIXME: change to runno?
                     mask = thismask
                     )
@@ -645,6 +672,16 @@ class Analysis(object):
                 ds = mvpa2.suite.vstack((ds,tempnim))
             chunkcount += 1
 
+        #ds = []
+        ##for chunkcount, (thisimg, thislabel) in enumerate(zip(samples,labels)):
+            ##print chunkcount
+        #ds = mvpa2.suite.fmri_dataset(
+                #samples = samples,
+                #targets = labels,
+                #chunks = range(len(labels)),  #FIXME: change to runno?
+                #mask = thismask
+                #)
+        #ds = mvpa2.suite.vstack(ds)
         return ds
 
     def detrend(self, ds):
@@ -657,7 +694,7 @@ class Analysis(object):
         ds.samples += dsmean # recover the detrended mean
         return ds
 
-    def ds2evds(self, ds, offset=2, dur=2):
+    def ds2evds(self, ds, dur=2):
         """
         Converts a dataset to an event-related dataset.
 
@@ -688,98 +725,28 @@ class Analysis(object):
                     events_temp.append(ev)
         events = events_temp
         for ev in events:
-            ev['onset'] += offset
+            #try:
+                #ev['onset'] += offset
+            #except:
+                #import pdb; pdb.set_trace()
             if dur is not None:
                 ev['duration'] = dur
         evds = mvpa2.suite.eventrelated_dataset(ds, events=events)
-        #import pdb; pdb.set_trace()
+
         durs = [ev['duration'] for ev in events]
         evds.sa['durations'] = mvpa2.suite.ArrayCollectable(name='durations',
             value=durs, length=len(durs))
 
         if self.rp['visualize']:
-            self.plot_chunks(ds, evds, chunks=[0], shift_tp=0)
+            plot_chunks(ds, evds, chunks=[0], shift_tp=0, tr=self.tr, fix=self.fix)
 
         return evds
 
-
-    def plot_chunks(self, ds, evds, chunks = None, shift_tp = 0):
-        events = mvpa2.suite.find_events(targets=ds.sa.targets, chunks=ds.sa.chunks)
-        # which chunks to display
-        if chunks == None: chunks = ds.UC
-
-        # get colors and assign them to targets
-        ncolors = len(ds.UT)
-        import matplotlib as mpl
-        cmap = mpl.cm.get_cmap('Paired')
-        norm = mpl.colors.Normalize(0, 1)
-        z = np.linspace(0, 1, ncolors + 2)
-        z = z[1:-1]
-        colors_tmp = cmap(norm(z))
-        colors = {}
-        for target, color in zip(ds.UT,colors_tmp): colors[target] = color
-        colors[self.fix] = 'black'
-
-        chunk_len = ds.shape[0] / len(ds.UC)
-        #
-        event_dur = evds.a.mapper[1].boxlength
-
-        # evdsFlat = evds.a.mapper[2].reverse(evds)
-        # ds = evds.a.mapper[1].reverse(evdsFlat)
-        plt = plot.Plot(nrows=len(chunks))
-        for chunkno, chunk in enumerate(chunks):
-            #plt.subplot( len(chunks), 1, chunkno+1 )
-            sel = np.array([i==chunk for i in evds.sa.chunks])
-            evds_sel = evds[sel]
-            sel_ds = np.array([i==chunk for i in ds.sa.chunks])
-            # import pdb; pdb.set_trace()
-            mean_per_chunk = np.mean(ds[sel_ds],1) # mean across voxels
-            #data = pandas.DataFrame(ds[sel_ds].samples).T
-            #import pdb; pdb.set_trace()
-            plt.plot(mean_per_chunk, kind='line',
-                title='Run %s with conditions shifted by %d' %(chunk, shift_tp),
-                xlabel='acquisition number', ylabel='signal intensity')
-            #import pdb; pdb.set_trace()
-            #for onset, target in zip(evds[sel].sa.event_onsetidx,
-                                     #evds[sel].sa.targets):
-                ## import pdb;pdb.set_trace()
-                #plt.axvspan(
-                    #xmin = onset + shift_tp - .5,
-                    #xmax = onset + event_dur + shift_tp - .5,
-                    #facecolor = colors[target],
-                    #alpha=0.5)
-            #import pdb; pdb.set_trace()
-            for evno in range(len(evds_sel.sa.event_onsetidx)):
-                #if evno < len(evds_sel.sa.event_onsetidx)-1:
-                #if ev['chunks'] == chunk:
-                    #plt.axvspan(
-                        #xmin = ev['onset'] + shift_tp - .5,
-                        #xmax = ev['onset'] + ev['duration'] + shift_tp - .5,
-                        #facecolor = colors[ev['targets']],
-                        #alpha=0.5)
-                    #plt.axvline(x=ev['onset'] % chunk_len + shift_tp - .5)
-                #import pdb; pdb.set_trace()
-                xmin = evds_sel.sa.event_onsetidx[evno] % chunk_len + shift_tp
-                plt.axvspan(
-                    xmin = xmin + shift_tp - .5,
-                    xmax = xmin + evds_sel.sa.durations[evno] - .5,
-                    facecolor = colors[evds_sel.sa.targets[evno]],
-                    alpha=0.5)
-                plt.axvline(x=evds_sel.sa.event_onsetidx[evno] % chunk_len + shift_tp - .5)
-                        # xmin = ev['onset']%chunk_len + shift_tp,
-                        # xmax = ev['onset']%chunk_len + ev['duration'] + shift_tp,
-                        # facecolor = colors[ev['targets']],
-                        # alpha=0.5)
-
-        #plt.plot(mean_per_chunk.T)
-        plt.show()
-
-    def timecourse(self, evds):
+    def timecourse(self, evds, offset=0):
         """
         For each condition, extracts all timepoints as specified in the evds
         window, and averages across voxels
         """
-
         baseline = evds[evds.sa.targets == self.fix]
         conds = evds[evds.sa.targets != self.fix]
         if np.min(baseline.sa.durations) < np.max(conds.sa.durations):
@@ -806,7 +773,7 @@ class Analysis(object):
             thispsc = (evds_mean - baseline) / baseline * 100
             #time = np.arange(len(thispsc))*self.tr
             for pno, p in enumerate(thispsc):
-                results.append([cond, pno*self.tr, p])
+                results.append([cond, (pno+self.offset)*self.tr, p])
         return header, results
 
     def signal(self, evds, values):
@@ -908,7 +875,7 @@ class Analysis(object):
         evds_avg.samples -= np.repeat(mean, numt, 0)
 
         if len(evds_avg.UC) == 1:
-            raise Exception('You have only a single fMRI. You need more '
+            raise Exception('You have only a single fMRI run. You need more '
                             'than one to run a correlational analysis.')
 
         #results = np.zeros((nIter,numt,numt))
@@ -952,7 +919,7 @@ class Analysis(object):
               per chunk per condition (target).
             - Split data into a training set (about 75% of all values) and a testing
               set (about 25% of values), unless there are only two runs, in
-              which case is 50% training and 50% testing.
+              which case it is 50% training and 50% testing.
             - For each pair of conditions, train the classifier.
             - Then test on the average of the testing set, i.e., only on two
               samples. This trick usually boosts the performance (credit:
@@ -1011,7 +978,8 @@ class Analysis(object):
         header = ['iter', 'stim1.cond', 'stim2.cond', 'subj_resp']
         results = []
         for n in range(nIter):
-            print n,
+            sys.stdout.write('\r %d %%' % (100*n/float(nIter)))
+            sys.stdout.flush()
             np.random.shuffle(runtype)
             evds_avg.sa['runtype'] = np.repeat(runtype,numT)
 
@@ -1225,7 +1193,7 @@ class Analysis(object):
                   vlim=(0, None), slices=18, **mri_args)
 
 
-    def _plot_slice(self, volume_path, rois=None, coords=None, fig=None):
+    def _plot_slice(self, volume_path, title='', rois=None, coords=None, fig=None):
         """
         Plots a slice from the three sides.
 
@@ -1237,12 +1205,11 @@ class Analysis(object):
                 Path to the volume you want to plot.
 
         :Kwargs:
-            - mask (str, default: None)
-                Path to the ROI data. If it contains data (i.e., it comes from
-                the `data_roi` folder), the data is
-            - rois
+            - title (str, default: None)
+                Title for the subplot containting this slice
+            - rois (str, default: None)
+                Path to the ROI data.
             - coords (tuple of 3 or 4 ints; default: None)
-
             - fig (:class:`plot.Plot`; default: None)
                 Pass an existing plot if you want to plot in it.
 
@@ -1258,46 +1225,70 @@ class Analysis(object):
         if len(allvols) == 0:
             raise Exception('Volume not found at %s' % volume_path)
 
-        for vol in allvols:
-            data = self.get_mri_data(vol)
-            #import pdb; pdb.set_trace()
-            if coords is None or len(coords) <= 2:
-                coords = [m/2 for m in data.shape]  # middle
-            if data.ndim == 4:  # time volume
-                if len(coords) == 4:
-                    data = data[:,:,:,coords[3]]
-                else:
-                    data = data[:,:,:,0]
+        #for vol in allvols:
+        vol = allvols[0]
+        data = self.get_mri_data(vol)
+        #import pdb; pdb.set_trace()
+        if rois is not None:
+            mask = sum([self.get_mri_data(roi) for roi in rois])
+            coords = [int(np.mean(c)) for c in mask.nonzero()]
 
-            for i in range(3):
-                if i == 0:
-                    mf = data[coords[i]]
-                elif i == 1:
-                    mf = data[:, coords[i]]
-                else:
-                    mf = data[:, :, coords[i]]
-                ax = fig.next()
-                ax.imshow(mf.T, cmap='gray', origin='lower',
-                          interpolation='nearest')
-                ax.set_title('%s at %s' % (labels[i], coords[i]))
+        if coords is None or len(coords) <= 2:
+            coords = [m/2 for m in data.shape]  # middle
+        if data.ndim == 4:  # time volume
+            if len(coords) == 4:
+                data = data[:,:,:,coords[3]]
+            else:
+                data = data[:,:,:,0]
 
-                if rois is not None:
-                    #import pdb; pdb.set_trace()
-                    mask = sum([self.get_mri_data(roi) for roi in rois])
-                    mean_mask = np.mean(mask, i).T
-                    # make it uniform color
-                    mean_mask[np.nonzero(mean_mask)] = 1.  # ROI voxels are 1
-                    mean_mask[mean_mask==0] = np.nan  # non-ROI voxels are nan
-                    mask_rgba = np.zeros(mean_mask.shape + (4,))  # add transparency
-                    mask_rgba[:] = np.nan  # default is nan
-                    mask_rgba[:,:,0] = mean_mask  # make mask red
-                    mask_rgba[:,:,3] = mean_mask  # transparency should have nans
-                    ax.imshow(mask_rgba, alpha=.5,
-                            origin='lower', interpolation='nearest')
+        for i in range(3):
+            if i == 0:
+                mf = data[coords[i]]
+            elif i == 1:
+                mf = data[:, coords[i]]
+            else:
+                mf = data[:, :, coords[i]]
+            ax = fig.next()
+            ax.imshow(mf.T, cmap='gray', origin='lower',
+                      interpolation='nearest')
+
+            crosshair = [c for j,c in enumerate(coords) if j!=i]
+            ax.axvline(x=crosshair[0], color='g', alpha=.5)
+            ax.axhline(y=crosshair[1], color='g', alpha=.5)
+
+            ax.set_title('%s at %s' % (labels[i], coords[i]))
+
+            if rois is not None:
+                mean_mask = np.mean(mask, i).T
+                # make it uniform color
+                mean_mask[np.nonzero(mean_mask)] = 1.  # ROI voxels are 1
+                mean_mask[mean_mask==0] = np.nan  # non-ROI voxels are nan
+                mask_rgba = np.zeros(mean_mask.shape + (4,))  # add transparency
+                mask_rgba[:] = np.nan  # default is nan
+                mask_rgba[:,:,0] = mean_mask  # make mask red
+                mask_rgba[:,:,3] = mean_mask  # transparency should have nans
+                ax.imshow(mask_rgba, alpha=.5,
+                        origin='lower', interpolation='nearest')
+                # could also use the following:
+                #import matplotlib.patches as mpatches
+                #from matplotlib.collections import PatchCollection
+                #patches = []
+                #rect = mpatches.Rectangle((0,0), 5,5)
+                ##ax.add_patch(rect)
+                #patches.append(rect)
+                #collection = PatchCollection(patches, facecolor=(1,0,0,1), edgecolor='none')
+                #ax.add_collection(collection)
         if showplot:
             fig.show()
 
-    def plot_roi(self):
+    def _check_exists(self, filepatt):
+        files = glob.glob(filepatt)
+        if len(files) > 0:
+            return True
+        else:
+            return False
+
+    def plot_roi(self, roi):
         """
         Plots Regions of Interest (ROIs) on the functional data.
         """
@@ -1305,45 +1296,62 @@ class Analysis(object):
         if not isinstance(subjid, str):
             raise TypeError('subjid is supposed to be a string, '
                             'but got %s instead' % subjid)
-        allROIs = []
-        for ROIs in self.rois:
-            for ROI in ROIs[2]:
-                theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjid)
-                theseROIs.sort()
-                allROIs.extend(theseROIs)
-        if len(allROIs) == 0:
-            raise Exception('Could not find matching ROIS at %s' %
-                             (self.paths['rois'] %subjid))
-        else:
-            allROIs = (None, '-'.join([r[1] for r in self.rois]), allROIs)
+        #allROIs = []
+        #for ROIs in self.rois:
+            #for ROI in ROIs[2]:
+                #theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjid)
+                #theseROIs.sort()
+                #allROIs.extend(theseROIs)
+        #if len(allROIs) == 0:
+            #raise Exception('Could not find matching ROIS at %s' %
+                             #(self.paths['rois'] %subjid))
+        #else:
+            #allROIs = (None, '-'.join([r[1] for r in self.rois]), allROIs)
 
-        fig = plot.Plot(nrows=2, ncols=3, sharex=False, sharey=False)
-        try:
-            self._plot_slice(self.paths['data_struct']
-                     %subjid + 'wstruct*', fig=fig)
-        except:
-            pass
-        #try:
-        self._plot_slice(self.paths['data_fmri']
-                     %subjid + 'afunc_01_main.nii*', rois=allROIs[2], fig=fig) #swmean
-        #except:
-            #pass
+        filepatts = [{'name': 'Anatomical',
+                      'path': self.paths['data_struct'] %subjid + 'wstruct*'},
+                     {'name': 'Functional',
+                      'path': self.paths['data_fmri'] %subjid + 'func_*_main.nii*'},
+                     {'name': 'Slice timing corrected',
+                      'path': self.paths['data_fmri'] %subjid + 'afunc_*_main.nii*'},
+                     {'name': 'Motion corrected (realigned)',
+                      'path': self.paths['data_fmri'] %subjid + 'r*func_*_main.nii*'},
+                     {'name': 'Normalized',
+                      'path': self.paths['data_fmri'] %subjid + 'w*func_*_main.nii*'},
+                     {'name': 'Smoothed',
+                      'path': self.paths['data_fmri'] %subjid + 's*func_*_main.nii*'}
+                      ]
+        exist = [f for f in filepatts if self._check_exists(f['path'])]
+        #import pdb; pdb.set_trace()
+        sns.set(style='dark')
+        fig = plot.Plot(nrows=len(exist), ncols=3, sharex=False, sharey=False)
 
-        # plot ROI values
-        ds = self.extract_samples(subjid, self.info['runtype'],
-            allROIs, values=self.rp['values'])
-        if not self.rp['values'].startswith('raw'):
-            nans = np.sum(np.isnan(ds)) * 100. / ds.samples.size
-            title = '%d%% of ROI voxels are nans' % nans
-        else:
-            title = ''
-        ax = fig.next()
-        ax.hist(ds.samples.ravel(), label=title)
-        ax.set_xlabel('signal')
-        ax.set_ylabel('# of voxels (all timepoints)')
-        fig.hide_plots([-2,-1])
+        for f in exist:
+            self._plot_slice(f['path'], title=f['name'], fig=fig,
+                             rois=[self.paths['rois'] %subjid +roi])
+
+        ## plot ROI values
+        #ds = self.extract_samples(subjid, self.info['runtype'],
+            #allROIs, values=self.rp['values'])
+        #if not self.rp['values'].startswith('raw'):
+            #nans = np.sum(np.isnan(ds)) * 100. / ds.samples.size
+            #title = '%d%% of ROI voxels are nans' % nans
+        #else:
+            #title = ''
+        #ax = fig.next()
+        #ax.hist(ds.samples.ravel(), label=title)
+        #ax.set_xlabel('signal')
+        #ax.set_ylabel('# of voxels (all timepoints)')
+        #fig.hide_plots([-2,-1])
         fig.show()
 
+    def plot_ds(self, ds, chunk=0):
+        sns.set(style='dark')
+        plt.imshow(ds.samples[ds.sa.chunks == 0], interpolation='none', cmap='coolwarm')
+        plt.xlabel('voxels')
+        plt.ylabel('trials')
+        plt.title('run %d' % chunk)
+        plt.show()
 
     def _calc_nans(self):
         pass
@@ -1793,6 +1801,8 @@ def plot_timecourse(df, plt=None, cols='name', **kwargs):
     ax = plt.plot(agg, kind='line',
         xlabel='Time since trial onset, s',
         ylabel='Signal change, %', **kwargs)
+    if not isinstance(ax, (list, tuple)):
+        ax = [ax]
     for thisax in ax:
         thisax.axhline(linestyle='-', color='0.6')
     plt.tight_layout()
@@ -1895,6 +1905,118 @@ def plot_psc(*args, **kwargs):
     ax.legend(loc=0).set_visible(False)
     return ax
 
+def plot_vol(struct=None, func=None, rois=None, coords=None, paths=None):
+    """
+    Plots Regions of Interest (ROIs) on the functional data.
+    """
+    if paths is None:
+        paths = {'data_roi': '', 'data_struct': '', 'data_func': ''}
+
+    allROIs = []
+    for ROIs in self.rois:
+        for ROI in ROIs[2]:
+            theseROIs = glob.glob((self.paths['rois'] + ROI + '.nii*') %subjid)
+            theseROIs.sort()
+            allROIs.extend(theseROIs)
+    if len(allROIs) == 0:
+        raise Exception('Could not find matching ROIS at %s' %
+                         (self.paths['rois'] %subjid))
+    else:
+        allROIs = (None, '-'.join([r[1] for r in self.rois]), allROIs)
+
+    fig = plot.Plot(nrows=2, ncols=3, sharex=False, sharey=False)
+    try:
+        self._plot_slice(self.paths['data_struct']
+                 %subjid + 'wstruct*', fig=fig)
+    except:
+        pass
+    #try:
+    self._plot_slice(self.paths['data_fmri']
+                 %subjid + 'afunc_01_main.nii*', rois=allROIs[2], fig=fig) #swmean
+    #except:
+        #pass
+
+    # plot ROI values
+    ds = self.extract_samples(subjid, self.info['runtype'],
+        allROIs, values=self.rp['values'])
+    if not self.rp['values'].startswith('raw'):
+        nans = np.sum(np.isnan(ds)) * 100. / ds.samples.size
+        title = '%d%% of ROI voxels are nans' % nans
+    else:
+        title = ''
+    ax = fig.next()
+    ax.hist(ds.samples.ravel(), label=title)
+    ax.set_xlabel('signal')
+    ax.set_ylabel('# of voxels (all timepoints)')
+    fig.hide_plots([-2,-1])
+    fig.show()
+
+def plot_chunks(ds, evds, chunks=None, shift_tp=0, tr=None, fix=0):
+    events = mvpa2.suite.find_events(targets=ds.sa.targets, chunks=ds.sa.chunks)
+    # which chunks to display
+    if chunks == None: chunks = ds.UC
+
+    # get colors and assign them to targets
+    ncolors = len(ds.UT)
+    cmap = mpl.cm.get_cmap('Paired')
+    norm = mpl.colors.Normalize(0, 1)
+    z = np.linspace(0, 1, ncolors + 2)
+    z = z[1:-1]
+    colors_tmp = cmap(norm(z))
+    colors = {}
+    for target, color in zip(ds.UT,colors_tmp): colors[target] = color
+    colors[fix] = (1,1,1,.1)
+
+    chunk_len = ds.shape[0] / len(ds.UC)
+    event_dur = evds.a.mapper[1].boxlength
+
+    plt = plot.Plot(nrows=len(chunks))
+    for chunkno, chunk in enumerate(chunks):
+        sel = np.array([i==chunk for i in evds.sa.chunks])
+        evds_sel = evds[sel]
+        sel_ds = np.array([i==chunk for i in ds.sa.chunks])
+        mean_per_chunk = np.mean(ds[sel_ds],1) # mean across voxels
+
+        if shift_tp == 0:
+            title = 'Run %s' % chunk
+        else:
+            title = 'Run %s with conditions shifted by %d' %(chunk, shift_tp)
+
+        if tr is None:
+            time = np.arange(len(mean_per_chunk))
+            xlabel = 'acquisition number'
+        else:
+            time = np.arange(0, len(mean_per_chunk), tr)
+            xlabel = 'time (s)'
+
+        plt.plot(mean_per_chunk, kind='line',
+            title=title, xlabel=xlabel,
+            ylabel='signal intensity (absolute)')
+
+        legends = []
+        labels = []
+        for evno in range(len(evds_sel.sa.event_onsetidx)):
+            xmin = evds_sel.sa.event_onsetidx[evno] % chunk_len + shift_tp
+            label = evds_sel.sa.targets[evno]
+            h = plt.axvspan(
+                xmin = xmin + shift_tp - .5,
+                xmax = xmin + evds_sel.sa.durations[evno] - .5,
+                facecolor = colors[label],
+                alpha=0.5)
+            if label not in labels:
+                legends.append(h)
+                labels.append(label)
+
+            plt.axvline(x=evds_sel.sa.event_onsetidx[evno] % chunk_len + shift_tp - .5,
+                        color='black', alpha=.3)
+
+        order = np.argsort(labels)
+        labels = np.array(labels)[order]
+        legends = np.array(legends)[order]
+        plt.legend(legends, labels, frameon=True, framealpha=.5)
+
+    plt.show()
+
 
 """
 Other tools
@@ -1932,4 +2054,311 @@ def make_roi_pattern(rois):
         else:  # just a single ROI name provided
             ROIs.append((ROI, ROI, makePatt([ROI])))
     return ROIs
+
+def _img2data(src):
+    """Modified from mvpa2.datasets.mri to resolve
+    world-coordinates issue.
+    """
+    # break early of nothing has been given
+    # XXX feels a little strange to handle this so deep inside, but well...
+    if src is None:
+        return None
+
+    # let's try whether we can get it done with nibabel
+    if isinstance(src, basestring):
+        # filename
+        img = nb.load(src)
+    else:
+        # assume this is an image already
+        img = src
+    if isinstance(img, nb.spatialimages.SpatialImage):
+        header = img.get_header()
+        data = get_data_world(img)
+        # AFNI stuff omitted as we only work with SPM
+        # ...
+        # nibabel image, dissect and return pieces
+        return mvpa2.datasets.mri._get_txyz_shaped(data), header, img.__class__
+    else:
+        # no clue what it is
+        return None
+
+def get_data_world(img):
+    data = img.get_data()
+    ori = nb.io_orientation(img.get_affine())
+    data = nb.apply_orientation(data, ori)
+    return data
+
+
+class GenHRF(object):
+
+    def __init__(self,
+                 paths,
+                 #info=None,
+                 #rp=None,
+                 subjid='subj_01'
+                 ##roi_coords=np.s_[50:60, 55:60, 14:18]
+                 ):
+        #if paths is None:
+            #self.paths = PATHS
+        #else:
+        self.paths = paths
+        self.subjid = subjid
+        #nruns = 8  # will simulate 8 runs
+        #tr = 2  # TR in sec
+        ##ntr = 60*5/tr  # simulate 5 min runs
+        #blocklen = 4  # TRs
+
+        ##conds = OrderedDict([()])
+        #nconds = 4
+        #labels = ['fixation', 'cond1', 'cond2', 'cond3', 'cond4']
+        #weights = [0, 1, 2, 1.5, .5]  # how much each condition is preferred (relatively)
+        #dur = tr
+
+    def gen_test_data(self,
+                      nruns=8,
+                      tr=2,
+                      blocklen=4,
+                      nconds=4,
+                      include_fix=True,
+                      labels=None,
+                      weights=None,
+                      roi_coords=np.s_[60:64,17:21,10:18]  # right LO
+                      ):
+        """
+        Generate some fMRI data for testing.
+
+        Produces a simulated output of a blocked fMRI study, complete
+        with behavioral and fMRI data, and a single ROI defined.
+
+        :Kwargs:
+            - nruns (int, default: 8)
+                How many functional runs to generate.
+            - tr (int, default: 2)
+                Time of repetition of slice acquisitions (in seconds).
+            - blocklen (int, default: 4)
+                Length of a block of stimulus presentation in terms of
+                acquisitions. In terms of seconds, that would be
+                ``blocklen`` * ``tr``.
+            - nconds (int, default: 4)
+                Number of conditions.
+            - include_fix (bool , default: True)
+                Whether you want to have a fixation block.
+            - labels (list of str, default: None)
+                Labels for each condition. If None, will generate labels
+                like ``cond01``.
+            - weights (list of float, default: None)
+                Weights for each condition, reflecting the mean signal
+                in an ROI. If None, will give equal weights for all
+                condititions.
+            - roi_coords (numpy slice, default: np.s_[60:64,17:21,10:18])
+                Coordinates in voxel space of the generated ROI.
+                By default, the ROI corresponds to the right lateral
+                occipital area (LO).
+        :Returns:
+            Generates a lot of fMRI data.
+        """
+        if weights is None:
+            if include_fix:
+                weights = np.ones(nconds+1) #np.arange(nconds+1)
+            else:
+                weights = np.ones(nconds) #np.arange(1, nconds+1)
+        if labels is None:
+            labels = ['cond%d' % i for i in range(nconds)]
+            if include_fix:
+                labels = ['fix'] + labels
+
+        if len(weights) != len(labels):
+            raise Exception
+
+        exp.try_makedirs(self.paths['data_fmri'] % self.subjid)
+        exp.try_makedirs(self.paths['data_behav'] % self.subjid)
+        exp.try_makedirs(self.paths['rois'] % self.subjid)
+        #nmeasr = len(conds)*blocklen
+        self.prepare_roi(roi_coords)
+        print 'Generating fMRI data...',
+        for runno in range(nruns):
+            print runno+1,
+            df = self._gen_behav_data(labels, runno, blocklen=4)
+
+            weights_full = (df.cond>0) * np.take(weights, df.cond)
+            self._gen_fmri_data(df, weights_full, roi_coords, runno, blocklen)
+
+    def _gen_behav_data(self, labels, runno=1, blocklen=4):
+        nconds = len(labels)
+        if nconds % 2 == 1:  # guess you've got a fixation
+            nconds -= 1
+        paras = exp.make_para(n=nconds)
+        para = paras[runno%nconds].tolist()
+        conds = np.array(para[:-1] * 3 + [0])
+        conds = np.repeat(conds, blocklen)
+
+        df = pandas.DataFrame({'subjid': self.subjid,
+                               'runtype': 'main',
+                               'runno': runno+1,
+                               'cond':conds,
+                               'dur': [2.]*len(conds),
+                               'condname': np.take(labels,conds)})
+        df.to_csv(self.paths['data_behav'] % self.subjid + 'data_%02d_main.csv' % (runno+1))
+        return df
+
+    def prepare_roi(self, roi_coords):
+        mask = nb.load('slice_red.nii')
+        mask_data = get_data_world(mask)
+        mask_data[:,:,:] = 0
+        mask_data[roi_coords] = 1
+        #mask_data = mask_data.squeeze()
+        #mask_data[:,:,:] = mask_data[::-1]
+        nb.save(mask, self.paths['rois'] % self.subjid + 'rh_LO.nii')
+        #r = nb.load(self.paths['rois'] % self.subjid + 'roi.nii')
+        #d = r.get_data()
+        #print np.sum(d>0)
+
+    #def prepare_vol(self, paths, nmeasr):
+        ## apply a weight for each stimulus condition
+        ## fixation gets a zero weight
+        #weights_full = (conds>0) * np.take(weights, conds)
+        #nmeasr = len(conds)*blocklen
+        #coords = np.s_[50:60, 55:60, 14:18, 0:nmeasr]  # an ROI of a shape of a box + time
+        ## concat measurements for a single timepoint
+
+    def _gen_fmri_data(self, df, weights, roi_coords, runno, blocklen):
+        nmeasr = len(df)
+        # make a time series of the slices
+        nim = nb.concat_images(['slice_red.nii']*nmeasr)
+        data = nim.get_data()
+        ori = nb.io_orientation(nim.get_affine())
+        data = nb.apply_orientation(data, ori)
+
+        #import pdb; pdb.set_trace()
+
+        # make an empty ROI
+        coords = roi_coords + (np.s_[0:len(df)],)
+        #import pdb; pdb.set_trace()
+        #roi = np.zeros(data.shape)[coords]
+        roi = np.zeros([c.stop - c.start for c in coords])
+        #print roi.shape
+
+        # compute response in a single voxel
+        resp = self.hrfs(weights, blocklen) #* weights_full
+        #plt.plot(resp); plt.show()
+        resp = np.tile(resp, roi.shape[:3] + (1,))
+
+        nvox = roi[:,:,:,0].size
+        vox_sel = np.zeros(roi.shape)
+        pos = [0]*(nvox-1) + [10] # np.random.random(nvox)
+        cov = np.eye(nvox)
+        for cond in np.unique(df.cond):
+            np.random.shuffle(pos)
+            #cov = np.diag(pos)
+            #cov = (cov +cov.T) / 2  # make symmetric
+            # "1" is here only to prevent warnings from Numpy 1.8
+            sel = np.random.multivariate_normal(pos, cov, 1)
+            sel[sel<0] = 0
+            sel = sel.reshape(roi.shape[:3])
+            inds = np.arange(len(df))
+            inds = inds[np.array(df.cond==cond)]
+            for ind in inds:
+                vox_sel[:,:,:,ind] = sel
+
+        #vox_sel = np.dstack(vox_sels)
+        #import pdb; pdb.set_trace()
+
+        #vox_sel = np.random.random(roi.shape[:3])  # how selective the voxel is
+        #vox_sel = np.tile(vox_sel, (roi.shape[-1], 1,1,1))
+        #vox_sel = vox_sel.transpose((1,2,3,0))
+        roi = 10 * resp * vox_sel * np.random.random(roi.shape) + 1000
+        #plt.imshow(roi[:,0,0,:]);plt.show()
+        #import pdb; pdb.set_trace()
+        data[coords] = roi
+
+        nb.save(nim, self.paths['data_fmri'] % self.subjid + 'swafunc_%02d_main.nii' % (runno+1))  # export this to a NIfTI file
+
+    def hrfs(self, weights, blocklen):
+        hrf = self.spm_hrf_compat(np.arange(0,24,2), peak_delay=10, peak_disp=2)
+        hrf_full = np.zeros(len(weights))
+        hrf_full[:len(hrf)] = hrf
+        #plt.plot(hrf); plt.show()
+        #import pdb; pdb.set_trace()
+        full_resp = np.zeros(len(weights))
+        #full_resp[:len(hrf)] = hrf
+
+        for offset in range(0, len(weights), blocklen):
+            #toend = len(full_resp) - off
+            full_resp += np.roll(hrf_full, offset) * weights[offset]
+        return full_resp
+
+    #def run(self):
+
+
+        #for runno in range(nruns):
+            #self.get_behav_df()
+            #self._gen_fmri_data(runno)
+
+    def spm_hrf_compat(self, t,
+                       peak_delay=6,
+                       under_delay=16,
+                       peak_disp=1,
+                       under_disp=1,
+                       p_u_ratio = 6,
+                       normalize=True,
+                      ):
+        """ SPM HRF function from sum of two gamma PDFs
+
+        This function is designed to be partially compatible with SPMs `spm_hrf.m`
+        function.
+
+        The SPN HRF is a *peak* gamma PDF (with location `peak_delay` and dispersion
+        `peak_disp`), minus an *undershoot* gamma PDF (with location `under_delay`
+        and dispersion `under_disp`, and divided by the `p_u_ratio`).
+
+        From: hrf_estimation package (https://github.com/fabianp/hrf_estimation/blob/master/hrf_estimation/hrf.py)
+        which used nipy.modalities.fmri.hemodynamic_models
+        https://github.com/nipy/nipy/blob/master/nipy/modalities/fmri/hemodynamic_models.py
+
+        Parameters
+        ----------
+        t : array-like
+            vector of times at which to sample HRF
+        peak_delay : float, optional
+            delay of peak
+        peak_disp : float, optional
+            width (dispersion) of peak
+        under_delay : float, optional
+            delay of undershoot
+        under_disp : float, optional
+            width (dispersion) of undershoot
+        p_u_ratio : float, optional
+            peak to undershoot ratio.  Undershoot divided by this value before
+            subtracting from peak.
+        normalize : {True, False}, optional
+            If True, divide HRF values by their sum before returning.  SPM does this
+            by default.
+
+        Returns
+        -------
+        hrf : array
+            vector length ``len(t)`` of samples from HRF at times `t`
+
+        Notes
+        -----
+        See ``spm_hrf.m`` in the SPM distribution.
+        """
+        if len([v for v in [peak_delay, peak_disp, under_delay, under_disp]
+                if v <= 0]):
+            raise ValueError("delays and dispersions must be > 0")
+        # gamma.pdf only defined for t > 0
+        hrf = np.zeros(t.shape, dtype=np.float)
+        pos_t = t[t > 0]
+        peak = scipy.stats.gamma.pdf(pos_t,
+                             peak_delay / peak_disp,
+                             loc=0,
+                             scale=peak_disp)
+        undershoot = scipy.stats.gamma.pdf(pos_t,
+                                   under_delay / under_disp,
+                                   loc=0,
+                                   scale=under_disp)
+        hrf[t > 0] = peak - undershoot / p_u_ratio
+        if not normalize:
+            return hrf
+        return hrf / np.max(hrf)
 
