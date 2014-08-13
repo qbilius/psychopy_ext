@@ -1,4 +1,4 @@
-Please refer to the `online documentation <http://qbilius.github.io/psychopy_ext/index.html>`_
+Please refer to the `online documentation <http://psychopy_ext.klab.lt>`_
 for a more in depth explanation how to use the package.
 
 What is it?
@@ -27,13 +27,13 @@ Installation
 
     pip install psychopy_ext
 
-(`no success? <http://qbilius.github.io/psychopy_ext/faq.html#pip-failing>`_)
+(`no success? <http://psychopy_ext.klab.lt/intro/faq.html#pip-failing>`_)
 
 
 Quick start
 ===========
 
-First, find demo files in ``site-packages`` (`where is it? <http://qbilius.github.io/psychopy_ext/faq.html#where-is-demo>`_). Copy them to your home folder or another location of your choice (but where you have write permission). Now check the demos:
+First, find demo files in ``site-packages`` (`where is it? <http://psychopy_ext.klab.lt/intro/faq.html#where-is-demo>`_). Copy them to your home folder or another location of your choice (but where you have write permission). Now check the demos:
 
 - For people who use a keyboard:
 
@@ -93,15 +93,13 @@ Dependencies
 * `PsychoPy 1.79.01+ <http://sourceforge.net/projects/psychpy/files/>`_
 * `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
 * `docutils <https://pypi.python.org/pypi/docutils>`_ (technically it is not mandatory but it will allow rendering docstrings on screen by the ``exp`` class)
-* `svgwrite <https://pypi.python.org/pypi/svgwrite>`_
-* `seaborn 0.3+ <https://pypi.python.org/pypi/seaborn>`_
+* `svgwrite <https://pypi.python.org/pypi/svgwrite>`_ (it's used to export stimuli to SVG format, so it's also not super mandatory but given its pip-installable, why not?)
 
 *Optional*
 
-* `PyMVPA 2.3+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class)
-* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class)
-
-(Note: if there isn't a binary package for your Windows platform and your Python version, try `Christoph Gohlke's Unofficial Binaries <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
+* `seaborn 0.3+ <https://pypi.python.org/pypi/seaborn>`_ (pretty plots, *highly recommended*)
+* `PyMVPA 2.3+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class; `Windows version for Python 2.7 here <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
+* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class; install with ``pip install nibabel``)
 
 
 License

@@ -1,6 +1,7 @@
+.. _api:
+
 .. currentmodule:: psychopy_ext
 
-.. _api:
 
 API reference
 =============
@@ -59,7 +60,7 @@ Task
    Task.last_keypress
    Task.post_trial
    Task.get_behav_df
-   Task.quit   
+   Task.quit
 
 Helper classes
 ~~~~~~~~~~~~~~
@@ -70,6 +71,8 @@ Helper classes
    Event
    ThickShapeStim
    GroupStim
+   MouseRespGroup
+   SVG
    OrderedDict
 
 Helper functions
@@ -87,9 +90,10 @@ Helper functions
    invert_dict
    get_mon_sizes
    get_para_no
-   get_unique_trials   
+   get_unique_trials
    latin_square
    make_para
+   weighted_choice
 
 
 --------------------
@@ -132,13 +136,22 @@ Analysis
    Analysis.correlation
    Analysis.svm
    Analysis.plot_roi
+   Analysis.plot_ds
    Analysis.read_csvs
+
+Helper classes
+~~~~~~~~~~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   GenHRF
 
 Helper functions
 ~~~~~~~~~~~~~~~~
 .. autosummary::
    :toctree: generated/
 
+   plot_chunks
    plot_timecourse
    make_roi_pattern
 
@@ -258,14 +271,14 @@ Plotting
    Plot.mds_plot
    Plot.bean_plot
    Plot.show
-   
+
    Plot.get_ax
    Plot.next
    Plot.hide_plots
    Plot.display_legend
    Plot.set_legend_pos
    Plot.draw_sig
-   
+
 
 Helper functions
 ~~~~~~~~~~~~~~~~
@@ -297,4 +310,4 @@ User interface
    Control.run_builtin
    Control.cmd
    Control.app
-   
+
