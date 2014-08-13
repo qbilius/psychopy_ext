@@ -3,6 +3,8 @@ import numpy as np
 
 sys.path.insert(0, '../../')
 from psychopy_ext import stats, plot
+import seaborn
+seaborn.rcmod.set()  # somehow it doesn't work without it here
 
 n = 8
 nsampl = 10
@@ -57,6 +59,5 @@ plt5.plot(agg, kind='matrix')
             #cols='levels', yerr='subjID', values='rt')
 #agg = stats.aggregate(df, subplots='subplots', rows=['cond', 'name'],
             #cols='levels', yerr='subjID', values='rt')
-
 
 plt5.show()
