@@ -15,9 +15,9 @@ Simple usage::
     ims = glob.glob('Example_set/*.jpg')  # get all jpg images
     hmax = models.HMAX()
     # if you want to see how similar your images are to each other
-    hmax.compare(ims) 
+    hmax.compare(ims)
     # or to simply get the output and use it further
-    out = hmax.run(ims)  
+    out = hmax.run(ims)
 """
 
 import sys
@@ -183,7 +183,6 @@ class Model(object):
         print
         print 'Dissimilarity across stimuli'
         print '0: similar, 1: dissimilar'
-        print dis
 
         ax = plt.subplot(111)
         matrix = ax.imshow(dis, interpolation='none')
@@ -193,6 +192,7 @@ class Model(object):
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(matrix, cax=cax)
         plt.show()
+        return dis
 
 
 class Pixelwise(Model):
@@ -251,7 +251,7 @@ class Zoccolan(Model):
     def run(self, ims):
         ims = self.input2array(ims)
         output = [self.test(im) for im in ims]
-             
+
     def test(self, im):
         field = im.shape
         num_tiles = (15,15)#[field[0]/10.,field[0]/10.]
