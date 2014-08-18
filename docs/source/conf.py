@@ -102,7 +102,7 @@ copyright = u'2010-2014, Jonas Kubilius'
 # The short X.Y version.
 version = '0.5'
 # The full version, including alpha/beta/rc tags.
-release = '0.5.3'
+release = '0.5.4'
 
 # Generate summaries
 autosummary_generate = True

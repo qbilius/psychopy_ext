@@ -1,3 +1,8 @@
+v0.5.4
+------
+* IMPROVED: Rewrote plot and stats modules to better integrate with pandas' desire to reduce DataFrames into Series whenever possible. So the resulting code should be more robust now. Moreover, the information about splitting of data into rows and cols is now kept separately in the ``_splits`` variable so that the names of rows and columns are not messed up anymore. Downside: you have to manually assign this attribute to the DataFrame after most operations with the DataFrame.
+* IMPROVED: The default fixation spot is now without the grey cross that was occluding background before.
+
 v0.5.3
 ------
 * NEW: Generate synthetic fMRI data using ``fmri.GenHRF()``.
