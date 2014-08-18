@@ -25,7 +25,7 @@ class TestPlot(unittest.TestCase):
         #df['rt'] = range(k)*36
         df['accuracy'] = ['correct','correct','incorrect','incorrect']*k*6
         return df
-        
+
     def get_df_line(self, n=N, nsampl=NSAMPL):
         k = n * nsampl
         df = stats.df_fromdict(
@@ -80,7 +80,7 @@ class TestPlot(unittest.TestCase):
         for a in agg:
             for kind in kinds:
                 plot.Plot().plot(a, kind=kind)
-                
+
         df_line = self.get_df_line()
         agg = stats.aggregate(df_line, subplots='subplots', rows='cond',
             cols='levels', yerr='subjid', values='rt')

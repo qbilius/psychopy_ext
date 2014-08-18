@@ -333,34 +333,38 @@ class Plot(object):
             values_name = ''
         if len(self.get_fignums()) == 0:
             self.draw()
-        if not isinstance(agg, pandas.DataFrame):
-            agg = pandas.DataFrame(agg)
-            if agg.shape[1] == 1:  # Series
-                agg = pandas.DataFrame(agg).T
-        else:
-            agg = pandas.DataFrame(agg)
+        #if not isinstance(agg, pandas.DataFrame):
+            #agg = pandas.DataFrame(agg)
+            #if agg.shape[1] == 1:  # Series
+                #agg = pandas.DataFrame(agg).T
+        #else:
+            #agg = pandas.DataFrame(agg)
         axes = []
 
         if subplots_order is not None:
             sbp = subplots_order
+        elif 'subplots' in agg._splits and subplots!=False:
+            sbp = agg.columns.get_level_values(agg._splits['subplots'][0]).unique()
         else:
-            try:
-                s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
-            except:
-                s_idx = None
+            sbp = None
 
-            if s_idx is not None:  # subplots implicit in agg
-                try:
-                    sbp = agg.columns.get_level_values(s_idx[0]).unique() #agg.columns.levels[s_idx[0]]
-                except:
-                    if len(s_idx) > 0:
-                        sbp = agg.columns
-                    else:
-                        sbp = None
-            elif subplots:  # get subplots from the top level column
-                sbp = agg.columns.get_level_values(0).unique() #agg.columns.levels[0]
-            else:
-                sbp = None
+            #try:
+                #s_idx = [s for s,n in enumerate(agg.columns.names) if n.startswith('subplots.')]
+            #except:
+                #s_idx = None
+
+            #if s_idx is not None:  # subplots implicit in agg
+                #try:
+                    #sbp = agg.columns.get_level_values(s_idx[0]).unique() #agg.columns.levels[s_idx[0]]
+                #except:
+                    #if len(s_idx) > 0:
+                        #sbp = agg.columns
+                    #else:
+                        #sbp = None
+            #elif subplots:  # get subplots from the top level column
+                #sbp = agg.columns.get_level_values(0).unique() #agg.columns.levels[0]
+            #else:
+                #sbp = None
         #import pdb; pdb.set_trace()
         if sbp is None:
             axes = self._plot_ax(agg, kind=kind, errkind=errkind, within=within, **kwargs)
@@ -408,9 +412,9 @@ class Plot(object):
                     #title = kwargs['title']
                     #if title is None:
                         #title = subname
-
-
-                ax = self._plot_ax(agg[subname], kind=kind, errkind=errkind,
+                split = agg[subname]
+                split._splits = agg._splits
+                ax = self._plot_ax(split, kind=kind, errkind=errkind,
                                    within=within, **kwargs)
                 #ax, xmin, xmax, ymin, ymax = self._label_ax(agg[subname],
                                         #mean, p_yerr, ax, kind=kind,
@@ -619,22 +623,22 @@ class Plot(object):
                  within=None, **kwargs):
         if ax is None:
             ax = self.next()
-        #import pdb; pdb.set_trace()
+        # compute means -- so that's a Series
         mean, p_yerr = stats.confidence(agg, kind=errkind, within=within)
 
-        if mean.index.nlevels == 1:  # oops, nothing to unstack
-            mean = pandas.DataFrame(mean)#, columns=mean.columns, index=mean.index)
-            p_yerr = pandas.DataFrame(p_yerr)#, columns=p_yerr.columns, index=p_yerr.index)
-            try:  # rows are cols?
-                if mean.index.names[0].startswith('cols.'):
-                    mean = mean.T
-                    p_yerr = p_yerr.T
-            except:
-                pass  # assume rows are rows
-        else:
-            # make columns which will turn into legend entries
-            mean = _unstack_levels(mean, 'cols')
-            p_yerr = _unstack_levels(p_yerr, 'cols')
+        # unstack data into rows and cols, if possible
+        if 'rows' in agg._splits and 'cols' in agg._splits:
+            mean = stats.unstack(mean, level=agg._splits['cols'])
+            p_yerr = stats.unstack(p_yerr, level=agg._splits['cols'])
+
+        if isinstance(mean, pandas.Series):
+            if 'rows' in agg._splits:
+                mean = pandas.DataFrame(mean).T
+                p_yerr = pandas.DataFrame(p_yerr).T
+            else:
+                mean = pandas.DataFrame(mean)
+                p_yerr = pandas.DataFrame(p_yerr)
+
         if isinstance(agg, pandas.Series) and kind=='bean':
             kind = 'bar'
             print 'WARNING: Beanplot not available for a single measurement'
@@ -772,9 +776,12 @@ class Plot(object):
         r = mean.max().max() - mean.min().min()
         ebars = np.where(np.isnan(p_yerr), 0, p_yerr)
         if np.all(ebars == 0):  # basically no error bars
-            ebars = r/3.  # so give some space above the bars
-        ymin = (mean - ebars).min().min()
-        ymax = (mean + ebars).max().max()
+            ymin = mean.min().min()
+            ymax = (mean + r/3.).max().max()  # give some space above the bars
+        else:
+            ymin = (mean - ebars).min().min()
+            ymax = (mean + ebars).max().max()
+
         if kind == 'bar':  # for barplots, 0 must be included
             if ymin > 0:
                 ymin = 0
@@ -1023,6 +1030,7 @@ class Plot(object):
 
         """
         data = pandas.DataFrame(data)
+
         if yerr is None:
             yerr = np.empty(data.shape)
             yerr = yerr.reshape(data.shape)  # force this shape
@@ -1202,14 +1210,7 @@ class Plot(object):
         ax.set_yticks(np.arange(data.shape[0]))
         ax.grid(False, which="major")
         ax.grid(True, which="minor", linestyle="-")
-
-        self.axes[self.subplotno].cax.colorbar(im)
-
-
-        #divider = make_axes_locatable(ax)
-        #cax = divider.append_axes("right", size="5%", pad=0.05)
-        #self.colorbar(im, cax=cax)
-        #self.colorbar(im, cax = self.axes.cbar_axes[0])
+        self.axes.cbar_axes[self.subplotno].colorbar(im)
         return ax
 
     def add_inner_title(self, ax, title, loc=2, size=None, **kwargs):
@@ -1570,7 +1571,10 @@ def _unstack_levels(data, pref):
             for lev in levels:
                 order = data.index.get_level_values(lev).unique()
                 unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
-            unstacked.columns.names = clevs
+            try:
+                unstacked.columns.names = clevs
+            except:
+                import pdb; pdb.set_trace()
             if rlevs is not None and len(rlevs) > 0:
                 try:
                     unstacked.index.names = rlevs

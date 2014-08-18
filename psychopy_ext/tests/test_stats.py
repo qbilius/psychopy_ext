@@ -57,11 +57,11 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*12
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','rows.name','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','cond','name','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         data = np.genfromtxt('psychopy_ext/tests/agg.csv', delimiter=',')
         test_agg = pandas.DataFrame(data, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate(self):
@@ -78,10 +78,10 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*12
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','rows.name','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','cond','name','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*36, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_nosubplots(self):
@@ -97,10 +97,10 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*6
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['rows.cond','rows.name','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['cond','name','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*18, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_onerow(self):
@@ -116,10 +116,10 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*6
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','cond','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*12, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_nocols(self):
@@ -135,10 +135,10 @@ class TestAgg(unittest.TestCase):
             ['one', 'two', 'three'] * 4
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','rows.name'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','cond','name'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*12, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_norows(self):
@@ -153,10 +153,10 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*2
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*6, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
     def test_aggregate_noyerr(self):
@@ -173,7 +173,7 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*12
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','rows.name','cols.levels'])
+            names=['subplots','cond','name','levels'])
         test_agg = pandas.DataFrame([col]*36, index=index).T
         test_agg = test_agg.rename(index={0: 'rt'})
         self.assertEqual(test_agg.to_string(), agg.to_string())
@@ -192,10 +192,10 @@ class TestAgg(unittest.TestCase):
             ['small','medium','large']*12
             ])
         index = pandas.MultiIndex.from_tuples(tuples,
-            names=['subplots.subplots','rows.cond','rows.name','cols.levels'])
-        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='yerr.subjID')
+            names=['subplots','cond','name','levels'])
+        cols = pandas.Index(['subj%d' % (i+1) for i in range(N)], names='subjID')
         test_agg = pandas.DataFrame([col]*36, index=index, columns=cols).T
-        test_agg.index.names = ['yerr.subjID']  # yeah...
+        test_agg.index.names = ['subjID']  # yeah...
         self.assertEqual(test_agg.to_string(), agg.to_string())
 
 if __name__ == '__main__':

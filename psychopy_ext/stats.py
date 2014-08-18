@@ -25,7 +25,7 @@ except:
 
 def aggregate(df, rows=None, cols=None, values=None,
     subplots=None, yerr=None, aggfunc='mean', unstacked=False,
-    order='natural', add_names=True):
+    order='natural'):
     """
     Aggregates data over specified columns.
 
@@ -74,19 +74,38 @@ def aggregate(df, rows=None, cols=None, values=None,
         :func:`accuracy`
     """
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
-    if isinstance(rows, str) or rows is None:
+    _splits = {}
+
+    if isinstance(subplots, str):
+        subplots = [subplots]
+        _splits['subplots'] = subplots
+    elif subplots is None:
+        subplots = []
+
+    if isinstance(rows, str):
         rows = [rows]
-    if isinstance(cols, str) or cols is None:
+        _splits['rows'] = rows
+    elif rows is None:
+        rows = []
+
+    if isinstance(cols, str):
         cols = [cols]
-    if isinstance(yerr, str) or yerr is None:
+        _splits['cols'] = cols
+    elif cols is None:
+        cols = []
+
+    if isinstance(yerr, str):
         yerr = [yerr]
+        _splits['yerr'] = yerr
+    elif yerr is None:
+        yerr = []
+
     if values is None:
         raise Exception('You must provide the name(s) of the column(s) that '
                         'is/are aggregated.')
-    if isinstance(subplots, str) or subplots is None:
-        subplots = [subplots]
+
     allconds = subplots + rows + cols + yerr
-    allconds = [c for c in allconds if c is not None]
+    #allconds = [c for c in allconds if c is not None]
 
     if isinstance(aggfunc, str):
         try:
@@ -96,24 +115,11 @@ def aggregate(df, rows=None, cols=None, values=None,
 
     agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
-    groups = [('subplots', subplots), ('rows', rows), ('cols', cols),
-              ('yerr', yerr)]
-    index_names = [i for i in agg.index.names]  # since it's FrozenList
-    g = 0
-    for group in groups:
-        for item in group[1]:
-            if item is not None:
-                index_names[g] = group[0] + '.' + item
-                g += 1
-    agg.index.names = index_names
-
-    if yerr[0] is not None:  # if yerr present, yerr is in rows, the rest in cols
+    if len(yerr) > 0:  # if yerr present, yerr is in rows, the rest in cols
         if isinstance(values, list):
             agg = agg[values[0]]
         for yr in yerr:
-            agg = unstack(agg, level='yerr.'+yr)
-        # seems like a pandas bug here for not naming levels properly
-        agg.columns.names = ['yerr.'+yr for yr in yerr]
+            agg = unstack(agg, level=yr)
         agg = agg.T
     else:
         agg = pandas.DataFrame(agg).T
@@ -124,15 +130,14 @@ def aggregate(df, rows=None, cols=None, values=None,
     else:
         order_full = dict([(col, order) for col in agg.columns.names])
 
-    #if order != 'sorted':
-    #names = agg.columns.names  # store it; will need it later
     for level, level_ord in order_full.items():
         if isinstance(level_ord, str):
-            col = '.'.join(level.split('.')[1:])
+            #col = '.'.join(level.split('.')[1:])
             if level_ord == 'natural':
-                thisord = df[col].unique()  # preserves order
+                #import pdb; pdb.set_trace()
+                thisord = df[level].unique()  # preserves order
             elif level_ord == 'sorted':
-                thisord = np.unique(df[col])  # doesn't preserve order
+                thisord = np.unique(df[level])  # doesn't preserve order
             else:
                 raise Exception('Ordering %s not recognized.' % level_ord)
         else:
@@ -140,24 +145,17 @@ def aggregate(df, rows=None, cols=None, values=None,
         order_full[level] = thisord
 
     agg = reorder(agg, order=order_full)
-    #agg.columns.names = names  # buggy pandas
 
-    # rows should become rows, and cols should be cols if so desired
-    if yerr[0] is None and unstacked:
-        agg = plot._stack_levels(agg, 'rows.')
-
-    if not add_names:
-        names = []
-        for name in agg.columns.names:
-            spl = name.split('.')
-            if spl[0] in ['cols','rows','subplots']:
-                names.append('.'.join(spl[1:]))
-        agg.columns.names = names
+    ## rows should become rows, and cols should be cols if so desired
+    #if yerr[0] is None and unstacked:
+        #for row in splits['rows']:
+            #agg = unstack(agg, split='rows')
 
     if isinstance(values, list):
         agg.names = values[0]
     else:
         agg.names = values
+    agg._splits = _splits
     return agg
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
@@ -200,6 +198,7 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
     agg = agg_corr.astype(float) / agg_all
     agg.names = values
+    agg._splits = agg_corr._splits
     return agg
 
 def confidence(agg, kind='sem', within=None, alpha=.05, nsamples=None,
@@ -325,22 +324,10 @@ def reorder(agg, order, level=None, dim='columns'):
     :Returns:
         Reordered pandas.DataFrame
     """
-    if dim in ['index', 'rows']:
+    if dim in ['index', 'rows'] or isinstance(agg, pandas.Series):
         orig_idx = agg.index
     else:
         orig_idx = agg.columns
-
-    #if not isinstance(order, dict):
-        ##if level is None:
-            ##raise Exception('When "order" is a list, a "level" must be'
-                            ##'passed as well.')
-        ##else:
-        #try:
-            #orderframe = pandas.DataFrame(orig_idx.tolist())
-            #levelno = orig_idx.names.index(level)
-            #order = {level: orderframe[levelno].unique()}
-        #except: # no levels
-            #order = {level: orig_idx.unique()}
 
     if not isinstance(order, dict):
         order = {level: order}
@@ -370,7 +357,7 @@ def reorder(agg, order, level=None, dim='columns'):
     ind_sort.sort(columns=ind_sort.columns.tolist(), inplace=True)
     multidx = ind_sort.index
 
-    if dim in ['index', 'rows']:
+    if dim in ['index', 'rows'] or isinstance(agg, pandas.Series):
         agg_new = agg.reindex(index=multidx)
     else:
         agg_new = agg.reindex(columns=multidx)
@@ -381,21 +368,17 @@ def unstack(data, level=-1):
     """
     Unstacking that preserves label order, unlike in pandas.
     """
-    if not isinstance(level, (list, tuple)):
+    if isinstance(level, (str, int)):
         levels = [level]
     else:
         levels = level
 
-    unstacked = data.unstack(level=level)
-
+    unstacked = data.copy()
     # reorder the newly unstacked levels
-    for level in levels:
-        order = data.index.get_level_values(level).unique()
-        unstacked = reorder(unstacked, order=order, level=level, dim='columns')
-
-    #for level in levels:
-        #order = data.columns.get_level_values(lev).unique()
-        #unstacked = stats.reorder(unstacked, order=order, level=lev, dim='columns')
+    for lev in levels:
+        order = data.index.get_level_values(lev).unique()
+        unstacked = unstacked.unstack(level=lev)
+        unstacked = reorder(unstacked, order=order, level=lev, dim='columns')
 
     return unstacked
 
@@ -408,11 +391,12 @@ def stack(data, level=-1):
     else:
         levels = level
 
-    stacked = data.stack(level=level)
+    stacked = data.copy()
 
-    for level in levels:
-        order = data.columns.get_level_values(level).unique()
-        stacked = reorder(stacked, order=order, level=level, dim='index')
+    for lev in levels:
+        order = data.columns.get_level_values(lev).unique()
+        stacked =  stacked.stack(level=lev)
+        stacked = reorder(stacked, order=order, level=lev, dim='index')
 
     return stacked
 
