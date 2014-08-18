@@ -449,13 +449,23 @@ class Task(TrialHandler):
         if shape == 'complex':
             r1 = size  # radius of outer circle (degrees)
             r2 = size/3.  # radius of inner circle (degrees)
-            oval = visual.Circle(
-                self.win,
-                name   = 'oval',
-                fillColor  = color,
-                lineColor = None,
-                radius   = r1,
-            )
+            edges = 8
+            d = np.pi*2 / (4*edges)
+            verts = [(r1*np.sin(e*d), r1*np.cos(e*d)) for e in xrange(edges+1)]
+            verts.append([0,0])
+            oval_pos = [(r2,r2), (r2,-r2), (-r2,-r2), (-r2,r2)]
+
+            oval = []
+            for i in range(4):
+                oval.append(visual.ShapeStim(
+                    self.win,
+                    name = 'oval',
+                    fillColor = color,
+                    lineColor = None,
+                    vertices = verts,
+                    ori = 90*i,
+                    pos = oval_pos[i]
+                ))
             center = visual.Circle(
                 self.win,
                 name   = 'center',
@@ -463,31 +473,9 @@ class Task(TrialHandler):
                 lineColor = None,
                 radius   = r2,
             )
-            cross0 = ThickShapeStim(
-                self.win,
-                name='cross1',
-                lineColor=self.win.color,
-                lineWidth=2*r2,
-                vertices=[(-r1, 0), (r1, 0)]
-                )
-            cross90 = ThickShapeStim(
-                self.win,
-                name='cross1',
-                lineColor=self.win.color,
-                lineWidth=2*r2,
-                vertices=[(-r1, 0), (r1, 0)],
-                ori=90
-                )
-            fixation = GroupStim(stimuli=[oval, cross0, cross90, center],
+            fixation = GroupStim(stimuli=oval + [center],
                                  name='fixation')
-            # when color is set, we only want the oval and the center to change
-            # so here we override :func:`GroupStim.setColor`
-            def _set_complex_fix_col(newColor):
-                for stim in fixation.stimuli:
-                    if stim.name in ['oval', 'center']:
-                        stim.setFillColor(newColor)
             fixation.color = color
-            fixation.setFillColor = _set_complex_fix_col
             self.fixation = fixation
 
         elif shape == 'dot':
