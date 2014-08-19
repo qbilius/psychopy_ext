@@ -202,7 +202,7 @@ class Task(TrialHandler):
         if data_fname is None:
             self.datafile = parent.datafile
         else:
-            self.datafile = Datafile(data_fname)
+            self.datafile = Datafile(data_fname, writeable=not self.parent.rp['no_output'])
         self.blockcol = blockcol
         self.computer.valid_responses = parent.computer.valid_responses
 
@@ -222,13 +222,26 @@ class Task(TrialHandler):
         """
         print  # in case there was anything without \n
         logging.warning(message)
+
+        self.win.flip()
+        #self.rectimes.append(self.win.frameIntervals[-1])
+        if not self.rp['no_output']:
+            framelogname = self.paths['logs'] + self.info['subjid'] + '_timing.csv'
+            self.framelog = Datafile(framelogname, writeable=not self.rp['no_output'])
+            with open(framelogname, 'ab') as f:
+                writer = csv.writer(f, lineterminator = '\n')
+                writer.writerow(['event', 'time'])
+                for name, time in zip(self.win.flipnames[:-1], self.win.frameIntervals):
+                    if name != '':
+                        writer.writerow([name, time])
+
         self.win.close()
         try:
             self.logfile.write('End time: %s\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
             self.logfile.write('end')
         except:  # no logfile
             pass
-
+        #if not self.rp['no_output']:
         core.quit()
 
     def setup_task(self):
@@ -1046,6 +1059,7 @@ class Task(TrialHandler):
             self.this_trial['dur'] += ev.dur
 
         self.all_keys = []
+        self.rectimes = []
         for event_no, this_event in enumerate(self.trial):
             self.this_event = this_event
             self.event_no = event_no
@@ -1133,6 +1147,7 @@ class Task(TrialHandler):
 
         # show stimuli
         event_keys = self.this_event.func()
+
         if isinstance(event_keys, tuple):
             event_keys = [event_keys]
         elif event_keys is None:
@@ -1144,6 +1159,11 @@ class Task(TrialHandler):
         self.all_keys += self.last_keypress(
             keyList=self.computer.valid_responses.keys(),
             timeStamped=self.trial_clock)
+
+        #if self.this_event.rectime:
+            #if len(self.win.frameIntervals) > 0:
+                #self.rectimes.append(self.win.frameIntervals[-1])
+            #self.win.frameIntervals = []
 
     def get_behav_df(self, pattern='%s'):
         """
@@ -1776,6 +1796,19 @@ class Experiment(ExperimentHandler, Task):
             viewScale=self.computer.view_scale,
             **kwargs
         )
+        self.win.flip_orig = self.win.flip
+        self.win.flip = self.flip
+        self.win.flipnames = []
+
+    def flip(self, name=None, *args, **kwargs):
+        self.win.flip_orig(*args, **kwargs)
+        if self.win.recordFrameIntervals and not self.win.recordFrameIntervalsJustTurnedOn:
+            if name is None:
+                try:
+                    name = self.this_event.name
+                except:
+                    name = ''
+            self.win.flipnames.append(name)
 
     def setup(self):
         """
@@ -1810,6 +1843,7 @@ class Experiment(ExperimentHandler, Task):
         self.set_logging(self.paths['logs'] + self.info['subjid'])
         self.create_win(debug=self.rp['debug'])
         self.mouse = event.Mouse(win=self.win)
+
         self._initialized = True
         #if len(self.tasks) == 0:
             ##self.setup = Task.setup
@@ -1845,6 +1879,7 @@ class Experiment(ExperimentHandler, Task):
         else:
             self.show_text(text=text, wait=wait, wait_stim=wait_stim,
                            **kwargs)
+        #self.win._refreshThreshold=1/85.0+0.004
 
     def run(self):
         """Alias to :func:`~psychopy_ext.exp.Experiment.run_exp()`
@@ -1860,6 +1895,7 @@ class Experiment(ExperimentHandler, Task):
         """
         self.setup()
         self.before_exp()
+        self.win.setRecordFrameIntervals(True)
 
         if len(self.tasks) == 0:
             self.run_task()
@@ -2022,7 +2058,6 @@ class Event(object):
         #self.__dict__.update(entries)
         #for key, value in dictionary.items():
             #self.key = value
-
 
 
 class ThickShapeStim(visual.ShapeStim):
@@ -2265,7 +2300,8 @@ class GroupStim(object):
 class MouseRespGroup(object):
 
     def __init__(self, win, stimuli, respmap=None, multisel=False,
-                 on_color='#ff7260', off_color='white', pos=(0,0), name=''):
+                 on_color='#ff7260', off_color='white', pos=(0,0),
+                 height=.2, name=''):
         #super(MouseRespGroup, self).__init__(stimuli=stimuli, name=name)
         self.win = win
         self.multisel = multisel
@@ -2279,10 +2315,10 @@ class MouseRespGroup(object):
         self.stimuli = []
         for i, stim in enumerate(stimuli):
             if isinstance(stim, str):
-                add = np.array([0, (len(stimuli)/2-i)*.2*1.5])
-                stim = visual.TextStim(self.win, text=stim, height=.2,
+                add = np.array([0, (len(stimuli)/2-i)*height*1.5])
+                stim = visual.TextStim(self.win, text=stim, height=height,
                         pos=pos+add)
-                stim.size = (1, .2)
+                stim.size = (1, height)
                 stim._calcSizeRendered()
                 size = (stim._sizeRendered[0]*1.2, stim._sizeRendered[1]*1.2)
             else:
