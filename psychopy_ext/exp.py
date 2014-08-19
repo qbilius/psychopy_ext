@@ -233,7 +233,7 @@ class Task(TrialHandler):
                 writer.writerow(['event', 'time'])
                 for name, time in zip(self.win.flipnames[:-1], self.win.frameIntervals):
                     if name != '':
-                        writer.writerow([name, time])
+                        writer.writerow([name, '%.6f' % time])
 
         self.win.close()
         try:
@@ -2318,7 +2318,7 @@ class MouseRespGroup(object):
                 add = np.array([0, (len(stimuli)/2-i)*height*1.5])
                 stim = visual.TextStim(self.win, text=stim, height=height,
                         pos=pos+add)
-                stim.size = (1, height)
+                stim.size = (5*height, height)
                 stim._calcSizeRendered()
                 size = (stim._sizeRendered[0]*1.2, stim._sizeRendered[1]*1.2)
             else:
@@ -2329,7 +2329,7 @@ class MouseRespGroup(object):
             stim.respbox = visual.Rect(
                                     self.win,
                                     name=stim.name,
-                                    lineColor=None,
+                                    lineColor='red',
                                     fillColor=None,
                                     pos=stim._posRendered,
                                     height=size[1],
@@ -2350,7 +2350,7 @@ class MouseRespGroup(object):
     def draw(self):
         for stim in self.stimuli:
             stim.draw()
-            #stim.respbox.draw()
+            stim.respbox.draw()
 
     def contains(self, *args, **kwargs):
         self.clicked_on = [stim.respbox.contains(*args, **kwargs) for stim in self.stimuli]
