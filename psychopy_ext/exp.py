@@ -1904,7 +1904,10 @@ class Experiment(ExperimentHandler, Task):
                 task(self).run_task()
 
         self.after_exp()
-        self.repo_action()
+        try:
+            self.repo_action()
+        except:
+            pass
         self.quit()
 
     def after_exp(self, text=None, auto=1, **kwargs):
@@ -2329,7 +2332,7 @@ class MouseRespGroup(object):
             stim.respbox = visual.Rect(
                                     self.win,
                                     name=stim.name,
-                                    lineColor='red',
+                                    lineColor=None,
                                     fillColor=None,
                                     pos=stim._posRendered,
                                     height=size[1],
