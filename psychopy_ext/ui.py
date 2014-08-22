@@ -739,7 +739,7 @@ def _repo_action(cmd, **kwargs):
             call = 'git push'
         elif cmd == 'commit':
             if 'message' in kwargs:
-                call = 'git commit -am "%s"' % kwargs['message']
+                call = 'git add -A & git commit -am "%s"' % kwargs['message']
             else:
                 raise Exception('Please provide a message for committing changes')
         else:
