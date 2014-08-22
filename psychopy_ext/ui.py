@@ -716,6 +716,16 @@ def _repo_action(cmd, **kwargs):
     'Registration' is inspired by the `Open Science Framework
     <http://openscienceframework.org/>`_. Useful when you start running
     participants so that you can always go back to that version.
+
+    To set up ``git`` on Windows, you should download it from the
+    ``git-scm.com`` website, install it choosing to add git to the registry
+    such that it could be used from cmd too (Option 2),
+    use their Git Bash to generate an SSH key
+    (`follow these instructions <https://help.github.com/articles/generating-ssh-keys>`_),
+    and create a ``HOME`` variable in your environment that hold a path
+    to your user on Windows (because in it there is .ssh folder where you
+    saved your SSH key). This ``HOME`` variable is used by git to know
+    where to look for keys.
     """
     rev = _detect_rev()
     if rev == 'hg':
