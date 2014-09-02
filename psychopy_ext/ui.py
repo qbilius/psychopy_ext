@@ -739,7 +739,7 @@ def _repo_action(cmd, **kwargs):
             call = 'git push'
         elif cmd == 'commit':
             if 'message' in kwargs:
-                call = 'git add -A & git commit -am "%s"' % kwargs['message']
+                call = ['git add -A', 'git commit -m "%s"' % kwargs['message']]
             else:
                 raise Exception('Please provide a message for committing changes')
         else:
@@ -750,14 +750,16 @@ def _repo_action(cmd, **kwargs):
     else:
         raise Exception("%s is not supported for %s yet" % (rev, cmd))
 
-    out, err = core.shellCall(call, stderr=True)
-    call = '$ ' + call
-    write = [call]
-    if out != '':
-        write.append(out)
-    if err != '':
-        write.append(err)
-    sys.stdout.write('\n'.join(write) + '\n')
+    if not isinstance(call, (list, tuple)):
+        call = [call]
+    output = ''
+    for c in call:
+        out, err = core.shellCall(c, stderr=True)
+        output += '\n'.join([out, err])
+    call = ['$ ' + c for c in call]
+    if output != '':
+        call.append(output)
+    sys.stdout.write('\n'.join(call) + '\n')
     return call, out, err
 
 
