@@ -2303,7 +2303,7 @@ class GroupStim(object):
 class MouseRespGroup(object):
 
     def __init__(self, win, stimuli, respmap=None, multisel=False,
-                 on_color='#ff7260', off_color='white', pos=(0,0),
+                 on_color='#ec6b00', off_color='white', pos=(0,0),
                  height=.2, name=''):
         #super(MouseRespGroup, self).__init__(stimuli=stimuli, name=name)
         self.win = win
