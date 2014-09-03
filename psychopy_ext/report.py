@@ -5,7 +5,7 @@
 
 """Creates reports"""
 
-import sys, glob
+import sys, glob, os
 from cStringIO import StringIO
 
 
