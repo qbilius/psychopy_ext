@@ -236,12 +236,9 @@ class Task(TrialHandler):
                         writer.writerow([name, '%.6f' % time])
 
         self.win.close()
-        try:
+        if not self.rp['no_output']:            
             self.logfile.write('End time: %s\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
             self.logfile.write('end')
-        except:  # no logfile
-            pass
-        #if not self.rp['no_output']:
         core.quit()
 
     def setup_task(self):
@@ -1977,10 +1974,9 @@ class Experiment(ExperimentHandler, Task):
         """
         if message is None:
             message = 'data for participant %s' % self.info['subjid']
-        cmd, out, err = ui._repo_action('commit', message=message)
-        self.logfile.write('\n'.join([cmd, out, err]))
-
-        return err
+        output = ui._repo_action('commit', message=message)
+        if not self.rp['no_output']:
+            self.logfile.write(output)
 
     def commitpush(self, message=None):
         """
@@ -1991,10 +1987,10 @@ class Experiment(ExperimentHandler, Task):
         TODO: How to set this up.
         TODO: `git` support
         """
-        err = self.commit(message=message)
-        # if err == '':
-        out = ui._repo_action('push')
-        self.logfile.write('\n'.join(out))
+        self.commit(message=message)
+        output = ui._repo_action('push')
+        if not self.rp['no_output']:
+            self.logfile.write(output)
 
 
 class Event(object):

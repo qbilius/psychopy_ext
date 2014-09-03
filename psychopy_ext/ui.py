@@ -83,16 +83,16 @@ class Control(object):
             except:
                 sys.exit('Please provide a message for committing changes')
             else:
-                _repo_action(sys.argv[2:], message=message)
+                _repo_action('commit', message=message)
         elif action == '--register':
             try:
                 tag = sys.argv[2]
             except:
                 sys.exit('Please provide a tag to register')
             else:
-                _repo_action(sys.argv[2:], tag=tag)
+                _repo_action('register', tag=tag)
         elif action == '--push':
-            _repo_action(sys.argv[2:])
+            _repo_action('push')
 
         sys.exit()
 
@@ -762,15 +762,16 @@ def _repo_action(cmd, **kwargs):
 
     if not isinstance(call, (list, tuple)):
         call = [call]
-    output = ''
+    tmp_out = ''
     for c in call:
         out, err = core.shellCall(c, stderr=True)
-        output += '\n'.join([out, err])
-    call = ['$ ' + c for c in call]
-    if output != '':
-        call.append(output)
-    sys.stdout.write('\n'.join(call) + '\n')
-    return call, out, err
+        tmp_out += '\n'.join([out, err])
+    output = ['$ ' + c for c in call]
+    if tmp_out != '':
+        output.append(tmp_out)
+    output = '\n'.join(output) + '\n'
+    sys.stdout.write(output)
+    return output
 
 
 class Choices(object):
