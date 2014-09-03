@@ -1880,6 +1880,7 @@ class Experiment(ExperimentHandler, Task):
             self.show_text(text=text, wait=wait, wait_stim=wait_stim,
                            **kwargs)
         #self.win._refreshThreshold=1/85.0+0.004
+        self.win.setRecordFrameIntervals(True)
 
     def run(self):
         """Alias to :func:`~psychopy_ext.exp.Experiment.run_exp()`
@@ -1895,7 +1896,6 @@ class Experiment(ExperimentHandler, Task):
         """
         self.setup()
         self.before_exp()
-        self.win.setRecordFrameIntervals(True)
 
         if len(self.tasks) == 0:
             self.run_task()
@@ -1904,10 +1904,7 @@ class Experiment(ExperimentHandler, Task):
                 task(self).run_task()
 
         self.after_exp()
-        try:
-            self.repo_action()
-        except:
-            pass
+        self.repo_action()
         self.quit()
 
     def after_exp(self, text=None, auto=1, **kwargs):
@@ -1956,10 +1953,13 @@ class Experiment(ExperimentHandler, Task):
             timer = core.CountdownTimer(2)
             self.win.flip()
 
-            if self.rp['repository'] == 'commit & push':
-                self.commitpush()
-            elif self.rp['repository'] == 'only commit':
-                self.commit()
+            try:
+                if self.rp['repository'] == 'commit & push':
+                    self.commitpush()
+                elif self.rp['repository'] == 'only commit':
+                    self.commit()
+            except:
+                pass  # no version control found
 
             while timer.getTime() > 0 and len(self.last_keypress()) == 0:
                 pass
