@@ -1992,9 +1992,9 @@ class Experiment(ExperimentHandler, Task):
         TODO: `git` support
         """
         err = self.commit(message=message)
-        if err == '':
-            out = ui._repo_action('push')
-            self.logfile.write('\n'.join(out))
+        # if err == '':
+        out = ui._repo_action('push')
+        self.logfile.write('\n'.join(out))
 
 
 class Event(object):
