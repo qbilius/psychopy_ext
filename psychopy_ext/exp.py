@@ -226,14 +226,16 @@ class Task(TrialHandler):
         self.win.flip()
         #self.rectimes.append(self.win.frameIntervals[-1])
         if not self.rp['no_output']:
-            framelogname = self.paths['logs'] + self.info['subjid'] + '_timing.csv'
-            self.framelog = Datafile(framelogname, writeable=not self.rp['no_output'])
-            with open(framelogname, 'ab') as f:
-                writer = csv.writer(f, lineterminator = '\n')
-                writer.writerow(['event', 'time'])
-                for name, time in zip(self.win.flipnames[:-1], self.win.frameIntervals):
-                    if name != '':
-                        writer.writerow([name, '%.6f' % time])
+            named_flips = [n for n in self.win.flipnames[:-1] if n != '']
+            if len(named_flips) > 0:
+                framelogname = self.paths['logs'] + self.info['subjid'] + '_timing.csv'
+                self.framelog = Datafile(framelogname, writeable=not self.rp['no_output'])
+                with open(framelogname, 'ab') as f:
+                    writer = csv.writer(f, lineterminator = '\n')
+                    writer.writerow(['event', 'time'])
+                    for name, time in zip(self.win.flipnames[:-1], self.win.frameIntervals):
+                        if name != '':
+                            writer.writerow([name, '%.6f' % time])
 
         self.win.close()
         if not self.rp['no_output']:            
