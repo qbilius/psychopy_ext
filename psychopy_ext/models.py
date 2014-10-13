@@ -33,6 +33,9 @@ import scipy.ndimage
 
 class Model(object):
 
+    def __init__(self):
+        self.name = 'Model'
+
     def get_teststim(self, size=(256, 256)):
         """
         Opens Lena image and resizes it to the specified size ((256, 256) by
@@ -196,6 +199,11 @@ class Model(object):
 
 
 class Pixelwise(Model):
+
+    def __init__(self):
+        super(Model, self).__init__()
+        self.name = 'Pixelwise'
+
     def run(self, test_ims, **kwargs):
         ims = self.input2array(test_ims)
         if ims.ndim != 3:
@@ -208,6 +216,8 @@ class Zoccolan(Model):
     Based on 10.1073/pnas.0811583106
     """
     def __init__(self):
+        super(Model, self).__init__()
+        self.name = 'Zoccolan'
         # receptive field sizes in degrees
         #self.rfs = np.array([.6,.8,1.])
         #self.rfs = np.array([.2,.35,.5])
@@ -328,6 +338,8 @@ class GaborJet(Model):
             - nOrientation (int, default: 8)
                 Orientation spacing; angle = np.pi/nOrientations
         """
+        super(Model, self).__init__()
+        self.name = 'GaborJet'
         self.nScale = nScale
         self.nOrientation = nOrientation
 
@@ -388,17 +400,18 @@ class GaborJet(Model):
             sys.exit('The image has to be square. Please try again')
 
         # generate the grid
-        if len(im) in [128, 256]:
-            if grid_size == 0:
-                rangeXY = np.arange(20, 110+1, 10)  # 10x10
-            elif grid_size == 1:
-                rangeXY = np.arange(10, 120+1, 10)  # 12x12
-            else:
-                rangeXY = np.arange(1, 128+1)  # 128x128
-            rangeXY *= len(im) / 128  # if len(im)==256, scale up by two
-            rangeXY -= 1  # shift from MatLab indexing to Python
+        im = scipy.misc.imresize(im, (128,128))
+        #if len(im) in [128, 256]:
+        if grid_size == 0:
+            rangeXY = np.arange(20, 110+1, 10)  # 10x10
+        elif grid_size == 1:
+            rangeXY = np.arange(10, 120+1, 10)  # 12x12
         else:
-            sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
+            rangeXY = np.arange(1, 128+1)  # 128x128
+        rangeXY *= len(im) / 128  # if len(im)==256, scale up by two
+        rangeXY -= 1  # shift from MatLab indexing to Python
+        #else:
+            #sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
 
         [xx,yy] = np.meshgrid(rangeXY,rangeXY)
 
@@ -557,6 +570,8 @@ class HMAX(Model):
 
     """
     def __init__(self, matlab=False, filt_type='gaussian'):
+        super(Model, self).__init__()
+        self.name = 'HMAX'
 
         self.n_ori = 4 # number of orientations
         # S1 filter sizes for scale band 1, 2, 3, and 4
