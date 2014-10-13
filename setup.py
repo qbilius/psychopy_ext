@@ -29,7 +29,10 @@ def try_import(package, version, descr=None):
     except:
         missing = [package, descr]
     else:
-        found_version = getattr(imported, '__version__')
+        try:
+            found_version = getattr(imported, '__version__')
+        except:
+            missing = [package, version, 'unknown version']
         if LooseVersion(found_version) < LooseVersion(version):
             missing = [package, version, found_version]
 
