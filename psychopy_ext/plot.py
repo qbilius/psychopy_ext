@@ -343,8 +343,11 @@ class Plot(object):
 
         if subplots_order is not None:
             sbp = subplots_order
-        elif 'subplots' in agg._splits and subplots!=False:
-            sbp = agg.columns.get_level_values(agg._splits['subplots'][0]).unique()
+        elif hasattr(agg, '_splits'):
+            if 'subplots' in agg._splits and subplots!=False:
+                sbp = agg.columns.get_level_values(agg._splits['subplots'][0]).unique()
+            else:
+                sbp = None
         else:
             sbp = None
 
