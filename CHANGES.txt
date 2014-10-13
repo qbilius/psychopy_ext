@@ -1,3 +1,9 @@
+v0.5.5
+--------
+* NEW: Can now record frame timing. Events (in the trial structure creation) now have a keyword "name". If you provide, the timing of that event will be recorded.
+* FIXED (hopefully): integration to git.
+* FIXED: Minor bug fixes related to the installation, subplots, and MouseResp parameters.
+
 v0.5.4
 ------
 * IMPROVED: Rewrote plot and stats modules to better integrate with pandas' desire to reduce DataFrames into Series whenever possible. So the resulting code should be more robust now. Moreover, the information about splitting of data into rows and cols is now kept separately in the ``_splits`` variable so that the names of rows and columns are not messed up anymore. Downside: you have to manually assign this attribute to the DataFrame after most operations with the DataFrame.
