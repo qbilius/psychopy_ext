@@ -76,29 +76,19 @@ def aggregate(df, rows=None, cols=None, values=None,
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
     _splits = {}
 
-    if isinstance(subplots, str):
-        subplots = [subplots]
-        _splits['subplots'] = subplots
-    elif subplots is None:
-        subplots = []
+    def fix(var, name):
+        if isinstance(var, str):
+            var = [var]
+        if var is None:
+            var = []
+        else:
+            _splits[name] = var
+        return var
 
-    if isinstance(rows, str):
-        rows = [rows]
-        _splits['rows'] = rows
-    elif rows is None:
-        rows = []
-
-    if isinstance(cols, str):
-        cols = [cols]
-        _splits['cols'] = cols
-    elif cols is None:
-        cols = []
-
-    if isinstance(yerr, str):
-        yerr = [yerr]
-        _splits['yerr'] = yerr
-    elif yerr is None:
-        yerr = []
+    subplots = fix(subplots, 'subplots')
+    rows = fix(rows, 'rows')
+    cols = fix(cols, 'cols')
+    yerr = fix(yerr, 'yerr')
 
     if values is None:
         raise Exception('You must provide the name(s) of the column(s) that '
@@ -157,6 +147,23 @@ def aggregate(df, rows=None, cols=None, values=None,
         agg.names = values
     agg._splits = _splits
     return agg
+    
+def _sigdet(df, values, dist1, dist2, **kwargs):
+    if isinstance(dist1, str):
+        dist1 = [dist1]
+    if isinstance(dist2, str):
+        dist2 = [dist2]
+    if isinstance(values, list):
+        values = values[0]
+        
+    df1 = df[df[values].isin(dist1)]
+    agg1 = aggregate(df1, aggfunc=np.size, values=values, **kwargs)
+    
+    df2 = df[df[values].isin(dist2)]
+    agg2 = aggregate(df2, aggfunc=np.size, values=values, **kwargs)
+    
+    return agg1, agg2
+    
 
 def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
     """
@@ -184,21 +191,72 @@ def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs
     :See also:
         :func:`accuracy`
     """
-    if isinstance(correct, str):
-        correct = [correct]
-    if isinstance(incorrect, str):
-        incorrect = [incorrect]
-    if isinstance(values, list):
-        values = values[0]
-    corr = df[df[values].isin(correct)]
-    if len(corr) == 0:
-        raise Exception('There are no %s responses' % correct[0])
-    agg_corr = aggregate(corr, aggfunc=np.size, values=values, **kwargs)
-    df_all = df[df[values].isin(correct + incorrect)]
-    agg_all = aggregate(df_all, aggfunc=np.size, values=values, **kwargs)
-    agg = agg_corr.astype(float) / agg_all
+    agg_corr, agg_incorr = _sigdet(df, values, correct, incorrect)
+    
+    agg = agg_corr.astype(float) / (agg_corr + agg_incorr)
     agg.names = values
     agg._splits = agg_corr._splits
+    return agg
+    
+def d_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
+    """
+    Computes d' sensitivity measure.
+    
+    From: Stanislaw & Todorov (1999). doi: 10.3758/BF03207704
+    
+    :Args:
+        df (pandas.DataFrame)
+            Your data
+      
+    :Kwargs:
+        - values (str or list of str, default: None)
+            Name(s) of the column(s) that is aggregated
+        - hits (str or a number or list of str or numbers, default: None)
+            Labels that are treated as hits.
+        - fas (str or a number or list of str or numbers, default: None)
+            Labels that are treated as false alarms.
+        - kwargs
+            Anything else you want to pass to :func:`aggregate`. Note that
+            ``aggfunc`` is set to ``np.size`` and you cannot change that.
+      
+      :Returns:
+          A pandas.DataFrame.
+    """
+    agg_h, agg_h = _sigdet(df, values, hits, fas)
+    agg = scipy.stats.zscore(agg_h) - scipy.stats.zscore(agg_f)
+    agg.names = values
+    agg._splits = agg_h._splits
+    return agg
+
+def a_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
+    """
+    Computes A' sensitivity measure.
+    
+    From: Stanislaw & Todorov (1999). doi: 10.3758/BF03207704
+    
+    :Args:
+        df (pandas.DataFrame)
+            Your data
+      
+    :Kwargs:
+        - values (str or list of str, default: None)
+            Name(s) of the column(s) that is aggregated
+        - hits (str or a number or list of str or numbers, default: None)
+            Labels that are treated as hits.
+        - fas (str or a number or list of str or numbers, default: None)
+            Labels that are treated as false alarms.
+        - kwargs
+            Anything else you want to pass to :func:`aggregate`. Note that
+            ``aggfunc`` is set to ``np.size`` and you cannot change that.
+      
+      :Returns:
+          A pandas.DataFrame.
+    """
+    agg_h, agg_h = _sigdet(df, values, hits, fas)
+    d = agg_h - agg_f
+    agg = .5 + (np.sign(d) * (d**2 + np.abs(d)) / (4 * np.max(agg_h,agg_f) - 4 * agg_h * agg_f))
+    agg.names = values
+    agg._splits = agg_h._splits
     return agg
 
 def confidence(agg, kind='sem', within=None, alpha=.05, nsamples=None,
