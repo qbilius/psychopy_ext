@@ -312,8 +312,8 @@ class Task(TrialHandler):
             if np.any(ev.dur == 0) or np.any(np.isinf(ev.dur)):
                 self.global_timing = False
                 break
-
-        if self.rp['autorun']:
+        
+        if self.rp['autorun'] > 0:
             # speed up the experiment
             for ev in self.trial:  # speed up each event
                 #ev.dur = map(lambda x: float(x)/self.rp['autorun'], ev.dur)
@@ -474,7 +474,7 @@ class Task(TrialHandler):
                                     #color='white', height=20, units='pix',
                                     #pos=(0, 0),  # don't know why
                                     #wrapWidth=40*20)
-
+        
         text = textwrap.dedent(text)
         if text.find('\n') < 0:  # single line, no formatting
             html = '<h2><font face="sans-serif">%s</font></h2>' % text
@@ -497,6 +497,7 @@ class Task(TrialHandler):
                 html = _HTMLParser().feed(html)
                 width = 40*12
                 multiline = True
+        
         instructions = visual.TextStim(self.win, units='pix',
                                        wrapWidth=width)
         instructions._pygletTextObj = pyglet.text.HTMLLabel(html,
@@ -1053,7 +1054,7 @@ class Task(TrialHandler):
                     wait_stim = self.s['fix']
                 except:
                     pass
-            if text is None:
+            if text is None:                  
                 self.show_text(text='Block %d' % (self.this_blockn+1),
                                auto=auto, wait=wait, wait_stim=wait_stim)
             else:
