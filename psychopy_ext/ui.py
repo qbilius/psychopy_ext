@@ -217,6 +217,10 @@ class Control(object):
                                  % input_key)
 
                         if isinstance(value, tuple):
+                            try:
+                                input_value = eval(input_value)
+                            except:
+                                pass
                             if input_value in value:
                                 params[key] = input_value
                             else:
@@ -380,7 +384,7 @@ def _get_classes(module, input_class_alias=None, class_order=None):
                 else:
                     class_aliases.append((class_alias, obj))
     # if some class not found; get rid of it
-    class_aliases = [c for c in class_aliases if c is not None]
+    class_aliases = [c for c in class_aliases if c is not None and c[0] is not None]
     return class_aliases, class_obj
 
 def _get_class_alias(module, obj):
