@@ -238,10 +238,20 @@ class Task(TrialHandler):
                             writer.writerow([name, '%.6f' % time])
 
         self.win.close()
-        if not self.rp['no_output']:            
+        if not self.rp['no_output']:
             self.logfile.write('End time: %s\n' % data.getDateStr(format="%Y-%m-%d %H:%M"))
             self.logfile.write('end')
         core.quit()
+
+    def flip(self, name=None, *args, **kwargs):
+        self.win.flip_orig(*args, **kwargs)
+        if self.win.recordFrameIntervals and not self.win.recordFrameIntervalsJustTurnedOn:
+            if name is None:
+                try:
+                    name = self.this_event.name
+                except:
+                    name = ''
+            self.win.flipnames.append(name)
 
     def setup_task(self):
         """
@@ -311,6 +321,7 @@ class Task(TrialHandler):
             self.exp_plan = self.set_autorun(self.exp_plan)
 
         self.get_blocks()
+        self.win.flip = self.flip
 
     def _set_keys_flat(self):
         #if keylist is None:
@@ -346,8 +357,6 @@ class Task(TrialHandler):
                 self.logfile.write('\n')
                 self.logfile.write('#[ PsychoPy2 RuntimeInfoAppendStart ]#\n')
                 self.logfile.write('  #[[ %s ]] #---------\n' % message)
-                self.logfile.write('    taskRandomSeed.isSet: True\n')
-                self.logfile.write('    taskRandomSeed.string: %d\n' % self.seed)
                 self.logfile.write('    taskRunTime: %s\n' % date)
                 self.logfile.write('    taskRunTime.epoch: %d\n' % self.seed)
                 self.logfile.write('#[ PsychoPy2 RuntimeInfoappendEnd ]#\n')
@@ -356,13 +365,15 @@ class Task(TrialHandler):
         else:
             self.seed = self.parent.seed
 
-    def show_text(self, text='', wait=0, wait_stim=None, auto=0):
+    def show_text(self, text='', stimuli=None, wait=0, wait_stim=None, auto=0):
         """
         Presents an instructions screen.
 
         :Kwargs:
             - text (str, default: None)
                 Text to show.
+            - stimuli (obj or list, default: None)
+                Any stimuli to show along with the text?
             - wait (float, default: 0)
                 How long to wait after the end of showing instructions,
                 in seconds.
@@ -373,11 +384,91 @@ class Task(TrialHandler):
                 Duration of time-out of the instructions screen,
                 in seconds.
         """
+        def _get_rect(stim):
+            rect = (stim.pos[0]-stim.size[0]/2,
+                    stim.pos[1]-stim.size[1]/2,
+                    stim.pos[0]+stim.size[0]/2,
+                    stim.pos[1]+stim.size[1]/2)
+            if stim.units == 'cm':
+                func = misc.cm2pix
+            elif stim.units == 'deg':
+                func = misc.deg2pix
+            return tuple([func(r, self.win.monitor) for r in rect])
+
         # for some graphics drivers (e.g., mine:)
         # draw() command needs to be invoked once
         # before it can draw properly
         visual.TextStim(self.win, text='').draw()
         self.win.flip()
+
+        rect = []
+        if stimuli is not None:
+            if not isinstance(stimuli, (tuple, list)):
+                stimuli = [stimuli]
+            rect = [_get_rect(stim) for stim in stimuli]
+
+        if len(rect) > 0:
+            rect = np.array(rect).T
+            stim_height = np.max(rect[3]) - np.min(rect[1])
+            #[np.max(rect[2]) - np.min(rect[0]),
+                        #]
+        else:
+            stim_height = 0
+
+        if text is not None:
+            instructions = self._parse_instructions(text)
+            text_height = instructions._pygletTextObj.content_height
+            if stimuli is not None:
+                gap = misc.deg2pix(1, self.win.monitor) / 2
+            else:
+                gap = 0
+            instructions.pos = (0, stim_height/2 + gap)
+        else:
+            text_height = 0
+
+        if stimuli is not None:
+            for stim in stimuli:
+                if stim.units == 'deg':
+                    func = misc.pix2deg
+                elif stim.units == 'cm':
+                    func = misc.pix2cm
+                y = func(-text_height/2, self.win.monitor)
+                if text is not None:
+                    y -= .5
+                stim.pos = (stim.pos[0], y)
+                stim.draw()
+        if text is not None:
+            instructions.draw()
+
+        self.win.flip()
+
+        if self.rp['unittest']:
+            print text
+
+        if auto > 0:  # show text and blank out
+            if self.rp['autorun']:
+                auto = auto / self.rp['autorun']
+            core.wait(auto)
+        elif not self.rp['autorun'] or not self.rp['unittest']:
+            this_key = None
+            while this_key != self.computer.default_keys['trigger']:
+                this_key = self.last_keypress()
+                if len(this_key) > 0:
+                    this_key = this_key.pop()
+            if self.rp['autorun']:
+                wait /= self.rp['autorun']
+        self.win.flip()
+
+        if wait_stim is not None:
+            if not isinstance(wait_stim, (tuple, list)):
+                wait_stim = [wait_stim]
+            for stim in wait_stim:
+                stim.draw()
+            self.win.flip()
+        core.wait(wait)  # wait a little bit before starting the experiment
+        event.clearEvents()  # clear keys
+
+    def _parse_instructions(self, text):
 
         #instructions = visual.TextStim(self.win, text=text,
                                     #color='white', height=20, units='pix',
@@ -412,34 +503,7 @@ class Task(TrialHandler):
                                   width=width, multiline=multiline,
                                   x=0, anchor_x='left', anchor_y='center')
 
-        instructions.draw()
-        self.win.flip()
-
-        if self.rp['unittest']:
-            print text
-
-        if auto > 0:  # show text and blank out
-            if self.rp['autorun']:
-                auto = auto / self.rp['autorun']
-            core.wait(auto)
-        elif not self.rp['autorun'] or not self.rp['unittest']:
-            this_key = None
-            while this_key != self.computer.default_keys['trigger']:
-                this_key = self.last_keypress()
-                if len(this_key) > 0:
-                    this_key = this_key.pop()
-            if self.rp['autorun']:
-                wait /= self.rp['autorun']
-        self.win.flip()
-
-        if wait_stim is not None:
-            if not isinstance(wait_stim, (tuple, list)):
-                wait_stim = [wait_stim]
-            for stim in wait_stim:
-                stim.draw()
-            self.win.flip()
-        core.wait(wait)  # wait a little bit before starting the experiment
-        event.clearEvents()  # clear keys
+        return instructions
 
     def create_fixation(self, shape='complex', color='black', size=.2):
         """Creates a fixation spot.
@@ -577,7 +641,7 @@ class Task(TrialHandler):
         sampling to, for example, 150 ms (see `Jeremy's response <https://groups.google.com/d/msg/psychopy-users/HG4L-UDG93Y/FvyuB-OrsqoJ>`_).
         """
         mdict = {0: 'left-click', 1: 'middle-click', 2: 'right-click'}
-        valid_mouse = [k for k,v in mdict.items() if v in self.computer.valid_responses]
+        valid_mouse = [k for k,v in mdict.items() if v in self.computer.valid_responses or v in keyList]
         valid_mouse.sort()
 
         if timeStamped:
@@ -884,7 +948,7 @@ class Task(TrialHandler):
         if self.blockcol is not None:
             blocknos = np.array([trial[self.blockcol] for trial in self.exp_plan])
             _, idx = np.unique(blocknos, return_index=True)
-            blocknos = blocknos[np.sort(idx)].tolist()
+            blocknos = blocknos[idx].tolist()
             blocks = [None] * len(blocknos)
             for trialno, trial in enumerate(self.exp_plan):
                 blockno = blocknos.index(trial[self.blockcol])
@@ -1026,7 +1090,7 @@ class Task(TrialHandler):
                 Other parameters for :func:`~psychopy_ext.exp.Task.show_text()`
         """
         # clear trial counting in the terminal
-        sys.stdout.write('\r          ')
+        sys.stdout.write('\r' + ' '*70)
         sys.stdout.write('\r')
         sys.stdout.flush()
         if text is None:
@@ -1090,6 +1154,10 @@ class Task(TrialHandler):
         except:  # for staircase
             self.exp_plan.append(self.this_trial)
 
+    def after_trial(self):
+        """Alias to :func:`~psychopy_ext.exp.Task.post_trial()`
+        """
+        self.post_trial()
 
     def post_trial(self):
         """A default function what to do after a trial is over.
@@ -1795,19 +1863,9 @@ class Experiment(ExperimentHandler, Task):
             viewScale=self.computer.view_scale,
             **kwargs
         )
-        self.win.flip_orig = self.win.flip
-        self.win.flip = self.flip
-        self.win.flipnames = []
 
-    def flip(self, name=None, *args, **kwargs):
-        self.win.flip_orig(*args, **kwargs)
-        if self.win.recordFrameIntervals and not self.win.recordFrameIntervalsJustTurnedOn:
-            if name is None:
-                try:
-                    name = self.this_event.name
-                except:
-                    name = ''
-            self.win.flipnames.append(name)
+        self.win.flip_orig = self.win.flip
+        self.win.flipnames = []
 
     def setup(self):
         """
@@ -1828,12 +1886,12 @@ class Experiment(ExperimentHandler, Task):
             version = None
         #if not self.rp['no_output']:
         self.runtime_info = psychopy.info.RunTimeInfo(author=author,
-                version=version, verbose=True, win=False, randomSeed='set:time')
+                version=version, verbose=True, win=False)
         key, value = get_version()
         self.runtime_info[key] = value  # updates with psychopy_ext version
 
         self._set_keys_flat()
-        self.seed = int(self.runtime_info['experimentRandomSeed.string'])
+        self.seed = int(self.runtime_info['experimentRunTime.epoch'])
         np.random.seed(self.seed)
         #else:
             #self.runtime_info = None
@@ -2161,7 +2219,7 @@ class ThickShapeStim(visual.ShapeStim):
 
     def to_svg(self, svg):
         rects = []
-        for stim, vertices in zip(self.stimulus,self.vertices):
+        for stim, vertices in zip(self.stimulus,self.vertices_all):
             size = svg.get_size(stim, np.abs(stim.vertices[0])*2)
             points = svg._calc_attr(stim, np.array(vertices))
             points[:, 1] *= -1
@@ -2187,13 +2245,13 @@ class ThickShapeStim(visual.ShapeStim):
                 # newVert.append(np.dot(rot,vert))
             # stim.setVertices(newVert)
         self.ori = newOri
-        self.setVertices(self.vertices)
+        self.setVertices(self.vertices_all)
 
     def setPos(self, newPos):
         #for stim in self.stimulus:
             #stim.setPos(newPos)
         self.pos = newPos
-        self.setVertices(self.vertices)
+        self.setVertices(self.vertices_all)
 
     #def setSize(self, newSize):
         ##for stim in self.stimulus:
@@ -2203,9 +2261,9 @@ class ThickShapeStim(visual.ShapeStim):
 
     def setVertices(self, value=None):
         if isinstance(value[0][0], int) or isinstance(value[0][0], float):
-            self.vertices = [value]
+            self.vertices_all = [value]
         else:
-            self.vertices = value
+            self.vertices_all = value
         self.stimulus = []
 
         theta = self.ori/180.*np.pi #(newOri - self.ori)/180.*np.pi
@@ -2213,7 +2271,7 @@ class ThickShapeStim(visual.ShapeStim):
 
         self._rend_vertices = []
 
-        for vertices in self.vertices:
+        for vertices in self.vertices_all:
             rend_verts = []
             if self.closeShape:
                 numPairs = len(vertices)
@@ -2239,7 +2297,6 @@ class ThickShapeStim(visual.ShapeStim):
                     ]
                 lh = np.sqrt(edges[0]**2 + edges[1]**2)/2.
                 rend_vert = [[-lh,-wh],[-lh,wh], [lh,wh],[lh,-wh]]
-                #import pdb; pdb.set_trace()
                 line = visual.ShapeStim(
                     self.win,
                     lineWidth   = 1,
@@ -2341,7 +2398,6 @@ class MouseRespGroup(object):
             self.stimuli.append(stim)
         self.selected = [False for stim in self.stimuli]
         self.clicked_on = [False for stim in self.stimuli]
-
 
     def setPos(self, newPos):
         for stim in self.stimuli:
@@ -2696,7 +2752,7 @@ def get_version():
         a string value of psychopy_ext version.
     """
     d = os.path.abspath(os.path.dirname(__file__))
-    githash = psychopy.info._getHashGitHead(dir=d) # should be .../psychopy/psychopy/
+    githash = psychopy.info._getHashGitHead(gdir=d) # should be .../psychopy/psychopy/
     if not githash:  # a workaround when Windows cmd has no git
         git_head_file = os.path.join(d, '../.git/HEAD')
         try:
@@ -2913,3 +2969,38 @@ def make_para(n=6):
         out.append(temp)
 
     return np.array(out)
+
+
+class Rectangle(object):
+    '''Draws a rectangle into a batch.'''
+    def __init__(self, x1, y1, x2, y2, batch):
+        self.vertex_list = batch.add(4, pyglet.gl.GL_QUADS, None,
+            ('v2i', [x1, y1, x2, y1, x2, y2, x1, y2]),
+            ('c4B', [200, 200, 220, 255] * 4)
+        )
+
+
+class TextWidget(object):
+    def __init__(self, text, x, y, width, batch):
+        self.document = pyglet.text.document.UnformattedDocument(text)
+        self.document.set_style(0, len(self.document.text),
+            dict(color=(0, 0, 0, 255))
+        )
+        font = self.document.get_font()
+        height = font.ascent - font.descent
+
+        self.layout = pyglet.text.layout.IncrementalTextLayout(
+            self.document, width, height, multiline=False, batch=batch)
+        self.caret = pyglet.text.caret.Caret(self.layout)
+
+        self.layout.x = x
+        self.layout.y = y
+
+        # Rectangular outline
+        pad = 2
+        self.rectangle = Rectangle(x - pad, y - pad,
+                                   x + width + pad, y + height + pad, batch)
+
+    def hit_test(self, x, y):
+        return (0 < x - self.layout.x < self.layout.width and
+                0 < y - self.layout.y < self.layout.height)
