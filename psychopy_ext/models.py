@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Part of the psychopy_ext library
-# Copyright 2010-2013 Jonas Kubilius
+# Copyright 2010-2015 Jonas Kubilius
 # The program is distributed under the terms of the GNU General Public License,
 # either version 3 of the License, or (at your option) any later version.
 
@@ -20,22 +20,52 @@ Simple usage::
     out = hmax.run(ims)
 """
 
-import sys
+import sys, os, glob
 import itertools
 import cPickle as pickle
+from collections import OrderedDict
 
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import scipy.misc
 import scipy.ndimage
+import pandas
+import seaborn as sns
+
+import sklearn.manifold, sklearn.preprocessing
+import skimage.feature, skimage.data
+
+import stats, plot
+
+
+try:
+    os.environ['CAFFE']
+except:
+    HAS_CAFFE = False
+else:
+    # Suppress GLOG output for python bindings
+    GLOG_minloglevel = os.environ.pop('GLOG_minloglevel', None)
+    os.environ['GLOG_minloglevel'] = '5'
+    
+    # put Python bindings in the path
+    sys.path.insert(0, os.path.join(os.environ['CAFFE'], 'python'))
+    import caffe
+    HAS_CAFFE = True
+    
+    # Turn GLOG output back on for subprocess calls
+    if GLOG_minloglevel is None:
+        del os.environ['GLOG_minloglevel']
+    else:
+        os.environ['GLOG_minloglevel'] = GLOG_minloglevel
 
 
 class Model(object):
 
-    def __init__(self):
+    def __init__(self, layers='all'):
         self.name = 'Model'
-
+        self.layers = layers
+        
     def get_teststim(self, size=(256, 256)):
         """
         Opens Lena image and resizes it to the specified size ((256, 256) by
@@ -46,6 +76,44 @@ class Model(object):
         im = im.astype(float)
 
         return im
+        
+    def compare(self, test_ims, train_ims=None):
+        print 'input images:', ims
+        print 'processing:',
+        output = self.run(test_ims=test_ims, train_ims=None,
+                          return_dict=True)
+    
+        ax = plt.subplot(131)
+        ax.set_title('Dissimilarity across stimuli\n'
+                     '(blue: similar, red: dissimilar)')
+        dis = self.dissimilarity(output)
+        sns.heatmap(dis, ax=ax)
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("right", size="5%", pad=0.05)
+        # plt.colorbar(matrix, cax=cax)
+        
+        ax = plt.subplot(132)
+        ax.set_title('Multidimensional scaling')
+        mds = self.mds(dis)
+        plot.mdsplot(mds, ax=ax, icons=test_ims)
+        
+        ax = plt.subplot(133)
+        ax.set_title('Linear separability')
+        lin = self.linear_clf(dis)
+        self.plot_linear_clf(lin, ax=ax, chance=1./len(np.unique(y)))
+        
+        sns.plt.show()
+        return dis
+        
+    def run(self, test_ims=None, train_ims=None,
+            return_dict=True):
+        """
+        This is the main function to run the model.
+        """
+        if train_ims is not None:
+            self.train(train_ims)
+        output = self.test(test_ims, return_dict=return_dict)
+        return output
 
     def train(self, im):
         """
@@ -53,37 +121,74 @@ class Model(object):
         If the model is not trainable, then it will default to this function
         here that does nothing.
         """
-        pass
+        self.train_ims = train_ims
 
-    def test(self, im):
+    def test(self, im, return_dict=True):
         """
         A placeholder for a function for testing a model.
         """
+        self.test_ims = test_ims
+    
+    def predict(self, im):
+        """
+        A placeholder for a function for predicting a label.
+        """
         pass
 
-    def dissimilarity(self, outputs, kind='simple'):
-        if kind == 'simple':
-            dis = self._dis_simple(outputs)
+    def dissimilarity(self, outputs, kind='euclidean'):
+        if kind == 'euclidean':
+            dis_func = self._dis_euclidean
         elif kind == 'gaborjet':
-            dis = self._dis_gj_simple(outputs)
-        elif kind == 'gaborjet-fast':
-            dis = self._dis_gj_fast(outputs)
+            dis_func = self._dis_gj_simple
         elif kind == 'corr':
-            #self._dis_corr(outputs)
-            raise NotImplemented
+            dis_func = self._dis_corr
+        elif kind == 'corr_slow':
+            dis_func = self._dis_corr_slow
         else:
             raise ValueError('Dissimilarity of %s not recognized' % kind)
+            
+        if isinstance(outputs, (dict, OrderedDict)):
+            dis = OrderedDict()
+            for layer, resps in outputs.items():
+                dis[layer] = dis_func(resps)
+        else:
+            dis = dis_func(outputs)
+            
         return dis
 
-    def _dis_simple(self, outputs):
-        # used in Grill-Spector et al. (1999), Op de Beeck et al. (2001),
-        # Panis et al. (2011)
+    def _dis_euclidean(self, outputs):
+        """
+        Mean Euclidean distance between two vectors.
+        
+        Used in Grill-Spector et al. (1999), Op de Beeck et al. (2001),
+        Panis et al. (2011).
+        
+        :Args:
+            outputs (numpy.array)
+                An NxM array of model responses. Each row contains an 
+                output vector of length M from a model, and distances
+                are computed between each pair of rows.
+                
+        :Returns:    
+            An MxM array of distances.
+        """
         outputs = np.array(outputs)
         dis = np.zeros((outputs.shape[0],outputs.shape[0]))
         for (i,j), value in np.ndenumerate(dis):
             dis[i,j] = np.sqrt(np.sum((outputs[i] - outputs[j])**2) / outputs.shape[1])
         return dis
-
+        
+    def _dis_corr_slow(self, outputs):
+        outputs = np.array(outputs)
+        dis = np.zeros((len(outputs), len(outputs)))
+        for i in xrange(len(outputs)):
+            for j in xrange(i+1, len(outputs)):
+                dis[i,j] = np.corrcoef(outputs[i], outputs[j])[0,1]
+                dis[j,i] = dis[i,j]
+        return dis
+        
+    def _dis_corr(self, outputs):
+        return .5 - np.corrcoef(outputs) / 2.
 
     def _dis_gj_simple(self, outputs):
         """
@@ -98,35 +203,6 @@ class Model(object):
         length = np.sqrt(np.sum(outputs*outputs, axis=1))
         length = np.tile(length, (len(length), 1))  # make a square matrix
         return 1 - np.dot(outputs,outputs.T) / (length * length.T)
-
-    def _dis_corr(self, outputs):
-        """
-        Calculate a correlation between magnitudes of gabor jet.
-
-        DOESN'T WORK YET
-        """
-        outputs = np.array(outputs)
-        outputs -= np.tile(np.mean(outputs, axis=1), (outputs.shape[1],1)).T
-        if outputs.ndim != 2:
-            sys.exit('ERROR: 2 dimensions expected')
-        length = np.sqrt(np.sum(outputs*outputs, axis=1))
-        length = np.tile(length, (len(length), 1))  # make a square matrix
-        return .5 - np.dot(outputs,outputs.T) / (2 * length * length.T)
-
-    def _dis_corr2(self, outputs):
-        """
-        Calculate a correlation between magnitudes of gabor jet.
-
-        DOESN'T WORK YET
-        """
-        outputs = np.array(outputs)
-        import pdb; pdb.set_trace()
-        outputs -= np.tile(np.mean(outputs, axis=0), (outputs.shape[0],1))
-        if outputs.ndim != 2:
-            sys.exit('ERROR: 2 dimensions expected')
-        length = np.sqrt(np.sum(outputs*outputs, axis=1))
-        length = np.tile(length, (len(length), 1))  # make a square matrix
-        return 1 - np.dot(outputs,outputs.T) / (2 * length * length.T)
 
     def _dis_fast(self, outputs):
         outputs = np.array(outputs)
@@ -144,71 +220,114 @@ class Model(object):
         return np.apply_along_axis(func, 1, outputs)
 
     def input2array(self, names):
-        try:
-            names = eval(names)
-        except:
-            pass
-
-        if type(names) == str:
-            array = scipy.misc.imread(names, flatten=True)
-            array = self._prepare_im(array)
-        elif type(names) in [list, tuple]:
-            if type(names[0]) == str:
-                arr = []
-                for n in names:
-                    im = scipy.misc.imread(n, flatten=True)
-                    im = self._prepare_im(im)
-                    arr.append(im)
-                array = np.array(arr)
+        raise 'DEPRECATED. Use load_images() instead.'
+        
+    def mds(self, dis, ims, ax=None, seed=None, kind='metric'):
+        df = []
+        for layer_name, this_dis in dis.items():
+            if kind == 'classical':
+                vals = stats.classical_mds(this_dis)
             else:
-                array = np.array(names)
-        elif type(names) == np.ndarray:
-            array = names
-        else:
-            raise ValueError('input type not recognized')
-        if array.ndim == 2:
-            array = np.reshape(array, (1,) + array.shape)
-        array = array.astype(float)
-        return array
-
-    def _prepare_im(self, im):
-        large = np.max(im.shape)
-        if large > 256:
-            im = scipy.misc.imresize(im, 256./large)
-        return im
-
-
-    def compare(self, ims):
-        print ims
-        print 'processing image',
-        output = self.run(ims, oneval=True)
-        dis = self.dissimilarity(output)
+                mds_model = sklearn.manifold.MDS(n_components=2,
+                                        dissimilarity="precomputed", random_state=seed)
+                vals = mds_model.fit_transform(this_dis)
+            for im, (x,y) in zip(ims, vals):
+                imname = os.path.splitext(os.path.basename(im))[0]
+                df.append([layer_name, imname, x, y])
+            
+        df = pandas.DataFrame(df, columns=['layer', 'im', 'x', 'y'])
+        if self.layers != 'all':
+            if not isinstance(self.layers, (tuple, list)):
+                self.layers = [self.layers]
+            df = df[df.layer.isin(self.layers)]
+        plot.mdsplot(df, ax=ax, icons=ims)
+        
+    def linear_clf(self, resps, y, clf=sklearn.svm.LinearSVC):
         print
-        print 'Dissimilarity across stimuli'
-        print '0: similar, 1: dissimilar'
-
-        ax = plt.subplot(111)
-        matrix = ax.imshow(dis, interpolation='none')
-        plt.title('Dissimilarity across stimuli\n'
-                  '(blue: similar, red: dissimilar)')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(matrix, cax=cax)
-        plt.show()
-        return dis
-
+        print '### Linear separability ###'
+        
+        df = []
+        n_folds = len(y) / len(np.unique(y))
+        for layer, resp in resps.items():
+            # normalize to 0 mean and variance 1 for each feature
+            # (column-wise)
+            resp = sklearn.preprocessing.StandardScaler().fit_transform(resp)
+            cv = sklearn.cross_validation.StratifiedKFold(y,
+                    n_folds=n_folds, shuffle=True)
+            # from scikit-learn docs:
+            # need not match cross_val_scores precisely!!!
+            preds = sklearn.cross_validation.cross_val_predict(clf(),
+                 resp, y, cv=cv)
+                 
+            for yi, pred in zip(y, preds):
+                df.append([layer, yi, pred, yi==pred])
+        df = pandas.DataFrame(df, columns=['layer', 'actual', 'predicted', 'accuracy'])
+        df = stats.factorize(df)
+        return df
+        
+    def linear_clf_orig(self, resps, y, clf=sklearn.svm.LinearSVC):
+        print
+        print '### Linear separability ###'
+        
+        df = []
+        n_folds = len(y) / len(np.unique(y))
+        for layer, resp in resps.items():
+            # normalize to 0 mean and variance 1 for each feature
+            # (column-wise)
+            resp = sklearn.preprocessing.StandardScaler().fit_transform(resp)
+            cv = sklearn.cross_validation.StratifiedKFold(y,
+                    n_folds=n_folds)
+            # from scikit-learn docs:
+            # need not match cross_val_scores precisely!!!
+            preds = sklearn.cross_validation.cross_val_predict(clf(),
+                 resp, y, cv=cv)
+                 
+            # preds = []
+            # for traini, testi in cv:
+            #     for nset in range(1, n_folds+1):
+            #         trainj = []
+            #         for j in np.unique(y):
+            #             sel = np.array(traini)[y[traini]==j]
+            #             sel = np.random.choice(sel, nset).tolist()
+            #             trainj.extend(sel)
+            #     clf.fit(resps[trainj], y[trainj])
+            #     preds.append(svm.predict(resps[testi], y[testi]))
+            # confusion[kind][layer] = sklearn.metrics.confusion_matrix(y, preds)
+            # print confusion[kind][layer]
+            # perc.fit(resps, y)
+            # print layer, np.mean(scores) #perc.score(resps, y)
+            # import pdb; pdb.set_trace()
+            # for score in scores:
+            #     df.append([kind, layer, score])
+            for yi, pred in zip(y, preds):
+                df.append([layer, yi, pred, yi==pred])
+            # preds = perc.predict(resps)
+            # for pred, cat, shape in zip(preds, cats.ravel(), shapes.ravel()):
+            #     df.append([layer, cat, shape, pred==cat])
+                
+        # self.df = pandas.DataFrame(df, columns=['layer', 'category',
+        #                                   'shape', 'accuracy'])
+        df = pandas.DataFrame(df, columns=['layer', 'actual', 'predicted', 'accuracy'])
+        df = stats.factorize(df)
+        return df
+        
+    def plot_linear_clf(self, df, chance=None, ax=None):
+        g = sns.factorplot('layer', 'accuracy', data=df, kind='bar',ax=ax)
+        ax.axhline(chance, ls='--', c='.2')
+        
 
 class Pixelwise(Model):
 
-    def __init__(self):
-        super(Model, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(Pixelwise, self).__init__(*args, **kwargs)
         self.name = 'Pixelwise'
 
-    def run(self, test_ims, **kwargs):
-        ims = self.input2array(test_ims)
-        if ims.ndim != 3:
-            sys.exit('ERROR: Input images must be two-dimensional')
-        return ims.reshape((ims.shape[0], -1))
+    def test(self, test_ims, return_dict=False):
+        ims = load_images(test_ims, resize=(32,32))
+        resps = ims.reshape((ims.shape[0], -1))
+        if return_dict:
+            resps = OrderedDict([(self.name, resps)])
+        return resps
 
 
 class Zoccolan(Model):
@@ -319,7 +438,8 @@ class Zoccolan(Model):
 
 class GaborJet(Model):
 
-    def __init__(self, nScale=5, nOrientation=8):
+    def __init__(self, nscales=5, noris=8, imsize=256, grid_size=0,
+                 layers='magnitudes'):
         """
         Python implementation of the Gabor-Jet model from Biederman lab.
 
@@ -331,137 +451,148 @@ class GaborJet(Model):
         Original implementation copyright 2004 'Xiaomin Yue
         <http://geon.usc.edu/GWTgrid_simple.m>`_.
 
-
         :Kwargs:
-            - nScale (int, default: 5)
+            - nscales (int, default: 5)
                 Spatial frequency scales
-            - nOrientation (int, default: 8)
-                Orientation spacing; angle = np.pi/nOrientations
+            - noris (int, default: 8)
+                Orientation spacing; angle = np.pi/noris
+            - imsize ({128, 256}, default: 256)
+                The image can only be 128x128 px or 256x256 px size.
+                If the image hqs a different size, it will be rescaled
+                **without** maintaining the original aspect ratio.
+            - grid_size (int, default: 0)
+                How many positions within an image to take
         """
         super(Model, self).__init__()
         self.name = 'GaborJet'
-        self.nScale = nScale
-        self.nOrientation = nOrientation
-
-    def run(self, ims, oneval=False):
-        """
-        Run GaborJet model.
-
-        :Args:
-            ims: str or list of str
-                Image(s) to process witht he model.
-        :Kwargs:
-            oneval: bool (default: False)
-                Whether only magnitude should be returned. If True, then also
-                phase and gird positions are returned.
-
-        :Returns:
-            Magnitude and, depending on 'oneval', phase and grid positions.
-        """
-        ims = self.input2array(ims)
-        JetsMagnitudes = []
-        JetsPhases = []
-        for im in ims:
-            JetsMagnitude, JetsPhase, grid_position = self.test(im)
-            JetsMagnitudes.append(JetsMagnitude.ravel())
-            JetsPhases.append(JetsPhase.ravel())
-        if oneval:
-            return np.array(JetsMagnitudes)
+        self.nscales = nscales
+        self.noris = noris
+        self.imsize = imsize
+        if layers == 'all':
+            self.layers = ['phases', 'magnitudes']
+        elif isinstance(layers, str):
+            self.layers = [layers]
+        elif layers is None:
+            self.layers = ['magnitudes']  
         else:
-            return (np.array(JetsMagnitudes), np.array(JetsPhases), grid_position)
+            self.layers = layers
+        
+        if grid_size == 0:
+            s = imsize/128.
+            rangeXY = np.arange(20*s, 110*s+1, 10) - 1  # 10x10
+        elif grid_size == 1:
+            s = imsize/128.
+            rangeXY = np.arange(10*s, 120*s+1, 10) - 1  # 12x12
+        else:
+            rangeXY = np.arange(imsize)  # 128x128 or 256x256
+
+        self.rangeXY = rangeXY.astype(int)
+        [xx,yy] = np.meshgrid(rangeXY,rangeXY)
+
+        self.grid = xx + 1j*yy
+        self.grid = self.grid.T.ravel()  # transpose just to match MatLab's grid(:) behavior
+        self.grid_pos = np.hstack([self.grid.imag, self.grid.real]).T
 
     def test(self,
-            im,
-            cell_type = 'complex',
-            grid_size = 0,
-            sigma = 2*np.pi
-            ):
+             test_ims,
+             cell_type='complex',
+             sigma=2*np.pi,
+             return_dict=False
+             ):
         """
         Apply GaborJet to given images.
 
         :Args:
-            im (numpy.array)
-                input image; can be (128,128) or (256,256) px size
+            ims: str or list of str
+                Image(s) to process with the model.
 
         :Kwargs:
             - cell_type (str, default: 'complex')
                 Choose between 'complex'(40 output values) and 'simple'
                 (80 values, NOT FULLY WORKING YET)
-            - grid_size (int, default: 0)
-                How many positions within an image to take
             - sigma (float, default: 2*np.pi)
                 Control the size of gaussian envelope
-
+            - return_dict: bool (default: True)
+                    Whether only magnitude should be returned. If True, then also
+                    phase and grid positions are returned in a dict.
+    
         :Returns:
-            (JetsMagnitude, JetsPhase, grid_position)
-
+            Magnitude and, depending on 'return_dict', phase.
         """
-        if im.shape[0]!=im.shape[1]:
-            sys.exit('The image has to be square. Please try again')
+        mags = []
+        phases = []
+        for imno, im in enumerate(test_ims):
+            print imno,
+            sys.stdout.flush()
+            im = load_images(im, resize=(self.imsize, self.imsize))
+            mag, phase = self._test(im, cell_type=cell_type,
+                                    sigma=sigma)
+            mags.append(mag.ravel())
+            phases.append(phase.ravel())
+        
+        mags = np.array(mags)
+        phases = np.array(phases)
+        
+        outputs = OrderedDict()
+        for layer in self.layers:
+            if layer == 'magnitudes':
+                outputs['magnitudes'] = mags
+            elif layer == 'phases':
+                outputs['phases'] = phases
+        if not return_dict:
+            outputs = outputs[self.layers[-1]]
+        return outputs
+        
+    def _test(self, im, cell_type='complex', sigma=2*np.pi):
+        if im.shape[0] != im.shape[1]:
+            raise IOError('The image has to be square. Please try again.')
 
         # generate the grid
-        im = scipy.misc.imresize(im, (128,128))
+        # im = scipy.misc.imresize(im, (self.imsize, self.imsize))
         #if len(im) in [128, 256]:
-        if grid_size == 0:
-            rangeXY = np.arange(20, 110+1, 10)  # 10x10
-        elif grid_size == 1:
-            rangeXY = np.arange(10, 120+1, 10)  # 12x12
-        else:
-            rangeXY = np.arange(1, 128+1)  # 128x128
-        rangeXY *= len(im) / 128  # if len(im)==256, scale up by two
-        rangeXY -= 1  # shift from MatLab indexing to Python
-        #else:
-            #sys.exit('The image has to be 256*256 px or 128*128 px. Please try again')
-
-        [xx,yy] = np.meshgrid(rangeXY,rangeXY)
-
-        grid = xx + 1j*yy
-        grid = grid.T.ravel()  # transpose just to match MatLab's grid(:) behavior
-        grid_position = np.hstack([grid.imag, grid.real]).T
-
+        rangeXY = self.rangeXY
         # FFT of the image
         im_freq = np.fft.fft2(im)
 
         # setup the paramers
-        xHalfResL = im.shape[0]/2
-        yHalfResL = im.shape[1]/2
-        kxFactor = 2*np.pi/im.shape[0]
-        kyFactor = 2*np.pi/im.shape[1]
+        kx_factor = 2 * np.pi / self.imsize
+        ky_factor = 2 * np.pi / self.imsize
 
-        # setup space coordinate
-        [tx,ty] = np.meshgrid(np.arange(-xHalfResL,xHalfResL),np.arange(-yHalfResL,yHalfResL))
-        tx = kxFactor*tx
-        ty = kyFactor*(-ty)
+        # setup space coordinates
+        xy = np.arange(-self.imsize/2, self.imsize/2)
+        [tx,ty] = np.meshgrid(xy, xy)
+        tx *= kx_factor
+        ty *= -ky_factor
 
         # initiallize useful variables
-        nvars = self.nScale*self.nOrientation
+        nvars = self.nscales * self.noris
         if cell_type == 'complex':
-            JetsMagnitude  = np.zeros((len(grid), nvars))
-            JetsPhase      = np.zeros((len(grid), nvars))
+            mag = np.zeros((len(self.grid), nvars))
+            phase = np.zeros((len(self.grid), nvars))
         else:
-            JetsMagnitude  = np.zeros((len(grid), 2*nvars))
-            JetsPhase      = np.zeros((len(grid), nvars))
+            mag = np.zeros((len(self.grid), 2*nvars))
+            phase = np.zeros((len(self.grid), nvars))
 
-        for LevelL in range(self.nScale):
-            k0 = np.pi/2 * (1/np.sqrt(2))**LevelL
-            for DirecL in range(self.nOrientation):
-                kA = np.pi * DirecL / self.nOrientation
-                k0x = k0 * np.cos(kA)
-                k0y = k0 * np.sin(kA)
+        for scale in range(self.nscales):
+            k0 = np.pi/2 * (1/np.sqrt(2))**scale
+            for ori in range(self.noris):
+                ka = np.pi * ori / self.noris
+                k0x = k0 * np.cos(ka)
+                k0y = k0 * np.sin(ka)
                 # generate a kernel specified scale and orientation, which has DC on the center
                 # this is a FFT of a Morlet wavelet (http://en.wikipedia.org/wiki/Morlet_wavelet)
-                freq_kernel = 2*np.pi*(
-                    np.exp( -(sigma/k0)**2/2 * ((k0x-tx)**2+(k0y-ty)**2) ) -\
+                freq_kernel = 2*np.pi * (
+                    np.exp( -(sigma/k0)**2/2 * ((k0x-tx)**2 + (k0y-ty)**2) ) -\
                     np.exp( -(sigma/k0)**2/2 * (k0**2+tx**2+ty**2) )
                     )
                 # use fftshift to change DC to the corners
                 freq_kernel = np.fft.fftshift(freq_kernel)
 
                 # convolve the image with a kernel of the specified scale and orientation
-                TmpFilterImage = im_freq*freq_kernel
+                conv = im_freq*freq_kernel
                 #
                 # calculate magnitude and phase
-                iTmpFilterImage = np.fft.ifft2(TmpFilterImage)
+                iconv = np.fft.ifft2(conv)
                 #
                 #eps = np.finfo(float).eps**(3./4)
                 #real = np.real(iTmpFilterImage)
@@ -470,58 +601,31 @@ class GaborJet(Model):
                 #imag[imag<eps] = 0
                 #iTmpFilterImage = real + 1j*imag
 
-                TmpGWTPhase = np.angle(iTmpFilterImage)
-                tmpPhase = TmpGWTPhase[rangeXY,:][:,rangeXY] + np.pi
-                JetsPhase[:,LevelL*self.nOrientation+DirecL] = tmpPhase.ravel()
-                #import pdb; pdb.set_trace()
+                ph = np.angle(iconv)
+                ph = ph[rangeXY,:][:,rangeXY] + np.pi
+                ind = scale*self.noris+ori
+                phase[:,ind] = ph.ravel()
 
                 if cell_type == 'complex':
-                    TmpGWTMag = np.abs(iTmpFilterImage)
+                    mg = np.abs(iconv)
                     # get magnitude and phase at specific positions
-                    tmpMag = TmpGWTMag[rangeXY,:][:,rangeXY]
-                    JetsMagnitude[:,LevelL*self.nOrientation+DirecL] = tmpMag.ravel()
+                    mg = mg[rangeXY,:][:,rangeXY]
+                    mag[:,ind] = mg.ravel()
                 else:
-                    raise Exception('simple cell type not implemented yet')
-                    #TmpGWTMag_real = np.real(iTmpFilterImage)
-                    #TmpGWTMag_imag = np.imag(iTmpFilterImage)
-                    ## get magnitude and phase at specific positions
-                    #tmpMag_real = TmpGWTMag_real[rangeXY,:][:,rangeXY]
-                    #tmpMag_imag = TmpGWTMag_imag[rangeXY,:][:,rangeXY]
-                    #JetsMagnitude_real[:,LevelL*self.nOrientation+DirecL] = tmpMag_real.ravel()
-                    #JetsMagnitude_imag[:,LevelL*self.nOrientation+DirecL] =  tmpMag_imag.ravel()
+                    mg_real = np.real(iconv)
+                    mg_imag = np.imag(iconv)
+                    # get magnitude and phase at specific positions
+                    mg_real = mg_real[rangeXY,:][:,rangeXY]
+                    mg_imag = mg_imag[rangeXY,:][:,rangeXY]
+                    mag[:,ind] = mg_real.ravel()
+                    mag[:,nvars+ind] = mg_imag.ravel()
 
-        if cell_type == 'simple':
-            raise Exception('simple cell type not implemented yet')
-            #JetsMagnitude = np.vstack((JetsMagnitude_real, JetsMagnitude_imag))
         # use magnitude for dissimilarity measures
-        return (JetsMagnitude, JetsPhase, grid_position)
+        return mag, phase
 
-    def dissimilarity(self, *args, **kwargs):
-        if 'kind' not in kwargs:
-            kwargs['kind'] = 'gaborjet'  # we want this by default
-        return super(GaborJet, self).dissimilarity(*args, **kwargs)
-
-    def compare(self, ims):
-        output = []
-        print 'processing image',
-        for imno, im in enumerate(ims):
-            print imno,
-            out = self.run(im)[0].ravel()  # use JetsMagnitude
-            output.append(out)
-        dis = self.dissimilarity(output)
-        print
-        print 'Dissimilarity across stimuli'
-        print '0: similar, 1: dissimilar'
-        print dis
-
-        ax = plt.subplot(111)
-        matrix = ax.imshow(dis, interpolation='none')
-        plt.title('Dissimilarity across stimuli\n'
-                  '(blue: similar, red: dissimilar)')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(matrix, cax=cax)
-        plt.show()
+    def dissimilarity(self, kind='gaborjet', *args, **kwargs):
+        return super(GaborJet, self).dissimilarity(kind=kind,
+                                                   *args, **kwargs)
 
 
 class HMAX(Model):
@@ -569,7 +673,7 @@ class HMAX(Model):
             they presumambly model V1 better.
 
     """
-    def __init__(self, matlab=False, filt_type='gaussian'):
+    def __init__(self, layers='all', matlab=False, filt_type='gaussian'):
         super(Model, self).__init__()
         self.name = 'HMAX'
 
@@ -597,7 +701,7 @@ class HMAX(Model):
 
         self.istrained = False  # initially VTUs are not set up
 
-    def run(self, test_ims=None, train_ims=None, oneval=False):
+    def run(self, test_ims=None, train_ims=None, return_dict=True):
         """
         This is the main function to run the model.
         First, it trains the model, i.e., sets up prototypes for VTU.
@@ -626,7 +730,7 @@ class HMAX(Model):
             self.tuning = self.test(train_ims, op='training')['C2']
         self.istrained = True
 
-    def test(self, ims, op='testing', oneval=False):
+    def test(self, ims, op='testing', return_dict=True):
         """
         Test the model on the given image
         """
@@ -635,7 +739,7 @@ class HMAX(Model):
         size_S1 = sum([len(fs) for fs in self.filter_sizes_all])
         # outputs from each layer are stored if you want to inspect them closer
         # but note that S1 is *massive*
-        output = {}
+        output = OrderedDict()
         # S1 will not be in the output because it's too large:
         # with default parameters S1 takes 256*256*12*4*64bits = 24Mb per image
         S1 = np.zeros((ims.shape[1], ims.shape[2], size_S1, self.n_ori))
@@ -672,6 +776,9 @@ class HMAX(Model):
         if self.istrained:
             output['VTU'] = self.get_VTU(output['C2'])
         sys.stdout.write("\rRunning HMAX... %s: done\n" %op)
+        
+        if not return_dict:
+            output = output['C2']
 
         return output
 
@@ -1052,29 +1159,260 @@ class HMAX(Model):
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(matrix, cax=cax)
         plt.show()
+        
 
+class HOG(Model):
+    
+    def __init__(self, *args, **kwargs):
+        super(HOG, self).__init__(*args, **kwargs)
+        self.name = 'HOG'
+    
+    def test(self, test_ims, return_dict=False, **kwargs):
+        outputs = []
+        for im in test_ims:
+            im = load_images(im, flatten=True)
+            outputs.append(skimage.feature.hog(im, **kwargs))
+        outputs = np.array(outputs)
+        
+        if kwargs.get('visualise'):
+            outputs, hog_image = outputs
+            
+        resps = OrderedDict()
+        if return_dict:
+            resps[self.name] = outputs
+        else:
+            resps = outputs
+        return resps
+        
 
-KNOWN_MODELS = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX}
-#['px': Pixelwise, GaborJet, HMAX]
+class Caffe(Model):
+
+    def __init__(self, model='AlexNet', mode='cpu', layers=None):
+
+        self.name = model
+        self.model_root = CAFFE_MODELS[model]
+        try:
+            os.environ['CAFFE']
+        except:
+            raise Exception("Caffe not found in your path; it must be set in "
+                            "the 'CAFFE' variable")
+        else:
+            self.caffe_root = os.environ['CAFFE']
+
+        if mode == 'cpu':
+            caffe.set_mode_cpu()
+        elif mode == 'gpu':
+            caffe.set_mode_gpu()
+        else:
+            raise Exception('ERROR: mode %s not recognized' % mode)
+
+        self.istrained = False
+        self.net = self._classifier()
+
+        if layers is None:
+            self.layers = [self.net.params.keys()[-1]]  # top layer
+        elif layers == 'all':
+            self.layers = self.net.params.keys()
+        elif not isinstance(layers, (tuple, list)):
+            self.layers = [layers]
+        else:
+            self.layers = layers
+            
+    def train(self, *args, **kwargs):
+        raise NotImplemented
+        
+    def test(self, ims, return_dict=True):
+        new_shape = (1, ) + self.net.blobs['data'].data.shape[1:]
+        self.net.blobs['data'].reshape(*new_shape)
+        output = OrderedDict()
+        for layer in self.layers:
+            sh = self.net.blobs[layer].data.shape[1:]
+            if not isinstance(sh, tuple):
+                sh = (sh,)
+            output[layer] = np.zeros((len(ims),) + sh)
+    
+        for imno, im in enumerate(ims):
+            print imno,
+            sys.stdout.flush()
+            im = caffe.io.load_image(im)
+            self.net.blobs['data'].data[...] = self.transformer.preprocess('data', im)
+            out = self.net.forward()
+            for layer in self.layers:
+                output[layer][imno] = self.net.blobs[layer].data
+    
+        print
+        if not return_dict:
+            output = output[self.layers[-1]]
+        return output
+        
+    def predict(self, ims, topn=5):
+        labels = self._get_labels()
+        self.layers = ['prob']
+        preds = self.run(test_ims=ims, return_dict=False)
+        out = []
+        for pred in preds:
+            p = sorted(pred)
+            classno = np.argsort(pred)[::-1][:topn]
+            tmp = []
+            for n in classno:
+                d = {'classno': n,
+                     'synset': labels[n][0],
+                     'label': labels[n][1]}
+                tmp.append(d)
+            out.append(tmp)
+    
+        return out
+        
+    def _classifier(self):
+        mn = self.read_mean()
+        model_file = os.path.join(self.model_root, '*deploy*.prototxt')
+        model_file = glob.glob(model_file)[0]
+        if not self.istrained:
+            trained_values = glob.glob(os.path.join(self.model_root,
+                                        '*.caffemodel'))[0]
+        net = caffe.Net(model_file, trained_values, caffe.TEST)
+
+        self.transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+        self.transformer.set_transpose('data', (2,0,1))
+        self.transformer.set_mean('data', mn.mean(1).mean(1)) # mean pixel
+        self.transformer.set_raw_scale('data', 255)  # the reference model operates on images in [0,255] range instead of [0,1]
+        self.transformer.set_channel_swap('data', (2,1,0))  # the reference model has channels in BGR order instead of RGB
+
+        return net
+        
+    def read_mean(self):
+        meanf = os.path.join(self.model_root, '*mean*.protobinary')
+        meanf = glob.glob(meanf)
+        if len(meanf) > 0:
+            data = open(meanf[0], 'rb').read()
+            blob = caffe.proto.caffe_pb2.BlobProto()
+            blob.ParseFromString(data)
+            mn = np.array(caffe.io.blobproto_to_array(blob))[0]
+        else:
+            meanf = os.path.join(self.caffe_root, 'python/caffe/imagenet/ilsvrc_2012_mean.npy')
+            mn = np.load(meanf)
+        return mn
+
+    def _get_labels(self):
+        synset_file = os.path.join(self.caffe_root, 'data/ilsvrc12/synset_words.txt')
+        try:
+            with open(synset_file) as f:
+                lines = f.readlines()
+        except:
+            raise Exception('ERROR: synset file with labels not found.\n'
+                            'Tried: %s' % synset_file)
+        out = []
+        for line in lines:
+            line = line.strip('\n\r')
+            out.append((line[:9], line[10:]))
+        return out
+
+    def preds2df(self, preds):
+        df = []
+        for predno, pred in enumerate(preds):
+            tmp = []
+            for p in pred:
+                p.update({'n': predno})
+                tmp.append(p)
+            df.extend(tmp)
+        return pandas.DataFrame.from_dict(df)
+        
+
 
 def get_model(model_name):
     if model_name in KNOWN_MODELS:
         return KNOWN_MODELS[model_name]()
     else:
         raise Exception('Model %s not recognized' %model_name)
+        
+def load_images(names, flatten=True, resize=1.):
+    try:
+        names = eval(names)
+    except:
+        pass
+
+    if isinstance(names, str):
+        array = _load_image(names, flatten=flatten, resize=resize)
+    elif isinstance(names, (list, tuple)):
+        if isinstance(names[0], str):
+            array = [_load_image(n, flatten=flatten, resize=resize) for n in names]
+            array = np.array(array)
+        else:
+            array = np.array(names)
+    elif isinstance(names, np.ndarray):
+        array = names
+    else:
+        raise ValueError('input image type not recognized')
+        
+    # if array.ndim == 2:
+    #     array = np.reshape(array, (1,) + array.shape)
+    array = np.squeeze(array)
+        
+    if np.max(array) > 1 or array.dtype == int:
+        norm = 255
+    else:
+        norm = 1
+    array = array.astype(float) / norm
+    
+    return array
+    
+def _load_image(imname, flatten=True, resize=1.):
+    im = scipy.misc.imread(imname, flatten=flatten)
+    if len(im.shape) == 0:  # hello, Ubuntu + conda
+        im = skimage.data.imread(imname, as_grey=flatten)
+    im = scipy.misc.imresize(im, resize)
+    return im
+
+def run(model_name='HMAX', impaths=None):
+    if model_name in KNOWN_MODELS:
+        m = KNOWN_MODELS[model_name]
+        if m.__name__ == 'Caffe':
+            m = m(model=model_name)
+        else:
+            m = m()
+    else:
+        raise Exception('ERROR: model {0} not recognized. '
+                        'Choose from:\n {1}'.format(model_name,KNOWN_MODELS.keys()))
+                        
+
+    #ims = [m.get_teststim(), m.get_teststim().T]
+    if impaths is not None:
+        try:
+            ims = eval(impaths)
+        except:
+            ims = impaths
+    #print ims
+    print m.predict([ims], topn=5)
+    #output = m.compare(ims)
+    #return output
+
+
+KNOWN_MODELS = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax': HMAX,
+                'hog': HOG}
+CAFFE_MODELS = {}
+if HAS_CAFFE:
+    caffe_models = {}
+    modelpath = os.path.join(os.environ['CAFFE'], 'models')
+    for path in os.listdir(modelpath):
+        protocol = os.path.join(modelpath, path, '*deploy*.prototxt')
+        fname = glob.glob(protocol)
+        if len(fname) > 0:
+            protocol = fname[0]
+            try:
+                with open(protocol, 'rb') as f:
+                    name = f.readline().split(': ')[1].strip('"\n\r')
+            except:
+                pass
+            else:
+                caffe_models[name] = Caffe
+                CAFFE_MODELS[name] = os.path.join(modelpath, path)
+    KNOWN_MODELS.update(caffe_models)
 
 
 if __name__ == '__main__':
-    models = KNOWN_MODELS
+    if len(sys.argv) == 2:
+        output = run(model_name=sys.argv[1])
+    elif len(sys.argv) > 2:
+        output = run(model_name=sys.argv[1], impaths=sys.argv[2])
 
-    if len(sys.argv) == 1:
-        m = HMAX()
-    else:
-        model_name = sys.argv[1]
-        if model_name in models: m = models[model_name]()
-    if len(sys.argv) > 2:  # give image file names using glob syntax
-        ims = sys.argv[2:]
-    else:
-        ims = [m.get_teststim(), m.get_teststim().T]
-
-    output = m.compare(ims)
+    # np.save('results_%s.npy' % sys.argv[1], output)
