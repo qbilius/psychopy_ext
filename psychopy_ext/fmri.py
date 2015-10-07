@@ -144,7 +144,8 @@ class Analysis(object):
         self.tr = tr
         self.fmri_prefix = fmri_prefix
         self.fix = fix
-        self.rois = make_roi_pattern(rois)
+        if rois is not None:
+            self.rois = make_roi_pattern(rois)
         self.offset = offset
         if self.rp['method'] == 'timecourse':
             self.rp['values'] = 'raw'
