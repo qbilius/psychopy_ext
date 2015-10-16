@@ -31,6 +31,10 @@ else:
 import psychopy.info
 from psychopy import visual, core, event, logging, misc, monitors, data
 from psychopy.data import TrialHandler, ExperimentHandler
+from psychopy.tools.attributetools import attributeSetter, logAttrib, setAttribute
+from psychopy.visual.basevisual import BaseVisualStim, ColorMixin, ContainerMixin
+from psychopy.tools.arraytools import val2array
+from psychopy.visual.helpers import setColor
 
 import ui
 from version import __version__ as psychopy_ext_version
@@ -312,7 +316,7 @@ class Task(TrialHandler):
             if np.any(ev.dur == 0) or np.any(np.isinf(ev.dur)):
                 self.global_timing = False
                 break
-        
+
         if self.rp['autorun'] > 0:
             # speed up the experiment
             for ev in self.trial:  # speed up each event
@@ -474,7 +478,7 @@ class Task(TrialHandler):
                                     #color='white', height=20, units='pix',
                                     #pos=(0, 0),  # don't know why
                                     #wrapWidth=40*20)
-        
+
         text = textwrap.dedent(text)
         if text.find('\n') < 0:  # single line, no formatting
             html = '<h2><font face="sans-serif">%s</font></h2>' % text
@@ -497,7 +501,7 @@ class Task(TrialHandler):
                 html = _HTMLParser().feed(html)
                 width = 40*12
                 multiline = True
-        
+
         instructions = visual.TextStim(self.win, units='pix',
                                        wrapWidth=width)
         instructions._pygletTextObj = pyglet.text.HTMLLabel(html,
@@ -1054,7 +1058,7 @@ class Task(TrialHandler):
                     wait_stim = self.s['fix']
                 except:
                     pass
-            if text is None:                  
+            if text is None:
                 self.show_text(text='Block %d' % (self.this_blockn+1),
                                auto=auto, wait=wait, wait_stim=wait_stim)
             else:
@@ -1604,7 +1608,7 @@ class Experiment(ExperimentHandler, Task):
                      ('autorun', 0),  # if >0, will autorun at the specified speed
                      ('unittest', False),  # like autorun but no breaks at show_instructions
                      ('repository', ('do nothing', 'commit and push', 'only commit')),  # add, commit and push to a hg repo?
-                                                                          # add and commit changes, like new data files?
+                                    # add and commit changes, like new data files?
                      ]
 
             - actions (list of function names, default: None)
@@ -2120,13 +2124,18 @@ class Event(object):
             #self.key = value
 
 
-class ThickShapeStim(visual.ShapeStim):
+class ThickShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
     """
     Draws thick shape stimuli as a collection of lines.
 
     PsychoPy has a bug in some configurations of not drawing lines thicker
     than 2px. This class fixes the issue. Note that it's really just a
     collection of rectanges so corners will not look nice.
+
+    ..note:: `lineWidth` is specified in your units, not pixels (as is default
+             in PsychoPy)
+
+    Modified from :class:`~visual.ShapeStim`.
     """
     def __init__(self,
                  win,
@@ -2147,31 +2156,16 @@ class ThickShapeStim(visual.ShapeStim):
                  interpolate=True,
                  lineRGB=None,
                  fillRGB=None,
-                 name='', autoLog=True):
-        """
-        :Parameters:
-
-            lineWidth : int (or float?)
-                specifying the line width in units of your choice
-
-            vertices : a list of lists or a numpy array (Nx2)
-                specifying xy positions of each vertex
-
-            closeShape : True or False
-                Do you want the last vertex to be automatically connected to the first?
-
-            interpolate : True or False
-                If True the edge of the line will be antialiased.
-                """
+                 name=None,
+                 autoLog=None,
+                 autoDraw=False):
+        """ """  # all doc is in the attributes
         #what local vars are defined (these are the init params) for use by __repr__
         self._initParams = dir()
         self._initParams.remove('self')
 
         # Initialize inheritance and remove unwanted methods
-        try:
-            visual.BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
-        except:  # PsychoPy prior to 1.79
-            visual._BaseVisualStim.__init__(self, win, units=units, name=name, autoLog=False) #autoLog is set later
+        super(ThickShapeStim, self).__init__(win, units=units, name=name, autoLog=False) #autoLog is set later
         self.__dict__['setColor'] = None
         self.__dict__['color'] = None
         self.__dict__['colorSpace'] = None
@@ -2179,9 +2173,9 @@ class ThickShapeStim(visual.ShapeStim):
         self.contrast = float(contrast)
         self.opacity = float(opacity)
         self.pos = np.array(pos, float)
-        self.closeShape=closeShape
-        self.lineWidth=lineWidth
-        self.interpolate=interpolate
+        self.closeShape = closeShape
+        self.lineWidth = lineWidth
+        self.interpolate = interpolate
 
         # Color stuff
         self.useShaders=False#since we don't ned to combine textures with colors
@@ -2190,77 +2184,158 @@ class ThickShapeStim(visual.ShapeStim):
 
         if lineRGB!=None:
             logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
-            self.setLineColor(lineRGB, colorSpace='rgb')
+            self.setLineColor(lineRGB, colorSpace='rgb', log=None)
         else:
-            self.setLineColor(lineColor, colorSpace=lineColorSpace)
+            self.setLineColor(lineColor, colorSpace=lineColorSpace, log=None)
 
         if fillRGB!=None:
             logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
-            self.setFillColor(fillRGB, colorSpace='rgb')
+            self.setFillColor(fillRGB, colorSpace='rgb', log=None)
         else:
-            self.setFillColor(fillColor, colorSpace=fillColorSpace)
+            self.setFillColor(fillColor, colorSpace=fillColorSpace, log=None)
 
         # Other stuff
         self.depth=depth
         self.ori = np.array(ori,float)
-        self.size = np.array([0.0,0.0])
-        self.setSize(size, log=False)
-        self.setVertices(vertices)
-        #self._calcVerticesRendered()
+        self.size = np.array([0.0, 0.0]) + size  # make sure that it's 2D
+        self.vertices = vertices  # call attributeSetter
+        self.autoDraw = autoDraw  # call attributeSetter
 
-        #set autoLog (now that params have been initialised)
-        self.autoLog= autoLog
-        if autoLog:
+        # set autoLog now that params have been initialised
+        self.__dict__['autoLog'] = autoLog or autoLog is None and self.win.autoLog
+        if self.autoLog:
             logging.exp("Created %s = %s" %(self.name, str(self)))
 
+    @attributeSetter
+    def lineWidth(self, value):
+        """int or float
+        specifying the line width in **pixels**
 
-    def draw(self):
-        for stim in self.stimulus:
-            stim.draw()
+        :ref:`Operations <attrib-operations>` supported.
+        """
+        self.__dict__['lineWidth'] = value
+    def setLineWidth(self, value, operation='', log=None):
+        setAttribute(self, 'lineWidth', value, log, operation)
 
-    def to_svg(self, svg):
-        rects = []
-        for stim, vertices in zip(self.stimulus,self.vertices_all):
-            size = svg.get_size(stim, np.abs(stim.vertices[0])*2)
-            points = svg._calc_attr(stim, np.array(vertices))
-            points[:, 1] *= -1
-            rect = svg.svgfile.polyline(
-                    points=points,
-                    stroke_width=svg._calc_attr(self,self.lineWidth),
-                    stroke=svg.color2rgb255(self, color=self.lineColor,
-                                colorSpace=self.lineColorSpace),
-                    fill_opacity=0
+    @attributeSetter
+    def closeShape(self, value):
+        """True or False
+        Do you want the last vertex to be automatically connected to the first?
+
+        If you're using `Polygon`, `Circle` or `Rect`, closeShape=True is assumed
+        and shouldn't be changed.
+        """
+        self.__dict__['closeShape'] = value
+
+    @attributeSetter
+    def interpolate(self, value):
+        """True or False
+        If True the edge of the line will be antialiased.
+        """
+        self.__dict__['interpolate'] = value
+
+    @attributeSetter
+    def fillColor(self, color):
+        """
+        Sets the color of the shape fill. See :meth:`psychopy.visual.GratingStim.color`
+        for further details of how to use colors.
+
+        Note that shapes where some vertices point inwards will usually not
+        'fill' correctly.
+        """
+        setColor(self, color, rgbAttrib='fillRGB', colorAttrib='fillColor')
+
+    @attributeSetter
+    def lineColor(self, color):
+        """
+        Sets the color of the shape lines. See :meth:`psychopy.visual.GratingStim.color`
+        for further details of how to use colors.
+        """
+        setColor(self, color, rgbAttrib='lineRGB', colorAttrib='lineColor')
+
+    @attributeSetter
+    def fillColorSpace(self, value):
+        """
+        Sets color space for fill color. See documentation for fillColorSpace
+        """
+        self.__dict__['fillColorSpace'] = value
+
+    @attributeSetter
+    def lineColorSpace(self, value):
+        """
+        Sets color space for line color. See documentation for lineColorSpace
+        """
+        self.__dict__['lineColorSpace'] = value
+
+    def setColor(self, color, colorSpace=None, operation=''):
+        """For ShapeStim use :meth:`~ShapeStim.lineColor` or
+        :meth:`~ShapeStim.fillColor`
+        """
+        raise AttributeError, 'ShapeStim does not support setColor method. Please use setFillColor or setLineColor instead'
+    def setLineRGB(self, value, operation=''):
+        """DEPRECATED since v1.60.05: Please use :meth:`~ShapeStim.lineColor`
+        """
+        self._set('lineRGB', value, operation)
+    def setFillRGB(self, value, operation=''):
+        """DEPRECATED since v1.60.05: Please use :meth:`~ShapeStim.fillColor`
+        """
+        self._set('fillRGB', value, operation)
+    def setLineColor(self, color, colorSpace=None, operation='', log=None):
+        """Sets the color of the shape edge. See :meth:`psychopy.visual.GratingStim.color`
+        for further details of how to use this function.
+        """
+        setColor(self,color, colorSpace=colorSpace, operation=operation,
+                    rgbAttrib='lineRGB',#the name for this rgb value
+                    colorAttrib='lineColor',#the name for this color
                     )
-            tr = svg.get_pos(self)#+size/2.
-            rect.translate(tr[0], tr[1])
-            rects.append(rect)
-        return rects
+        logAttrib(self, log, 'lineColor', value='%s (%s)' %(self.lineColor, self.lineColorSpace))
+    def setFillColor(self, color, colorSpace=None, operation='', log=None):
+        """Sets the color of the shape fill. See :meth:`psychopy.visual.GratingStim.color`
+        for further details of how to use this function.
 
-    def setOri(self, newOri):
-        # theta = (newOri - self.ori)/180.*np.pi
-        # rot = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-        # for stim in self.stimulus:
-            # newVert = []
-            # for vert in stim.vertices:
-                # #import pdb; pdb.set_trace()
-                # newVert.append(np.dot(rot,vert))
-            # stim.setVertices(newVert)
-        self.ori = newOri
-        self.setVertices(self.vertices_all)
+        Note that shapes where some vertices point inwards will usually not
+        'fill' correctly.
+        """
+        #run the original setColor, which creates color and
+        setColor(self,color, colorSpace=colorSpace, operation=operation,
+                    rgbAttrib='fillRGB',#the name for this rgb value
+                    colorAttrib='fillColor',#the name for this color
+                    )
+        logAttrib(self, log, 'fillColor', value='%s (%s)' %(self.fillColor, self.fillColorSpace))
 
-    def setPos(self, newPos):
-        #for stim in self.stimulus:
-            #stim.setPos(newPos)
-        self.pos = newPos
-        self.setVertices(self.vertices_all)
+    @attributeSetter
+    def size(self, value):
+        """Int/Float or :ref:`x,y-pair <attrib-xy>`.
+        Sets the size of the shape.
+        Size is independent of the units of shape and will simply scale the shape's vertices by the factor given.
+        Use a tuple or list of two values to scale asymmetrically.
 
-    #def setSize(self, newSize):
-        ##for stim in self.stimulus:
-            ##stim.setPos(newPos)
-        #self.size = newSize
-        #self.setVertices(self.vertices)
+        :ref:`Operations <attrib-operations>` supported."""
+        self.__dict__['size'] = np.array(value, float)
+        self._needVertexUpdate = True
+    def setSize(self, value, operation='', log=None):
+        """Usually you can use 'stim.attribute = value' syntax instead,
+        but use this method if you need to suppress the log message
+        """
+        setAttribute(self, 'size', value, log, operation)  # calls attributeSetter
+        self.setVertices(self.vertices)
 
-    def setVertices(self, value=None):
+    @attributeSetter
+    def vertices(self, value=None):
+        """a list of lists or a numpy array (Nx2) specifying xy positions of
+        each vertex, relative to the centre of the field.
+
+        If you're using `Polygon`, `Circle` or `Rect`, this shouldn't be used.
+
+        :ref:`Operations <attrib-operations>` supported.
+        """
+        self.__dict__['vertices'] = np.array(value, float)
+
+        # Check shape
+        # if not (self.vertices.shape==(2,) or (len(self.vertices.shape) == 2 and self.vertices.shape[1] == 2)):
+        #     raise ValueError("New value for setXYs should be 2x1 or Nx2")
+        # self._needVertexUpdate=True
+
         if isinstance(value[0][0], int) or isinstance(value[0][0], float):
             self.vertices_all = [value]
         else:
@@ -2272,22 +2347,22 @@ class ThickShapeStim(visual.ShapeStim):
 
         self._rend_vertices = []
 
+        if self.units == 'pix':
+            w = 1
+        elif self.units in ['height', 'norm']:
+            w = 1./self.win.size[1]
+        elif self.units == 'cm':
+            w = misc.pix2cm(1, self.win.monitor)
+        elif self.units in ['deg', 'degs']:
+            w = misc.pix2deg(1, self.win.monitor)
+        wh = self.lineWidth/2. - w
+
         for vertices in self.vertices_all:
             rend_verts = []
             if self.closeShape:
                 numPairs = len(vertices)
             else:
                 numPairs = len(vertices)-1
-
-            if self.units == 'pix':
-                w = 1
-            elif self.units in ['height', 'norm']:
-                w = 1./self.win.size[1]
-            elif self.units == 'cm':
-                w = misc.pix2cm(1, self.win.monitor)
-            elif self.units in ['deg', 'degs']:
-                w = misc.pix2deg(1, self.win.monitor)
-            wh = self.lineWidth/2. - w
 
             for i in range(numPairs):
                 thisPair = np.array([vertices[i],vertices[(i+1)%len(vertices)]])
@@ -2318,6 +2393,51 @@ class ThickShapeStim(visual.ShapeStim):
             self._rend_vertices.append(rend_verts)
             #import pdb; pdb.set_trace()
             #self.setSize(self.size)
+
+    def setVertices(self, value=None, operation='', log=None):
+        """Usually you can use 'stim.attribute = value' syntax instead,
+        but use this method if you need to suppress the log message
+        """
+        setAttribute(self, 'vertices', value, log, operation)
+
+    def draw(self, **kwargs):
+        for stim in self.stimulus:
+            stim.draw(**kwargs)
+
+    def to_svg(self, svg):
+        rects = []
+        for stim, vertices in zip(self.stimulus,self.vertices_all):
+            size = svg.get_size(stim, np.abs(stim.vertices[0])*2)
+            points = svg._calc_attr(stim, np.array(vertices))
+            points[:, 1] *= -1
+            rect = svg.svgfile.polyline(
+                    points=points,
+                    stroke_width=svg._calc_attr(self,self.lineWidth),
+                    stroke=svg.color2rgb255(self, color=self.lineColor,
+                                colorSpace=self.lineColorSpace),
+                    fill_opacity=0
+                    )
+            tr = svg.get_pos(self)#+size/2.
+            rect.translate(tr[0], tr[1])
+            rects.append(rect)
+        return rects
+
+    def setOri(self, newOri, operation='', log=None):
+        """Usually you can use 'stim.attribute = value' syntax instead,
+        but use this method if you need to suppress the log message
+        """
+        setAttribute(self, 'ori', newOri, log, operation)
+        self.setVertices(self.vertices_all)
+
+    def setPos(self, newPos, operation='', log=None):
+        """Usually you can use 'stim.attribute = value' syntax instead,
+        but use this method if you need to suppress the log message
+        """
+        setAttribute(self, 'pos', val2array(newPos, False), log, operation)
+        self.setVertices(self.vertices_all)
+
+    # def setVertices(self, value=None):
+
 
 
 class GroupStim(object):
