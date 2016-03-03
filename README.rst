@@ -1,4 +1,4 @@
-Please refer to the `online documentation <http://psychopy_ext.klab.lt>`_
+Please refer to the `online documentation <http://psychopy-ext.klab.lt>`_
 for a more in depth explanation how to use the package.
 
 What is it?
@@ -27,13 +27,13 @@ Installation
 
     pip install psychopy_ext
 
-(`no success? <http://psychopy_ext.klab.lt/intro/faq.html#pip-failing>`_)
+(`no success? <http://psychopy-ext.klab.lt/intro/faq.html#pip-failing>`_)
 
 
 Quick start
 ===========
 
-First, find demo files in ``site-packages`` (`where is it? <http://psychopy_ext.klab.lt/intro/faq.html#where-is-demo>`_). Copy them to your home folder or another location of your choice (but where you have write permission). Now check the demos:
+First, find demo files in ``site-packages`` (`where is it? <http://psychopy-ext.klab.lt/intro/faq.html#where-is-demo>`_). Copy them to your home folder or another location of your choice (but where you have write permission). Now check the demos:
 
 - For people who use a keyboard:
 
