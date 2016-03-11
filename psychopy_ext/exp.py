@@ -8,9 +8,14 @@ A library of helper functions for creating and running experiments.
 
 All experiment-related methods are kept here.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import sys, os, csv, glob, random, warnings, copy
 from UserDict import DictMixin
+from collections import OrderedDict
 
 import numpy as np
 import wx
@@ -31,13 +36,10 @@ else:
 import psychopy.info
 from psychopy import visual, core, event, logging, misc, monitors, data
 from psychopy.data import TrialHandler, ExperimentHandler
-from psychopy.tools.attributetools import attributeSetter, logAttrib, setAttribute
-from psychopy.visual.basevisual import BaseVisualStim, ColorMixin, ContainerMixin
-from psychopy.tools.arraytools import val2array
-from psychopy.visual.helpers import setColor
+from psychopy.tools.attributetools import attributeSetter
 
-import ui
-from version import __version__ as psychopy_ext_version
+from psychopy_ext import ui
+from psychopy_ext.version import __version__ as psychopy_ext_version
 
 # pandas does not come by default with PsychoPy but that should not prevent
 # people from running the experiment
@@ -1283,7 +1285,8 @@ class SVG(object):
     def save(self):
         self.svgfile.save()
 
-    def color2attr(self, stim, attr, color='black', colorSpace=None, kwargs = {}):
+    def color2attr(self, stim, attr, color='black', colorSpace=None, kwargs=None):
+        if kwargs is None: kwargs = {}
         col = self.color2rgb255(stim, color=color, colorSpace=colorSpace)
         if col is None:
             kwargs[attr + '_opacity'] = 0
@@ -2124,7 +2127,7 @@ class Event(object):
             #self.key = value
 
 
-class ThickShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
+class ThickShapeStim(visual.shape.ShapeStim):
     """
     Draws thick shape stimuli as a collection of lines.
 
@@ -2137,188 +2140,8 @@ class ThickShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
 
     Modified from :class:`~visual.ShapeStim`.
     """
-    def __init__(self,
-                 win,
-                 units  ='',
-                 lineWidth=.01,
-                 lineColor=(1.0,1.0,1.0),
-                 lineColorSpace='rgb',
-                 fillColor=None,
-                 fillColorSpace='rgb',
-                 vertices=((-0.5,0),(0,+0.5),(+0.5,0)),
-                 closeShape=True,
-                 pos= (0,0),
-                 size=1,
-                 ori=0.0,
-                 opacity=1.0,
-                 contrast=1.0,
-                 depth  =0,
-                 interpolate=True,
-                 lineRGB=None,
-                 fillRGB=None,
-                 name=None,
-                 autoLog=None,
-                 autoDraw=False):
-        """ """  # all doc is in the attributes
-        #what local vars are defined (these are the init params) for use by __repr__
-        self._initParams = dir()
-        self._initParams.remove('self')
-
-        # Initialize inheritance and remove unwanted methods
-        super(ThickShapeStim, self).__init__(win, units=units, name=name, autoLog=False) #autoLog is set later
-        self.__dict__['setColor'] = None
-        self.__dict__['color'] = None
-        self.__dict__['colorSpace'] = None
-
-        self.contrast = float(contrast)
-        self.opacity = float(opacity)
-        self.pos = np.array(pos, float)
-        self.closeShape = closeShape
-        self.lineWidth = lineWidth
-        self.interpolate = interpolate
-
-        # Color stuff
-        self.useShaders=False#since we don't ned to combine textures with colors
-        self.__dict__['lineColorSpace'] = lineColorSpace
-        self.__dict__['fillColorSpace'] = fillColorSpace
-
-        if lineRGB!=None:
-            logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
-            self.setLineColor(lineRGB, colorSpace='rgb', log=None)
-        else:
-            self.setLineColor(lineColor, colorSpace=lineColorSpace, log=None)
-
-        if fillRGB!=None:
-            logging.warning("Use of rgb arguments to stimuli are deprecated. Please use color and colorSpace args instead")
-            self.setFillColor(fillRGB, colorSpace='rgb', log=None)
-        else:
-            self.setFillColor(fillColor, colorSpace=fillColorSpace, log=None)
-
-        # Other stuff
-        self.depth=depth
-        self.ori = np.array(ori,float)
-        self.size = np.array([0.0, 0.0]) + size  # make sure that it's 2D
-        self.vertices = vertices  # call attributeSetter
-        self.autoDraw = autoDraw  # call attributeSetter
-
-        # set autoLog now that params have been initialised
-        self.__dict__['autoLog'] = autoLog or autoLog is None and self.win.autoLog
-        if self.autoLog:
-            logging.exp("Created %s = %s" %(self.name, str(self)))
-
-    @attributeSetter
-    def lineWidth(self, value):
-        """int or float
-        specifying the line width in **pixels**
-
-        :ref:`Operations <attrib-operations>` supported.
-        """
-        self.__dict__['lineWidth'] = value
-    def setLineWidth(self, value, operation='', log=None):
-        setAttribute(self, 'lineWidth', value, log, operation)
-
-    @attributeSetter
-    def closeShape(self, value):
-        """True or False
-        Do you want the last vertex to be automatically connected to the first?
-
-        If you're using `Polygon`, `Circle` or `Rect`, closeShape=True is assumed
-        and shouldn't be changed.
-        """
-        self.__dict__['closeShape'] = value
-
-    @attributeSetter
-    def interpolate(self, value):
-        """True or False
-        If True the edge of the line will be antialiased.
-        """
-        self.__dict__['interpolate'] = value
-
-    @attributeSetter
-    def fillColor(self, color):
-        """
-        Sets the color of the shape fill. See :meth:`psychopy.visual.GratingStim.color`
-        for further details of how to use colors.
-
-        Note that shapes where some vertices point inwards will usually not
-        'fill' correctly.
-        """
-        setColor(self, color, rgbAttrib='fillRGB', colorAttrib='fillColor')
-
-    @attributeSetter
-    def lineColor(self, color):
-        """
-        Sets the color of the shape lines. See :meth:`psychopy.visual.GratingStim.color`
-        for further details of how to use colors.
-        """
-        setColor(self, color, rgbAttrib='lineRGB', colorAttrib='lineColor')
-
-    @attributeSetter
-    def fillColorSpace(self, value):
-        """
-        Sets color space for fill color. See documentation for fillColorSpace
-        """
-        self.__dict__['fillColorSpace'] = value
-
-    @attributeSetter
-    def lineColorSpace(self, value):
-        """
-        Sets color space for line color. See documentation for lineColorSpace
-        """
-        self.__dict__['lineColorSpace'] = value
-
-    def setColor(self, color, colorSpace=None, operation=''):
-        """For ShapeStim use :meth:`~ShapeStim.lineColor` or
-        :meth:`~ShapeStim.fillColor`
-        """
-        raise AttributeError, 'ShapeStim does not support setColor method. Please use setFillColor or setLineColor instead'
-    def setLineRGB(self, value, operation=''):
-        """DEPRECATED since v1.60.05: Please use :meth:`~ShapeStim.lineColor`
-        """
-        self._set('lineRGB', value, operation)
-    def setFillRGB(self, value, operation=''):
-        """DEPRECATED since v1.60.05: Please use :meth:`~ShapeStim.fillColor`
-        """
-        self._set('fillRGB', value, operation)
-    def setLineColor(self, color, colorSpace=None, operation='', log=None):
-        """Sets the color of the shape edge. See :meth:`psychopy.visual.GratingStim.color`
-        for further details of how to use this function.
-        """
-        setColor(self,color, colorSpace=colorSpace, operation=operation,
-                    rgbAttrib='lineRGB',#the name for this rgb value
-                    colorAttrib='lineColor',#the name for this color
-                    )
-        logAttrib(self, log, 'lineColor', value='%s (%s)' %(self.lineColor, self.lineColorSpace))
-    def setFillColor(self, color, colorSpace=None, operation='', log=None):
-        """Sets the color of the shape fill. See :meth:`psychopy.visual.GratingStim.color`
-        for further details of how to use this function.
-
-        Note that shapes where some vertices point inwards will usually not
-        'fill' correctly.
-        """
-        #run the original setColor, which creates color and
-        setColor(self,color, colorSpace=colorSpace, operation=operation,
-                    rgbAttrib='fillRGB',#the name for this rgb value
-                    colorAttrib='fillColor',#the name for this color
-                    )
-        logAttrib(self, log, 'fillColor', value='%s (%s)' %(self.fillColor, self.fillColorSpace))
-
-    @attributeSetter
-    def size(self, value):
-        """Int/Float or :ref:`x,y-pair <attrib-xy>`.
-        Sets the size of the shape.
-        Size is independent of the units of shape and will simply scale the shape's vertices by the factor given.
-        Use a tuple or list of two values to scale asymmetrically.
-
-        :ref:`Operations <attrib-operations>` supported."""
-        self.__dict__['size'] = np.array(value, float)
-        self._needVertexUpdate = True
-    def setSize(self, value, operation='', log=None):
-        """Usually you can use 'stim.attribute = value' syntax instead,
-        but use this method if you need to suppress the log message
-        """
-        setAttribute(self, 'size', value, log, operation)  # calls attributeSetter
-        self.setVertices(self.vertices)
+    def __init__(self, win, lineWidth=.01, **kwargs):
+        super(ThickShapeStim, self).__init__(win, lineWidth=lineWidth, **kwargs)
 
     @attributeSetter
     def vertices(self, value=None):
@@ -2394,12 +2217,6 @@ class ThickShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
             #import pdb; pdb.set_trace()
             #self.setSize(self.size)
 
-    def setVertices(self, value=None, operation='', log=None):
-        """Usually you can use 'stim.attribute = value' syntax instead,
-        but use this method if you need to suppress the log message
-        """
-        setAttribute(self, 'vertices', value, log, operation)
-
     def draw(self, **kwargs):
         for stim in self.stimulus:
             stim.draw(**kwargs)
@@ -2422,22 +2239,17 @@ class ThickShapeStim(BaseVisualStim, ColorMixin, ContainerMixin):
             rects.append(rect)
         return rects
 
-    def setOri(self, newOri, operation='', log=None):
-        """Usually you can use 'stim.attribute = value' syntax instead,
-        but use this method if you need to suppress the log message
-        """
-        setAttribute(self, 'ori', newOri, log, operation)
+    def setSize(self, *args, **kwargs):
+        super(ThickShapeStim, self).setSize(*args, **kwargs)
         self.setVertices(self.vertices_all)
 
-    def setPos(self, newPos, operation='', log=None):
-        """Usually you can use 'stim.attribute = value' syntax instead,
-        but use this method if you need to suppress the log message
-        """
-        setAttribute(self, 'pos', val2array(newPos, False), log, operation)
+    def setOri(self, *args, **kwargs):
+        super(ThickShapeStim, self).setOri(*args, **kwargs)
         self.setVertices(self.vertices_all)
 
-    # def setVertices(self, value=None):
-
+    def setPos(self, *args, **kwargs):
+        super(ThickShapeStim, self).setPos(*args, **kwargs)
+        self.setVertices(self.vertices_all)
 
 
 class GroupStim(object):
@@ -2590,113 +2402,6 @@ class MouseRespGroup(object):
         except:
             stim.setLineColor(color)
             stim.setFillColor(color)
-
-
-class OrderedDict(dict, DictMixin):
-    """
-    OrderedDict code (because some are stuck with Python 2.5)
-
-    Produces an dictionary but with (key, value) pairs in the defined order.
-
-    Created by Raymond Hettinger on Wed, 18 Mar 2009, under the MIT License
-    <http://code.activestate.com/recipes/576693/>_
-    """
-    def __init__(self, *args, **kwds):
-        if len(args) > 1:
-            raise TypeError('expected at most 1 arguments, got %d' % len(args))
-        try:
-            self.__end
-        except AttributeError:
-            self.clear()
-        self.update(*args, **kwds)
-
-    def clear(self):
-        self.__end = end = []
-        end += [None, end, end]         # sentinel node for doubly linked list
-        self.__map = {}                 # key --> [key, prev, next]
-        dict.clear(self)
-
-    def __setitem__(self, key, value):
-        if key not in self:
-            end = self.__end
-            curr = end[1]
-            curr[2] = end[1] = self.__map[key] = [key, curr, end]
-        dict.__setitem__(self, key, value)
-
-    def __delitem__(self, key):
-        dict.__delitem__(self, key)
-        key, prev, next = self.__map.pop(key)
-        prev[2] = next
-        next[1] = prev
-
-    def __iter__(self):
-        end = self.__end
-        curr = end[2]
-        while curr is not end:
-            yield curr[0]
-            curr = curr[2]
-
-    def __reversed__(self):
-        end = self.__end
-        curr = end[1]
-        while curr is not end:
-            yield curr[0]
-            curr = curr[1]
-
-    def popitem(self, last=True):
-        if not self:
-            raise KeyError('dictionary is empty')
-        if last:
-            key = reversed(self).next()
-        else:
-            key = iter(self).next()
-        value = self.pop(key)
-        return key, value
-
-    def __reduce__(self):
-        items = [[k, self[k]] for k in self]
-        tmp = self.__map, self.__end
-        del self.__map, self.__end
-        inst_dict = vars(self).copy()
-        self.__map, self.__end = tmp
-        if inst_dict:
-            return (self.__class__, (items,), inst_dict)
-        return self.__class__, (items,)
-
-    def keys(self):
-        return list(self)
-
-    setdefault = DictMixin.setdefault
-    update = DictMixin.update
-    pop = DictMixin.pop
-    values = DictMixin.values
-    items = DictMixin.items
-    iterkeys = DictMixin.iterkeys
-    itervalues = DictMixin.itervalues
-    iteritems = DictMixin.iteritems
-
-    def __repr__(self):
-        if not self:
-            return '%s()' % (self.__class__.__name__,)
-        return '%s(%r)' % (self.__class__.__name__, self.items())
-
-    def copy(self):
-        return self.__class__(self)
-
-    @classmethod
-    def fromkeys(cls, iterable, value=None):
-        d = cls()
-        for key in iterable:
-            d[key] = value
-        return d
-
-    def __eq__(self, other):
-        if isinstance(other, OrderedDict):
-            return len(self)==len(other) and self.items() == other.items()
-        return dict.__eq__(self, other)
-
-    def __ne__(self, other):
-        return not self == other
 
 
 class _HTMLParser(HTMLParser):
