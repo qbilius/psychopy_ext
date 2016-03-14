@@ -4,6 +4,10 @@
 # either version 3 of the License, or (at your option) any later version.
 
 """Basic command-line and graphic user interface"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import sys, os, inspect, shutil, subprocess
 from types import ModuleType
@@ -26,7 +30,7 @@ try:
 except:
     from exp import OrderedDict
 
-import report
+from psychopy_ext import report
 
 
 class Control(object):
@@ -138,7 +142,7 @@ class Control(object):
                 sys.exit('Class %s not available. Choose from:\n%s' %
                     (input_class_alias, ', '.join(class_order)))
 
-        if isinstance(module, str):
+        if isinstance(module, (str, unicode)):
             sys.stdout.write('initializing...')
             sys.stdout.flush()
             try:
@@ -329,7 +333,7 @@ def report(exp_choices, args):
     for ch in exp_choices:
         if ch.alias in argnames:
             choice = ch.module
-            if isinstance(choice, str):
+            if isinstance(choice, (str, unicode)):
                 try:
                     __import__(choice)
                 except:
@@ -419,7 +423,7 @@ def _get_methods(myclass):
 def _get_methods_byname(myclass):
     if hasattr(myclass, 'actions'):
         if myclass.actions is not None:
-            if isinstance(myclass.actions, str):
+            if isinstance(myclass.actions, (str, unicode)):
                 actions = [myclass.actions]
             else:
                 actions = myclass.actions
@@ -556,7 +560,7 @@ class Page(wx.Panel):
         for i, (label, action) in enumerate(actions):
             if hasattr(class_init, 'actions'):
                 if class_init.actions is not None:
-                    if isinstance(class_init.actions, str):
+                    if isinstance(class_init.actions, (str, unicode)):
                         class_init.actions = [class_init.actions]
                     if label in class_init.actions:
                         add = True
