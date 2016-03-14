@@ -10,206 +10,112 @@ A collection of useful descriptive and basic statistical functions for
 psychology research. Some functions are meant to improve `scipy.stats`
 functionality and integrate seamlessly with `pandas`.
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import numpy as np
 import scipy.stats
 import pandas
 
-import plot
-
-try:
-    from collections import OrderedDict
-except:
-    from exp import OrderedDict
+from collections import OrderedDict
 
 
-def aggregate(df, rows=None, cols=None, values=None,
-    subplots=None, yerr=None, aggfunc='mean', unstacked=False,
-    order='natural'):
-    """
-    Aggregates data over specified columns.
+def aggregate(df, groupby=None, agg_out=None, aggfunc=None, reset_index=True):
+    if aggfunc is None:
+        aggfunc = np.mean
 
-    :Args:
-        df (pandas.DataFrame)
-            A DataFrame with your data
-
-    :Kwargs:
-        - rows (str or list of str, default: None)
-            Name(s) of column(s) that will be aggregated and plotted on the x-axis
-        - cols (str or list of str, default: None)
-            Name(s) of column(s) that will be shown in the legend
-        - values (str or list of str, default: None)
-            Name(s) of the column(s) that is aggregated
-        - yerr (str, default: None)
-            Name of the column for the y-errorbar calculation. Typically,
-            this is the column with participant IDs.
-        - aggfunc (str or a 1d function)
-            A function to use for aggregation. If a string, it is interpreted
-            as a `numpy` function.
-        - unstacked (bool, default: False)
-            If True, returns an unstacked version of aggregated data (i.e.,
-            rows in rows and columns in columns)). Useful for printing and
-            other non-plotting tasks.
-        - order (str, {'natural', 'sorted'}, default: 'natural')
-            If order is 'natural', attempts to keep the original order of the
-            data (as in the file). Works only sometimes though. If 'sorted',
-            then will come out sorted as is by default in pandas.
-
-    :Returns:
-        A `pandas.DataFrame` where data has been aggregated in the following
-        MultiIndex format:
-        - columns:
-
-          - level 0: subplots
-          - level 1 to n-2: rows
-          - level n-1: column
-
-        - rows:
-            yerr
-
-        This format makes it easy to do further computations such as mean over
-        `yerr`: a simple `df.mean()` will do the trick.
-
-    :See also:
-        :func:`accuracy`
-    """
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
-    _splits = {}
+    # import ipdb; ipdb.set_trace()
+    df = factorize(df)
 
-    def fix(var, name):
-        if isinstance(var, str):
-            var = [var]
-        if var is None:
-            var = []
+    if groupby is not None:
+        if not isinstance(groupby, (list, tuple)):
+            groupby = [groupby]
+        skip = []
+    elif agg_out is not None:
+        if not isinstance(agg_out, (list, tuple)):
+            agg_out = [agg_out]
+
+        if isinstance(aggfunc, dict):
+            skip = agg_out + aggfunc.keys()
         else:
-            _splits[name] = var
-        return var
+            skip = agg_out
 
-    subplots = fix(subplots, 'subplots')
-    rows = fix(rows, 'rows')
-    cols = fix(cols, 'cols')
-    yerr = fix(yerr, 'yerr')
+        groupby = [c for c in df if c not in skip and df[c].dtype.name=='category']
+    else:
+        raise 'You must provide either columns to group by or to aggregate out.'
 
-    if values is None:
-        raise Exception('You must provide the name(s) of the column(s) that '
-                        'is/are aggregated.')
+    groups = df.groupby(groupby)
+    agg = groups.aggregate(aggfunc)
+    agg = agg[[c for c in agg if c not in skip]]
+    if reset_index:
+        agg = agg.reset_index()
 
-    allconds = subplots + rows + cols + yerr
-    #allconds = [c for c in allconds if c is not None]
+    return agg
 
-    if isinstance(aggfunc, str):
+def factorize(df, order={}):
+    for col in df:
+        if df[col].dtype.name == 'object' or col in order:
+            set_categories(df, col, order=order.get(col))
+    return df
+
+def set_categories(df, col, order=None):
+    df.loc[:,col] = df.loc[:,col].astype('category', ordered=True)
+    if order is None:
+        order = df[col].unique()
+    order = np.array(order)
+    if df[col].dtype.name == 'category':
         try:
-            aggfunc = getattr(np, aggfunc)
+            df[col].cat.reorder_categories(order, ordered=True, inplace=True)
         except:
-            raise
+            print('WARNING: Could not reorder ' + col)
+            pass
 
-    agg = df.groupby(allconds)[values].aggregate(aggfunc)
 
-    if len(yerr) > 0:  # if yerr present, yerr is in rows, the rest in cols
-        if isinstance(values, list):
-            agg = agg[values[0]]
-        for yr in yerr:
-            agg = unstack(agg, level=yr)
-        agg = agg.T
+def _signal_detection(df, values, signal_noise_col, groupby=None,
+                      signal='signal', noise='noise', hits='correct',
+                      fas='incorrect'):
+
+    if len(df[signal_noise_col].unique()) != 2:
+        raise ValueError('There must be two values in the %s column.' %
+                         signal_noise_col)
+
+    if groupby is None:
+        groupby = [signal_noise_col]
     else:
-        agg = pandas.DataFrame(agg).T
-
-    # sort data nicely
-    if isinstance(order, dict):
-        order_full = order
-    else:
-        order_full = dict([(col, order) for col in agg.columns.names])
-
-    for level, level_ord in order_full.items():
-        if isinstance(level_ord, str):
-            #col = '.'.join(level.split('.')[1:])
-            if level_ord == 'natural':
-                #import pdb; pdb.set_trace()
-                thisord = df[level].unique()  # preserves order
-            elif level_ord == 'sorted':
-                thisord = np.unique(df[level])  # doesn't preserve order
-            else:
-                raise Exception('Ordering %s not recognized.' % level_ord)
+        if isinstance(groupby, (str, unicode)):
+            groupby = [groupby, signal_noise_col]
         else:
-            thisord = level_ord
-        order_full[level] = thisord
+            groupby += [signal_noise_col]
 
-    agg = reorder(agg, order=order_full)
+    rate_rows = df[values].isin([hits, fas])
+    df[values] = 0
+    df[values] = df[values].astype(float)
+    df.ix[rate_rows, values] = 1
+    agg = aggregate(df, groupby, aggfunc=np.mean, reset_index=False)
 
-    ## rows should become rows, and cols should be cols if so desired
-    #if yerr[0] is None and unstacked:
-        #for row in splits['rows']:
-            #agg = unstack(agg, split='rows')
-
-    if isinstance(values, list):
-        agg.names = values[0]
-    else:
-        agg.names = values
-    agg._splits = _splits
+    agg = agg.unstack(signal_noise_col)
     return agg
-    
-def _sigdet(df, values, dist1, dist2, **kwargs):
-    if isinstance(dist1, str):
-        dist1 = [dist1]
-    if isinstance(dist2, str):
-        dist2 = [dist2]
-    if isinstance(values, list):
-        values = values[0]
-        
-    df1 = df[df[values].isin(dist1)]
-    agg1 = aggregate(df1, aggfunc=np.size, values=values, **kwargs)
-    
-    df2 = df[df[values].isin(dist2)]
-    agg2 = aggregate(df2, aggfunc=np.size, values=values, **kwargs)
-    
-    return agg1, agg2
-    
 
-def accuracy(df, values=None, correct='correct', incorrect='incorrect', **kwargs):
-    """
-    Computes accuracy given correct and incorrect data labels.
-
-    :Args:
-        df (pandas.DataFrame)
-            Your data
-
-    :Kwargs:
-        - values (str or list of str, default: None)
-            Name(s) of the column(s) that is aggregated
-        - correct (str or a number or list of str or numbers, default: None)
-            Labels that are treated as correct responses.
-        - incorrect (str or a number or list of str or numbers, default: None)
-            Labels that are treated as incorrect responses.
-        - kwargs
-            Anything else you want to pass to :func:`aggregate`. Note that
-            ``aggfunc`` is set to ``np.size`` and you cannot change that.
-
-    :Returns:
-        A pandas.DataFrame in the format of :func:`accuracy` where the
-        reported values are a fraction correct / (correct+incorrect).
-
-    :See also:
-        :func:`accuracy`
-    """
-    agg_corr, agg_incorr = _sigdet(df, values, correct, incorrect)
-    
-    agg = agg_corr.astype(float) / (agg_corr + agg_incorr)
-    agg.names = values
-    agg._splits = agg_corr._splits
-    return agg
-    
-def d_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
+def d_prime(df, values, signal_noise_col, groupby=None, signal='signal',
+            noise='noise', hits='correct', fas='incorrect'):
     """
     Computes d' sensitivity measure.
-    
+
     From: Stanislaw & Todorov (1999). doi: 10.3758/BF03207704
-    
+
+    .. warning:: This feature has not been tested yet!
+
     :Args:
-        df (pandas.DataFrame)
+        - df (pandas.DataFrame)
             Your data
-      
+        - value (str or list of str)
+            Name of the column where d' is computed.
+
     :Kwargs:
-        - values (str or list of str, default: None)
+        - groupby (str or list of str, default: None)
             Name(s) of the column(s) that is aggregated
         - hits (str or a number or list of str or numbers, default: None)
             Labels that are treated as hits.
@@ -218,26 +124,29 @@ def d_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
         - kwargs
             Anything else you want to pass to :func:`aggregate`. Note that
             ``aggfunc`` is set to ``np.size`` and you cannot change that.
-      
+
       :Returns:
           A pandas.DataFrame.
     """
-    agg_h, agg_h = _sigdet(df, values, hits, fas)
-    agg = scipy.stats.zscore(agg_h) - scipy.stats.zscore(agg_f)
-    agg.names = values
-    agg._splits = agg_h._splits
-    return agg
+    agg = _signal_detection(df, values, signal_noise_col, groupby=groupby,
+                            signal=signal, noise=noise, hits=hits, fas=fas)
+    agg[signal] = scipy.stats.zscore(agg[signal], ddof=1)
+    agg[noise] = scipy.stats.zscore(agg[noise], ddof=1)
+    dp = agg[signal] - agg[noise]
+    return dp
 
 def a_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
     """
     Computes A' sensitivity measure.
-    
+
     From: Stanislaw & Todorov (1999). doi: 10.3758/BF03207704
-    
+
+    .. warning:: This feature has not been tested yet!
+
     :Args:
         df (pandas.DataFrame)
             Your data
-      
+
     :Kwargs:
         - values (str or list of str, default: None)
             Name(s) of the column(s) that is aggregated
@@ -248,16 +157,15 @@ def a_prime(df, values=None, hits='correct', fas='incorrect', **kwargs):
         - kwargs
             Anything else you want to pass to :func:`aggregate`. Note that
             ``aggfunc`` is set to ``np.size`` and you cannot change that.
-      
+
       :Returns:
           A pandas.DataFrame.
     """
-    agg_h, agg_h = _sigdet(df, values, hits, fas)
-    d = agg_h - agg_f
-    agg = .5 + (np.sign(d) * (d**2 + np.abs(d)) / (4 * np.max(agg_h,agg_f) - 4 * agg_h * agg_f))
-    agg.names = values
-    agg._splits = agg_h._splits
-    return agg
+    agg = _signal_detection(df, values, signal_noise_col, groupby=groupby,
+                            signal=signal, noise=noise, hits=hits, fas=fas)
+    d = agg[signal] - agg[noise]
+    ap = .5 + (np.sign(d) * (d**2 + np.abs(d)) / (4 * np.max(agg[signal],agg[noise]) - 4 * agg[signal] * agg[noise]))
+    return ap
 
 def confidence(agg, kind='sem', within=None, alpha=.05, nsamples=None,
                skipna=True):
@@ -361,103 +269,6 @@ def get_star(p):
         star = ''
     return star
 
-def reorder(agg, order, level=None, dim='columns'):
-    """
-    Reorders rows or columns in a pandas.DataFrame.
-
-    It relies on for loops, so it will be slow for large data frames.
-
-    :Args:
-        - agg (pandas.DataFrame)
-            Your (usually aggregated) data
-        - order (list or dict)
-            Order of entries. A list is only accepted is `level` is
-            given. Otherwise, order should be a dict with level names
-            (str) as keys and a list of order in values.
-    :Kwargs:
-        - level (str, default: None)
-            Which level needs to be reordered. Levels must be str.
-        - dim (str, {'rows', 'index', 'columns'}, default: 'columns')
-            Whether to reorder rows (or index) or columns.
-    :Returns:
-        Reordered pandas.DataFrame
-    """
-    if dim in ['index', 'rows'] or isinstance(agg, pandas.Series):
-        orig_idx = agg.index
-    else:
-        orig_idx = agg.columns
-
-    if not isinstance(order, dict):
-        order = {level: order}
-
-    #import pdb; pdb.set_trace()
-    for levelno, levelname in enumerate(orig_idx.names):
-        if not levelname in order:
-            # retain the existing order
-            this_order = pandas.DataFrame(orig_idx.tolist()) #[lev[levelno] for lev in orig_idx]
-            this_order = this_order.iloc[:, levelno].unique()  # preserves order
-            #this_order = np.unique(this_order)
-        else:
-            this_order = order[levelname]
-        # convert to a list
-        order[levelname] = [i for i in this_order]
-
-    data = np.zeros((len(orig_idx), len(orig_idx.names)))
-    ind_sort = pandas.DataFrame(index=orig_idx, data=data, columns=orig_idx.names)
-    for rowno, (rowidx, row) in enumerate(ind_sort.iterrows()):
-        if not isinstance(rowidx, tuple):
-            levelname = row.index[0]
-            row[levelname] = order[levelname].index(rowidx)
-        else:
-            for i, item in enumerate(rowidx):
-                levelname = row.index[i]
-                row[levelname] = order[levelname].index(item)
-    ind_sort.sort(columns=ind_sort.columns.tolist(), inplace=True)
-    multidx = ind_sort.index
-
-    if dim in ['index', 'rows'] or isinstance(agg, pandas.Series):
-        agg_new = agg.reindex(index=multidx)
-    else:
-        agg_new = agg.reindex(columns=multidx)
-    return agg_new
-
-
-def unstack(data, level=-1):
-    """
-    Unstacking that preserves label order, unlike in pandas.
-    """
-    if isinstance(level, (str, int)):
-        levels = [level]
-    else:
-        levels = level
-
-    unstacked = data.copy()
-    # reorder the newly unstacked levels
-    for lev in levels:
-        order = data.index.get_level_values(lev).unique()
-        unstacked = unstacked.unstack(level=lev)
-        unstacked = reorder(unstacked, order=order, level=lev, dim='columns')
-
-    return unstacked
-
-def stack(data, level=-1):
-    """
-    Stacking that preserves label order, unlike in pandas.
-    """
-    if not isinstance(level, (list, tuple)):
-        levels = [level]
-    else:
-        levels = level
-
-    stacked = data.copy()
-
-    for lev in levels:
-        order = data.columns.get_level_values(lev).unique()
-        stacked =  stacked.stack(level=lev)
-        stacked = reorder(stacked, order=order, level=lev, dim='index')
-
-    return stacked
-
 def df_fromdict(data, repeat=1):
     """
     Produces a factorial DataFrame from a dict or list of tuples.
@@ -494,125 +305,6 @@ def df_fromdict(data, repeat=1):
     df = pandas.DataFrame(df, columns=data.keys())
     return df
 
-
-def _aggregate_panel(df, rows=None, cols=None, values=None,
-    value_filter=None, yerr=None, func='mean'):
-    """
-    Aggregates `pandas.DataFrame` over specified dimensions into `pandas.Panel`.
-
-    Forces output to always be a Panel.
-
-    Shape:
-        - items: `yerr`
-        - major_xs: `rows`
-        - minor_xs: `cols`
-
-    TODO: convert between DataFrame/Panel upon request
-    TODO: use `reindexing <reindex <http://pandas.pydata.org/pandas-docs/dev/indexing.html#advanced-reindexing-and-alignment-with-hierarchical-index>`_
-    to keep a stable order
-
-    :Args:
-        df (pandas.DataFrame): A DataFrame with your data
-
-    :Kwargs:
-        - rows (str or list of str): Name(s) of column(s) that will be
-            aggregated and plotted on the x-axis
-        - columns (str or list of str): ame(s) of column(s) that will be
-            aggregated and plotted in the legend
-        - values (str): Name of the column that are aggregated
-        - yerr (str): Name of the column to group reponses by. Typically,
-            this is the column with subject IDs to remove outliers for each
-            participant separately (based on their mean and std)
-
-    :Returns:
-        A `pandas.Panel`
-
-    """
-    if type(rows) != list: rows = [rows]
-    #if yerr is None:
-        #yerr = []
-    if yerr is not None:
-        if type(yerr) in [list, tuple]:
-            if len(yerr) > 1:
-                raise ValueError('Only one field can be used for calculating'
-                    'error bars.')
-            else:
-                yerr = yerr[0]
-
-    if cols is None:
-        if yerr is None:
-            allconds = rows
-        else:
-            allconds = rows + [yerr]
-    else:
-        if type(cols) != list: cols = [cols]
-        if yerr is None:
-            allconds = rows + cols
-        else:
-            allconds = rows + cols + [yerr]
-
-    if yerr is None:
-        panel = _agg_df(df, rows=rows, cols=cols, values=values,
-            value_filter=value_filter, func=func)
-    else:
-
-        if df[values].dtype in [str, object]:  # calculate accuracy
-            size = df.groupby(allconds)[values].size()
-            if value_filter is not None:
-                dff = df[df[values] == value_filter]
-            else:
-                raise Exception('value_filter must be defined when aggregating '
-                    'over str or object types')
-            size_filter = dff.groupby(allconds)[values].size()
-            agg = size_filter / size.astype(float)
-        else:
-            if func == 'mean':
-                agg = df.groupby(allconds)[values].mean()
-            elif func == 'median':
-                agg = df.groupby(allconds)[values].median()
-
-        agg = unstack(agg, level=yerr) #agg.unstack(yerr)
-        columns = agg.columns
-        panel = {}
-
-        for col in columns:
-            if cols is None:
-                #if yerr is None:
-                    #df_col = pandas.DataFrame({'data': agg})
-                #else:
-                df_col = pandas.DataFrame({'data': agg[col]})
-                panel[col] = df_col
-            else:
-                df_col = agg[col].reset_index()
-                #import pdb; pdb.set_trace()
-                panel[col] = pandas.pivot_table(df_col, rows=rows, cols=cols,
-                                            values=col)
-
-    return pandas.Panel(panel)
-
-def _agg_df(df, rows=None, cols=None, values=None,
-            value_filter=None, func='mean'):
-    if df[values].dtype in [str, object]:  # calculate accuracy
-        size = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-            aggfunc=np.size)
-            #df.groupby(allconds)[values].size()
-        if value_filter is not None:
-            dff = df[df[values] == value_filter]
-        else:
-            raise Exception('value_filter must be defined when aggregating '
-                'over str or object types')
-        size_filter = pandas.pivot_table(dff, rows=rows, cols=cols, values=values,
-            aggfunc=np.size)
-        agg = size_filter / size.astype(float)
-    else:
-        if func == 'mean':
-            aggfunc = np.mean
-        elif func == 'median':
-            aggfunc = np.median
-        agg = pandas.pivot_table(df, rows=rows, cols=cols, values=values,
-            aggfunc=aggfunc)
-    return {'column': agg}
-
 def nan_outliers(df, values=None, group=None):
     """
     Remove outliers 3 standard deviations away from the mean
@@ -639,8 +331,8 @@ def stats_test(agg, test='ttest'):
     array2 = agg.ix[:, 1:len(agg.columns):2]
     t, p = scipy.stats.ttest_rel(array1, array2, axis=0)
     #import pdb; pdb.set_trace()
-    print agg.columns.levels[0].values.tolist()
-    print 't = %.2f, p = %.5f, df = %d' % (t[0], p[0], len(agg)-1)
+    print(agg.columns.levels[0].values.tolist())
+    print('t = %.2f, p = %.5f, df = %d' % (t[0], p[0], len(agg)-1))
     return
 
     d = agg.shape[0]
@@ -670,7 +362,7 @@ def stats_test(agg, test='ttest'):
     elif test == 'binomial':
         # Binomial test
         binom = np.apply_along_axis(stats.binom_test,0,agg)
-        print binom
+        print(binom)
         return binom
 
 def ttestPrint(title = '****', values = None, xticklabels = None, legend = None, bon = None):
@@ -680,9 +372,9 @@ def ttestPrint(title = '****', values = None, xticklabels = None, legend = None,
     if np.any([np.any(val < 0) for val in values]): neg = True
     else: neg = False
 
-    print '\n' + title
+    print('\n', title)
     for xi, xticklabel in enumerate(xticklabels):
-        print xticklabel
+        print(xticklabel)
 
         maxleg = max([len(leg) for leg in legend])
 #            if type == 1: legendnames = ['%*s' %(maxleg,p) for p in plotOpt['subplot']['legend.names']]
@@ -707,9 +399,9 @@ def ttestPrint(title = '****', values = None, xticklabels = None, legend = None,
             else:
                 outputStr = '    %(s)s: t(%(d)d) = %(t).3f, p = %(p).3f %(star)s'
 
-            print outputStr \
-                %{'s': legendname, 'd':(d-1), 't': t,
-                'p': p, 'star': star}
+            print(outputStr %
+                {'s': legendname, 'd':(d-1), 't': t,
+                'p': p, 'star': star})
 
 
 def oneway_anova(data):
@@ -737,7 +429,7 @@ def oneway_anova(data):
     N = k*len(data.columns)  # conditions times participants
     return F, p, k-1, N-k
 
-def p_corr(df1, df2=None):
+def pearson_corr(df1, df2=None):
     """
     Computes Pearson correlation and its significance (using a t
     distribution) on a pandas.DataFrame.
@@ -784,11 +476,24 @@ def p_corr(df1, df2=None):
     return corrs, ts, ps
 
 
-def reliability(panel, level=1, niter=100, func='mean'):
+def reliability_splithalf_orig(df, level=1, niter=100, func='mean'):
     """
-    Computes data reliability by splitting it a data set into two random
-    subsets of half the set size
+    Computes data reliability.
+
+    Works by splitting it a data set into two random subsets of half the set
+    size. A Spearman-Brown correction is applied (because by splitting data
+    in half we use only have of the data).
+
+    .. warning: Doesn't work yet.
     """
+    # zscore = lambda x: scipy.stats.zscore(x, ddof=1)
+    # # aggz = aggregate(df, agg_out=agg_out, aggfunc=zscore)
+    # agg_zm = scipy.stats.zscore(agg, ddof=1).mean()
+    # agg_zm = np.tile(agg_zm, len(agg))
+    # rel = agg.corrwith(aggzm, axis=1).mean()
+    #
+    # return rel
+
     if func == 'corr':
         pass
     else:
@@ -817,11 +522,54 @@ def reliability(panel, level=1, niter=100, func='mean'):
     corr = np.mean(corrs)
     t = corr*np.sqrt((N-2)/(1-corr**2))
     p = 1-scipy.stats.t.cdf(abs(t),N-2)  # one-tailed
-    p = 2*p/(1.+p) # Spearman-Brown prediction for twice
-                   # the amount of data
-                   # we need this because we use only half
-                   # of the data here
+    p = 2*p/(1.+p)
     return corr, t, p
+
+def reliability_splithalf(data, nsplits=100):
+    inds = range(len(data))
+    h = len(data)/2
+    corr = []
+    for i in range(nsplits):
+        np.random.shuffle(inds)
+        d1 = np.mean(data[inds[:h]], 0)
+        d2 = np.mean(data[inds[h:]], 0)
+        c = np.corrcoef(d1, d2)[0,1]
+        corr.append(c)
+    r = np.mean(corr)
+    r = 2*r/(1.+r)
+    return r
+
+def reliability(data):
+    """
+    Computes upper and lower boundaries of data reliability
+
+    :Args:
+        data (np.ndarray)
+            N samples x M features
+    :Returns:
+        (floor, ceiling)
+    """
+    zdata = scipy.stats.zscore(data, axis=1)
+    # remove data with no variance in it
+    # sel = np.apply_along_axis(lambda x: ~np.all(np.isnan(x)), 1, zdata)
+    # if not np.all(sel):
+    #     print('WARNING: only {} measurements out of {} will be used.'.format(np.sum(sel), len(sel)))
+    # zdata = zdata[sel]
+    for i,z in enumerate(zdata):
+        if np.all(np.isnan(z)):
+            zdata[i] = np.zeros_like(z)
+            zdata[i,0] = np.finfo(float).eps
+            print('WARNING: some measurements are all equal')
+    zmn = np.mean(zdata, axis=0)
+    ceil = np.mean([np.corrcoef(subj,zmn)[0,1] for subj in zdata])
+    rng = np.arange(zdata.shape[0])
+
+    floor = []
+    for s, subj in enumerate(zdata):
+        mn = np.mean(zdata[rng!=s], axis=0)
+        floor.append(np.corrcoef(subj,mn)[0,1])
+    floor = np.mean(floor)
+    return floor, ceil
 
 def mds(mean, ndim=2):
     if mean.ndim != 2:
@@ -880,6 +628,140 @@ def classical_mds(d, ndim=2):
     X = U * np.sqrt(L)
     return X[:,:ndim]
 
+def corr(data1, data2, sel=None, axis=1, drop=True):
+    assert data1.ndim <= 2, 'must have at most 2 dimensions'
+    assert data1.shape == data2.shape, 'input dimensions must match'
+    if sel is 'upper':
+        assert data1.shape[0] == data2.shape[1], 'must be square matrices'
+        inds = np.triu_indices(data1.shape[0], k=1)
+        data1 = np.mat(data1[inds])
+        data2 = np.mat(data2[inds])
+    else:
+        data1 = np.mat(data1.ravel())
+        data2 = np.mat(data2.ravel())
+
+    # d1 = d1[~np.isnan(d1)]
+    # d2 = d2[~np.isnan(d2)]
+    df1 = pandas.DataFrame(data1)
+    df2 = pandas.DataFrame(data2)
+    c = df1.corrwith(df2, axis=axis, drop=drop)
+    if c.values.size == 1:
+        return c.values[0]
+    else:
+        return c.values
+
+def partial_corr(x, y, z):
+    """
+    Partial correlation.
+
+    .. warning:: Not tested.
+    """
+    x = np.mat(x)
+    y = np.mat(y)
+    z = np.mat(z)
+
+    beta_x = scipy.linalg.lstsq(z.T, x.T)[0]
+    beta_y = scipy.linalg.lstsq(z.T, y.T)[0]
+
+    res_x = x.T - z.T.dot(beta_x)
+    res_y = y.T - z.T.dot(beta_y)
+
+    pcorr = np.corrcoef(res_x.T, res_y.T)[0,1]
+    return pcorr
+
+def bootstrap_permutation(m1, m2=None, func=np.mean, niter=10000, ci=95,
+                          *func_args, **func_kwargs):
+
+    m1 = np.array(m1)
+    if m2 is not None:
+        m2 = np.array(m2)
+
+    df = []
+    for i in range(niter):
+        mp1 = np.random.permutation(m1)
+        if m1.ndim == 2:
+            mp1 = np.random.permutation(mp1.T).T
+        if m2 is not None:
+            mp2 = np.random.permutation(m2)
+            if m2.ndim == 2:
+                mp2 = np.random.permutation(mp2.T).T
+            out = func(mp1, mp2, *func_args, **func_kwargs)
+        else:
+            out = func(mp1, *func_args, **func_kwargs)
+        df.append(out)
+
+    if ci is not None:
+        return (np.percentile(df, 50-ci/2.), np.percentile(df, 50+ci/2.))
+    else:
+        return df
+
+def bootstrap_resample(data1, data2=None, func=np.mean, niter=1000, ci=95,
+                       struct=None, seed=None, *func_args, **func_kwargs):
+
+    np.random.seed(seed)  # useful for paired resampling
+    # if func is None:
+    #     func = lambda x,y: np.corrcoef(x,y)[0,1]
+    #     import pdb; pdb.set_trace()
+
+    d1 = np.squeeze(np.array(data1))
+    if data2 is not None:
+        d2 = np.squeeze(np.array(data2))
+    # if d1.ndim == 2:
+    #     d1 = (data1 + data1.T) / 2.
+    #     d2 = (data2 + data2.T) / 2.
+    df = []
+    for n in range(niter):
+        if struct is not None:
+            inds = np.arange(len(data1)).astype(int)
+            for s in np.unique(struct):
+                inds[struct==s] = np.random.choice(inds[struct==s], size=sum(struct==s))
+        else:
+            inds = np.random.randint(len(data1), size=(len(data1),))
+        d1s = d1[inds]
+        if data2 is not None:
+            d2s = d2[inds]
+        # df.append(func(d1s[~np.isnan(d1s)], d2s[~np.isnan(d2s)]))
+        # import pdb; pdb.set_trace()
+            out = func(d1s, d2s, *func_args, **func_kwargs)
+        else:
+            out = func(d1s, *func_args, **func_kwargs)
+        df.append(out)
+
+    if ci is not None:
+        return np.percentile(df, 50-ci/2.), np.percentile(df, 50+ci/2.)
+    else:
+        return df
+    #return pct
+
+def bootstrap_ttest(data1, data2=None, kind='ind', tails='one', struct=None,
+                    *func_args, **func_kwargs):
+    if data2 is None:
+        return bootstrap_permutation(data1, func=np.mean, niter=niter, ci=None,
+                                     *func_args, **func_kwargs)
+    b1 = bootstrap_resample(data1, func=np.mean, ci=None, struct=struct,
+                            *func_args, **func_kwargs)
+    b2 = bootstrap_resample(data2, func=np.mean, ci=None, struct=struct,
+                            *func_args, **func_kwargs)
+
+    pct = scipy.stats.percentileofscore(b1 - b2, 0, kind='mean') / 100.
+    p = min(pct, 1-pct)
+    if tails == 'one':
+        p *= 2
+
+    return np.mean(b1-b2), p
+
+def bootstrap_ttest_multi(bfg, tails='two'):
+    st = []
+    for d1 in bfg:
+        for d2 in bfg:
+            diff = bfg[d1] - bfg[d2]
+            pct = scipy.stats.percentileofscore(diff, 0, kind='mean') / 100.
+            p = min(pct, 1-pct)
+            if tails == 'two': p *= 2
+            star = stats.get_star(p)
+            st.append([d1, d2, np.mean(diff), p, star])
+    st = pandas.DataFrame(st, columns=['var1', 'var2', 'mean', 'p', 'sig'])
+    return st
 
 if __name__ == '__main__':
     pass
