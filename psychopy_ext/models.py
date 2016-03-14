@@ -19,37 +19,50 @@ Simple usage::
     # or to simply get the output and use it further
     out = hmax.run(ims)
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+# from __future__ import unicode_literals
 
-import sys, os, glob, itertools
-import cPickle as pickle
+import sys, os, glob, itertools, warnings, inspect, argparse, imp
+import tempfile, shutil
+import pickle
 from collections import OrderedDict
 
 import numpy as np
-import matplotlib.pyplot as plt
-# from mpl_toolkits.axes_grid1 import make_axes_locatable
-import scipy.misc, scipy.ndimage
+import scipy.ndimage
 import pandas
 import seaborn as sns
 
 import matlab_wrapper
-import sklearn.manifold, sklearn.preprocessing, sklearn.metrics
+import sklearn.manifold
+import sklearn.preprocessing, sklearn.metrics, sklearn.cluster
 import skimage.feature, skimage.data
 
-import stats, plot
+from psychopy_ext import stats, plot, report, utils
 
 
 try:
-    os.environ['CAFFE']
+    imp.find_module('caffe')
+    HAS_CAFFE = True
 except:
-    HAS_CAFFE = False
-else:
+    try:
+        os.environ['CAFFE']
+        # put Python bindings in the path
+        sys.path.insert(0, os.path.join(os.environ['CAFFE'], 'python'))
+        HAS_CAFFE = True
+    except:
+        HAS_CAFFE = False
+
+if HAS_CAFFE:
     # Suppress GLOG output for python bindings
     GLOG_minloglevel = os.environ.pop('GLOG_minloglevel', None)
     os.environ['GLOG_minloglevel'] = '5'
 
-    # put Python bindings in the path
-    sys.path.insert(0, os.path.join(os.environ['CAFFE'], 'python'))
     import caffe
+    from caffe.proto import caffe_pb2
+    from google.protobuf import text_format
+
     HAS_CAFFE = True
 
     # Turn GLOG output back on for subprocess calls
@@ -61,50 +74,137 @@ else:
 
 class Model(object):
 
-    def __init__(self):
-        self.name = 'model'
-        self.nice_name = 'Model'
+    def __init__(self, model, labels=None, *args, **kwargs):
+        self.name = ALIASES[model]
+        self.nice_name = NICE_NAMES[model]
+        self.safename = self.name
+        self.labels = labels
+        self.args = args
+        self.kwargs = kwargs
 
-    def get_teststim(self, size=(256, 256)):
+    def download_model(self, path=None):
+        """Downloads and extracts a model
+
+        :Kwargs:
+            path (str, default: '')
+                Where model should be extracted
         """
-        Opens Lena image and resizes it to the specified size ((256, 256) by
-        default)
-        """
-        lena = scipy.misc.lena()
-        im = scipy.misc.imresize(lena, (256, 256))
-        im = im.astype(float)
+        self._setup()
+        if self.model.model_url is None:
+            print('Model {} is already available'.format(self.nice_name))
+        elif self.model.model_url == 'manual':
+            print('WARNING: Unfortunately, you need to download {} manually. '
+                  'Follow the instructions in the documentation.'.format(self.nice_name))
+        else:
+            print('Downloading and extracting {}...'.format(self.nice_name))
+            if path is None:
+                path = os.getcwd()
+                text = raw_input('Where do you want the model to be extracted? '
+                                 '(default: {})\n'.format(path))
+                if text != '': path = text
 
-        return im
+            outpath, _ = utils.extract_archive(self.model.model_url,
+                                        folder_name=self.safename, path=path)
+            if self.name == 'phog':
+                with open(os.path.join(outpath, 'anna_phog.m')) as f:
+                    text = f.read()
+                with open(os.path.join(outpath, 'anna_phog.m'), 'wb') as f:
+                    s = 'dlmwrite(s,p);'
+                    f.write(text.replace(s, '% ' + s, 1))
 
-    def report(self, test_ims):
-        print 'input images:', test_ims
-        print 'processing:',
-        output = self.run(test_ims=test_ims, train_ims=None,
-                          return_dict=True)
+            print('Model {} is available here: {}'.format(self.nice_name, outpath))
+            print('If you want to use this model, either give this path when '
+                  'calling the model or add it to your path '
+                  'using {} as the environment variable.'.format(self.safename.upper()))
 
-        ax = sns.plt.subplot(131)
-        ax.set_title('Dissimilarity across stimuli\n'
+    def _setup(self):
+        if not hasattr(self, 'model'):
+            if self.name in CAFFE_MODELS:
+                self.model = CAFFE_MODELS[self.name](model=self.name, *self.args, **self.kwargs)
+            else:
+                self.model = KNOWN_MODELS[self.name](*self.args, **self.kwargs)
+            self.model.labels = self.labels
+            self.isflat = self.model.isflat
+
+    def run(self, *args, **kwargs):
+        self._setup()
+        return self.model.run(*args, **kwargs)
+
+    def train(self, *args, **kwargs):
+        self._setup()
+        return self.model.train(*args, **kwargs)
+
+    def test(self, *args, **kwargs):
+        self._setup()
+        return self.model.test(*args, **kwargs)
+
+    def predict(self, *args, **kwargs):
+        self._setup()
+        return self.model.predict(*args, **kwargs)
+
+    def gen_report(self, *args, **kwargs):
+        self._setup()
+        return self.model.gen_report(*args, **kwargs)
+
+
+class _Model(object):
+
+    def __init__(self, labels=None):
+        self.name = 'Model'
+        self.safename = 'model'
+        self.isflat = False
+        self.labels = labels
+        self.model_url = None
+
+    def gen_report(self, test_ims, train_ims=None, html=None):
+        print('input images:', test_ims)
+        print('processing:', end=' ')
+        if html is None:
+            html = report.Report(path=reppath)
+            html.open()
+            close_html = True
+        else:
+            close_html = False
+
+        resps = self.run(test_ims=test_ims, train_ims=train_ims)
+
+        html.writeh('Dissimilarity', h=1)
+        dis = dissimilarity(resps)
+        plot_data(dis, kind='dis')
+        html.writeimg('dis', caption='Dissimilarity across stimuli'
                      '(blue: similar, red: dissimilar)')
-        dis = self.dissimilarity(output)
-        sns.heatmap(dis, ax=ax)
-        plt.sns.colorbar()
 
-        ax = plt.subplot(132)
-        ax.set_title('Multidimensional scaling')
-        mds = self.mds(dis)
-        plot.mdsplot(mds, ax=ax, icons=test_ims)
+        html.writeh('MDS', h=1)
+        mds_res = mds(dis)
+        plot_data(mds_res, kind='mds', icons=test_ims)
+        html.writeimg('mds', caption='Multidimensional scaling')
 
-        ax = plt.subplot(133)
-        ax.set_title('Linear separability')
-        lin = self.linear_clf(dis)
-        self.plot_linear_clf(lin, ax=ax, chance=1./len(np.unique(y)))
+        if self.labels is not None:
+            html.writeh('Linear separability', h=1)
+            lin = linear_clf(dis, y)
+            plot_data(lin, kind='linear_clf', chance=1./len(np.unique(self.labels)))
+            html.writeimg('lin', caption='Linear separability')
 
-        sns.plt.show()
-        return dis
+        if close_html:
+            html.close()
 
-    def run(self, test_ims=None, train_ims=None, layers=None, return_dict=True):
+    def run(self, test_ims, train_ims=None, layers='output', return_dict=True):
         """
         This is the main function to run the model.
+
+        :Args:
+            test_ims (str, list, tuple, np.ndarray)
+                Test images
+        :Kwargs:
+            - train_ims (str, list, tuple, np.ndarray)
+                Training images
+            - layers ('all'; 'output', 'top', None; str, int;
+                      list of str or int; default: None)
+                Which layers to record and return. 'output', 'top' and None
+                return the output layer.
+            - return_dict (bool, default: True`)
+                Whether a dictionary should be returned. If False, only the last
+                layer is returned as an np.ndarray.
         """
         if train_ims is not None:
             self.train(train_ims)
@@ -114,209 +214,318 @@ class Model(object):
     def train(self, train_ims):
         """
         A placeholder for a function for training a model.
+
         If the model is not trainable, then it will default to this function
         here that does nothing.
         """
-        self.train_ims = train_ims
+        self.train_ims = im2iter(train_ims)
 
-    def test(self, test_ims, layers=None, return_dict=True):
+    def test(self, test_ims, layers='output', return_dict=True):
         """
         A placeholder for a function for testing a model.
+
+        :Args:
+            test_ims (str, list, tuple, np.ndarray)
+                Test images
+        :Kwargs:
+            - layers ('all'; 'output', 'top', None; str, int;
+                      list of str or int; default: 'output')
+                Which layers to record and return. 'output', 'top' and None
+                return the output layer.
+            - return_dict (bool, default: True`)
+                Whether a dictionary should be returned. If False, only the last
+                layer is returned as an np.ndarray.
         """
         self.layers = layers
-        self.test_ims = test_ims
+        # self.test_ims = im2iter(test_ims)
 
-    def predict(self, im):
+    def predict(self, ims, topn=5):
         """
         A placeholder for a function for predicting a label.
         """
         pass
 
-    def dissimilarity(self, outputs, kind='mean_euclidean', **kwargs):
-        """
-        Computes dissimilarity between all rows in a matrix.
-
-        :Args:
-            outputs (numpy.array)
-                A NxM array of model responses. Each row contains an
-                output vector of length M from a model, and distances
-                are computed between each pair of rows.
-
-        :Kwargs:
-            - kind (str or callable, default: 'mean_euclidean')
-                Distance metric. Accepts string values or callables recognized
-                by :func:`~sklearn.metrics.pairwise.pairwise_distances`, and
-                    also 'mean_euclidean' that normalizes
-                    Euclidean distance by the number of features (that is,
-                    divided by M), as used, e.g., by Grill-Spector et al.
-                    (1999), Op de Beeck et al. (2001), Panis et al. (2011).
-                .. note:: Up to version 0.6, 'mean_euclidean' was called
-                    'euclidean', and 'cosine' was called 'gaborjet'. Also note
-                    that 'correlation' used to be called 'corr' and is now
-                    returning dissimilarities in the range [0,2] per
-                    scikit-learn convention.
-            - \*\*kwargs
-                Keyword arguments for
-                :func:`~sklearn.metric.pairwise.pairwise_distances`
-
-        :Returns:
-            A square NxN matrix, typically symmetric unless otherwise defined
-            by the metric.
-        """
-        if kind == 'mean_euclidean':
-            dis_func = lambda x: sklearn.metrics.pairwise.pairwise_distances(x, metric='euclidean', **kwargs) / np.sqrt(x.shape[1])
+    def _setup_layers(self, layers, model_keys):
+        if self.safename in CAFFE_MODELS:
+            filt_layers = self._filter_layers()
         else:
-            dis_func = lambda x: sklearn.metrics.pairwise.pairwise_distances(x, metric=kind)
+            filt_layers = model_keys
 
-        if isinstance(outputs, (dict, OrderedDict)):
-            dis = OrderedDict()
-            for layer, resps in outputs.items():
-                sym_dis = dis_func(resps)
-                sym_dis = (sym_dis + sym_dis.T) / 2.
-                dis[layer] = sym_dis
+        if layers in [None, 'top', 'output']:
+            self.layers = [filt_layers[-1]]
+        elif layers == 'all':
+            self.layers = filt_layers
+        elif isinstance(layers, (str, unicode)):
+            self.layers = [layers]
+        elif isinstance(layers, int):
+            self.layers = [filt_layers[layers]]
+        elif isinstance(layers, (list, tuple, np.ndarray)):
+            if isinstance(layers[0], int):
+                self.layers = [filt_layers[layer] for layer in layers]
+            elif isinstance(layers[0], (str, unicode)):
+                self.layers = layers
+            else:
+                raise ValueError('Layers can only be: None, "all", int or str, '
+                                 'list of int or str, got', layers)
         else:
-            sym_dis = dis_func(resps)
-            sym_dis = (sym_dis + sym_dis.T) / 2.
-            dis = sym_dis
+            raise ValueError('Layers can only be: None, "all", int or str, '
+                             'list of int or str, got', layers)
 
-        return dis
+    def _fmt_output(self, output, layers, return_dict=True):
+        self._setup_layers(layers, output.keys())
+        outputs = [output[layer] for layer in self.layers]
 
-    def input2array(self, names):
-        raise Exception('DEPRECATED. Use :func:`load_images` instead.')
+        if not return_dict:
+            output = output[self.layers[-1]]
+        return output
+
+    def _im2iter(self, ims):
+        """
+        Converts input into in iterable.
+
+        This is used to take arbitrary input value for images and convert them to
+        an iterable. If a string is passed, a list is returned with a single string
+        in it. If a list or an array of anything is passed, nothing is done.
+        Otherwise, if the input object does not have `len`, an Exception is thrown.
+        """
+        if isinstance(ims, (str, unicode)):
+            out = [ims]
+        else:
+            try:
+                len(ims)
+            except:
+                raise ValueError('input image data type not recognized')
+            else:
+                try:
+                    ndim = ims.ndim
+                except:
+                    out = ims
+                else:
+                    if self.isflat:
+                        if ndim == 2:
+                            out = [ims]
+                        elif ndim == 3:
+                            out = ims
+                        else:
+                            raise ValueError('images must be 2D or 3D, got %d '
+                                             'dimensions instead' % ndim)
+                    else:
+                        if ndim == 3:
+                            out = [ims]
+                        elif ndim == 4:
+                            out = ims
+                        else:
+                            raise ValueError('images must be 3D or 4D, got %d '
+                                             'dimensions instead' % ndim)
+        return out
+
+    def load_image(self, *args, **kwargs):
+        return utils.load_image(*args, **kwargs)
+
+    def dissimilarity(self, resps, kind='mean_euclidean', **kwargs):
+        return dissimilarity(resps, kind=kind, **kwargs)
 
     def mds(self, dis, ims=None, ax=None, seed=None, kind='metric'):
-        """
-        Multidimensional scaling
+        return mds(dis, ims=ims, ax=ax, seed=seed, kind=kind)
 
-        :Args:
-            dis
-                Dissimilarity matrix
-        :Kwargs:
-            - ims
-                Image paths
-            - ax
-                Plot axis
-            - seed
-                A seed if you need to reproduce MDS results
-            - kind ({'classical', 'metric'}, default: 'metric')
-                'Classical' is based on MATLAB's cmdscale, 'metric' uses
-                :func:`~sklearn.manifold.MDS`.
+    def cluster(self, *args, **kwargs):
+        return cluster(*args, **kwargs)
 
-        """
-        df = []
-        for layer_name, this_dis in dis.items():
-            if kind == 'classical':
-                vals = stats.classical_mds(this_dis)
-            else:
-                mds_model = sklearn.manifold.MDS(n_components=2,
-                                dissimilarity='precomputed', random_state=seed)
-                vals = mds_model.fit_transform(this_dis)
-            for im, (x,y) in zip(ims, vals):
-                imname = os.path.splitext(os.path.basename(im))[0]
-                df.append([layer_name, imname, x, y])
+    def linear_clf(self, resps, y, clf=None):
+        return linear_clf(resps, y, clf=clf)
 
-        df = pandas.DataFrame(df, columns=['layer', 'im', 'x', 'y'])
-        if self.layers != 'all':
-            if not isinstance(self.layers, (tuple, list)):
-                self.layers = [self.layers]
-            df = df[df.layer.isin(self.layers)]
 
-        plot.mdsplot(df, ax=ax, icons=ims)
+def plot_data(data, kind=None, **kwargs):
+    if kind in ['dis', 'dissimilarity']:
+        if isinstance(data, dict): data = data.values()[0]
+        g = sns.heatmap(data, **kwargs)
+    elif kind == 'mds':
+        g = plot.mdsplot(data, **kwargs)
+    elif kind in ['clust', 'cluster']:
+        g = sns.factorplot('layer', 'dissimilarity', data=df, kind='point')
+    elif kind in ['lin', 'linear_clf']:
+        g = sns.factorplot('layer', 'accuracy', data=df, kind='point')
+        if chance in kwargs:
+            ax.axhline(kwargs['chance'], ls='--', c='.2')
+    else:
+        try:
+            sns.factorplot(x='layers', y=data.columns[-1], data=data)
+        except:
+            raise ValueError('Plot kind "{}" not recognized.'.format(kind))
+    return g
 
-    def linear_clf(self, resps, y, clf=sklearn.svm.LinearSVC):
-        df = []
-        n_folds = len(y) / len(np.unique(y))
+def dissimilarity(resps, kind='mean_euclidean', **kwargs):
+    """
+    Computes dissimilarity between all rows in a matrix.
+
+    :Args:
+        resps (numpy.array)
+            A NxM array of model responses. Each row contains an
+            output vector of length M from a model, and distances
+            are computed between each pair of rows.
+
+    :Kwargs:
+        - kind (str or callable, default: 'mean_euclidean')
+            Distance metric. Accepts string values or callables recognized
+            by :func:`~sklearn.metrics.pairwise.pairwise_distances`, and
+                also 'mean_euclidean' that normalizes
+                Euclidean distance by the number of features (that is,
+                divided by M), as used, e.g., by Grill-Spector et al.
+                (1999), Op de Beeck et al. (2001), Panis et al. (2011).
+            .. note:: Up to version 0.6, 'mean_euclidean' was called
+                'euclidean', and 'cosine' was called 'gaborjet'. Also note
+                that 'correlation' used to be called 'corr' and is now
+                returning dissimilarities in the range [0,2] per
+                scikit-learn convention.
+        - \*\*kwargs
+            Keyword arguments for
+            :func:`~sklearn.metric.pairwise.pairwise_distances`
+
+    :Returns:
+        A square NxN matrix, typically symmetric unless otherwise
+        defined by the metric, and with NaN's in the diagonal.
+    """
+    if kind == 'mean_euclidean':
+        dis_func = lambda x: sklearn.metrics.pairwise.pairwise_distances(x, metric='euclidean', **kwargs) / np.sqrt(x.shape[1])
+    else:
+        dis_func = lambda x: sklearn.metrics.pairwise.pairwise_distances(x, metric=kind, **kwargs)
+
+    if isinstance(resps, (dict, OrderedDict)):
+        dis = OrderedDict()
         for layer, resp in resps.items():
-            # normalize to 0 mean and variance 1 for each feature (column-wise)
-            resp = sklearn.preprocessing.StandardScaler().fit_transform(resp)
-            cv = sklearn.cross_validation.StratifiedKFold(y,
-                    n_folds=n_folds, shuffle=True)
-            # from scikit-learn docs:
-            # need not match cross_val_scores precisely!!!
-            preds = sklearn.cross_validation.cross_val_predict(clf(),
-                 resp, y, cv=cv)
+            dis[layer] = dis_func(resp)
+            diag = np.diag_indices(dis[layer].shape[0])
+            dis[layer][diag] = np.nan
+    else:
+        dis = dis_func(resps)
+        dis[np.diag_indices(dis.shape[0])] = np.nan
 
-            for yi, pred in zip(y, preds):
-                df.append([layer, yi, pred, yi==pred])
-        df = pandas.DataFrame(df, columns=['layer', 'actual', 'predicted', 'accuracy'])
-        df = stats.factorize(df)
-        return df
+    return dis
 
-    def linear_clf_orig(self, resps, y, clf=sklearn.svm.LinearSVC):
-        print
-        print '### Linear separability ###'
+def mds(dis, ims=None, kind='metric', seed=None):
+    """
+    Multidimensional scaling
 
-        df = []
-        n_folds = len(y) / len(np.unique(y))
-        for layer, resp in resps.items():
-            # normalize to 0 mean and variance 1 for each feature
-            # (column-wise)
-            resp = sklearn.preprocessing.StandardScaler().fit_transform(resp)
-            cv = sklearn.cross_validation.StratifiedKFold(y,
-                    n_folds=n_folds)
-            # from scikit-learn docs:
-            # need not match cross_val_scores precisely!!!
-            preds = sklearn.cross_validation.cross_val_predict(clf(),
-                 resp, y, cv=cv)
+    :Args:
+        dis
+            Dissimilarity matrix
+    :Kwargs:
+        - ims
+            Image paths
+        - seed
+            A seed if you need to reproduce MDS results
+        - kind ({'classical', 'metric'}, default: 'metric')
+            'Classical' is based on MATLAB's cmdscale, 'metric' uses
+            :func:`~sklearn.manifold.MDS`.
 
-            # preds = []
-            # for traini, testi in cv:
-            #     for nset in range(1, n_folds+1):
-            #         trainj = []
-            #         for j in np.unique(y):
-            #             sel = np.array(traini)[y[traini]==j]
-            #             sel = np.random.choice(sel, nset).tolist()
-            #             trainj.extend(sel)
-            #     clf.fit(resps[trainj], y[trainj])
-            #     preds.append(svm.predict(resps[testi], y[testi]))
-            # confusion[kind][layer] = sklearn.metrics.confusion_matrix(y, preds)
-            # print confusion[kind][layer]
-            # perc.fit(resps, y)
-            # print layer, np.mean(scores) #perc.score(resps, y)
-            # import pdb; pdb.set_trace()
-            # for score in scores:
-            #     df.append([kind, layer, score])
-            for yi, pred in zip(y, preds):
-                df.append([layer, yi, pred, yi==pred])
-            # preds = perc.predict(resps)
-            # for pred, cat, shape in zip(preds, cats.ravel(), shapes.ravel()):
-            #     df.append([layer, cat, shape, pred==cat])
+    """
+    df = []
+    if ims is None:
+        if isinstance(dis, dict):
+            ims = map(str, range(len(dis.values()[0])))
+        else:
+            ims = map(str, range(len(dis)))
+    for layer_name, this_dis in dis.items():
+        if kind == 'classical':
+            vals = stats.classical_mds(this_dis)
+        else:
+            mds_model = sklearn.manifold.MDS(n_components=2,
+                            dissimilarity='precomputed', random_state=seed)
+            this_dis[np.isnan(this_dis)] = 0
+            vals = mds_model.fit_transform(this_dis)
+        for im, (x,y) in zip(ims, vals):
+            imname = os.path.splitext(os.path.basename(im))[0]
+            df.append([layer_name, imname, x, y])
 
-        # self.df = pandas.DataFrame(df, columns=['layer', 'category',
-        #                                   'shape', 'accuracy'])
-        df = pandas.DataFrame(df, columns=['layer', 'actual', 'predicted', 'accuracy'])
-        df = stats.factorize(df)
-        return df
+    df = pandas.DataFrame(df, columns=['layer', 'im', 'x', 'y'])
+    # df = stats.factorize(df)
+    # if self.layers != 'all':
+    #     if not isinstance(self.layers, (tuple, list)):
+    #         self.layers = [self.layers]
+    #     df = df[df.layer.isin(self.layers)]
+    # plot.mdsplot(df, ax=ax, icons=icons, zoom=zoom)
+    return df
 
-    def plot_linear_clf(self, df, chance=None, ax=None):
-        g = sns.factorplot('layer', 'accuracy', data=df, kind='bar',ax=ax)
-        ax.axhline(chance, ls='--', c='.2')
+def cluster(resps, labels, metric=None, clust=None,
+            bootstrap=True, stratified=False, niter=1000, ci=95, *func_args, **func_kwargs):
+    if metric is None:
+        metric = sklearn.metrics.adjusted_rand_score
+    struct = labels if stratified else None
+    n_clust = len(np.unique(labels))
+
+    if clust is None:
+        clust = sklearn.cluster.AgglomerativeClustering(n_clusters=n_clust, linkage='ward')
+    df = []
+
+    def mt(data, labels):
+        labels_pred = clust.fit_predict(data)
+        qual = metric(labels, labels_pred)
+        return qual
+
+    print('clustering...', end=' ')
+    for layer, data in resps.items():
+        labels_pred = clust.fit_predict(data)
+        qualo = metric(labels, labels_pred)
+        if bootstrap:
+            pct = stats.bootstrap_resample(data1=data, data2=labels,
+                    niter=niter, func=mt, struct=struct, ci=None,
+                    *func_args, **func_kwargs)
+            for i, p in enumerate(pct):
+                df.append([layer, qualo, i, p])
+        else:
+            pct = [np.nan, np.nan]
+            df.append([layer, qualo, 0, np.nan])
+
+    df = pandas.DataFrame(df, columns=['layer', 'iter', 'bootstrap',
+                                       'dissimilarity'])
+    # df = stats.factorize(df)
+    return df
+
+def linear_clf(resps, y, clf=None):
+    if clf is None: clf = sklearn.svm.LinearSVC
+    df = []
+    n_folds = len(y) / len(np.unique(y))
+    for layer, resp in resps.items():
+        # normalize to 0 mean and variance 1 for each feature (column-wise)
+        resp = sklearn.preprocessing.StandardScaler().fit_transform(resp)
+        cv = sklearn.cross_validation.StratifiedKFold(y,
+                n_folds=n_folds, shuffle=True)
+        # from scikit-learn docs:
+        # need not match cross_val_scores precisely!!!
+        preds = sklearn.cross_validation.cross_val_predict(clf(),
+             resp, y, cv=cv)
+
+        for yi, pred in zip(y, preds):
+            df.append([layer, yi, pred, yi==pred])
+    df = pandas.DataFrame(df, columns=['layer', 'actual', 'predicted', 'accuracy'])
+    # df = stats.factorize(df)
+    return df
 
 
-class Pixelwise(Model):
+class Pixelwise(_Model):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         """
         Pixelwise model
 
         The most simple model of them all. Uses pixel values only.
         """
-        super(Pixelwise, self).__init__(*args, **kwargs)
-        self.name = 'px'
-        self.nice_name = 'Pixelwise'
+        super(Pixelwise, self).__init__()
+        self.name = 'Pixelwise'
+        self.safename = 'px'
 
-    def test(self, test_ims, return_dict=False, **kwargs):
-        self.layers = [self.name]
-        ims = load_images(test_ims, resize=(256,256))
-        resps = ims.reshape((ims.shape[0], -1))
-        if return_dict:
-            resps = OrderedDict([(self.layers[-1], resps)])
+    def test(self, test_ims, layers='output', return_dict=False):
+        self.layers = [self.safename]
+        ims = self._im2iter(test_ims)
+        resps = np.vstack([self.load_image(im).ravel() for im in ims])
+        resps = self._fmt_output(OrderedDict([(self.safename, resps)]), layers,
+                                 return_dict=return_dict)
         return resps
 
 
-class Retinex(Model):
+class Retinex(_Model):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         """
         Retinex algorithm
 
@@ -324,12 +533,12 @@ class Retinex(Model):
 
         .. warning:: Experimental
         """
-        super(Retinex, self).__init__(*args, **kwargs)
-        self.nice_name = 'Retinex'
-        self.name = 'retinex'
+        super(Retinex, self).__init__()
+        self.name = 'Retinex'
+        self.safename = 'retinex'
 
-    def gen(self, imname, thres=20./256, plot=True, save=False):
-        im = load_images(imname, flatten=False)
+    def gen(self, im, thres=20./256, plot=True, save=False):
+        im = self.load_image(im)
 
         # 2D derivative
         der = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
@@ -413,15 +622,16 @@ class Retinex(Model):
         return im
 
 
-class Zoccolan(Model):
+class Zoccolan(_Model):
     """
     Based on 10.1073/pnas.0811583106
 
     .. warning:: Not implemented fully
     """
     def __init__(self):
-        super(Model, self).__init__()
+        super(Zoccolan, self).__init__()
         self.name = 'Zoccolan'
+        self.safename = 'zoccolan'
         # receptive field sizes in degrees
         #self.rfs = np.array([.6,.8,1.])
         #self.rfs = np.array([.2,.35,.5])
@@ -521,7 +731,7 @@ class Zoccolan(Model):
         return [V1]
 
 
-class GaborJet(Model):
+class GaborJet(_Model):
 
     def __init__(self, nscales=5, noris=8, imsize=256, grid_size=0):
         """
@@ -545,21 +755,26 @@ class GaborJet(Model):
                 If the image has a different size, it will be rescaled
                 **without** maintaining the original aspect ratio.
             - grid_size (int, default: 0)
-                How many positions within an image to take
+                How many positions within an image to take:
+                  - 0: grid of 10x10
+                  - 1: grid of 12x12
+                  - else: grid of imsize x imsize
         """
         super(GaborJet, self).__init__()
-        self.name = 'gaborjet'
-        self.nice_name = 'GaborJet'
+        self.name = 'GaborJet'
+        self.safename = 'gaborjet'
+        self.isflat = True
         self.nscales = nscales
         self.noris = noris
         self.imsize = imsize
 
+        # generate the grid
         if grid_size == 0:
             s = imsize/128.
-            rangeXY = np.arange(20*s, 110*s+1, 10) - 1  # 10x10
+            rangeXY = np.arange(20*s, 110*s+1, 10*s) - 1  # 10x10
         elif grid_size == 1:
             s = imsize/128.
-            rangeXY = np.arange(10*s, 120*s+1, 10) - 1  # 12x12
+            rangeXY = np.arange(10*s, 120*s+1, 10*s) - 1  # 12x12
         else:
             rangeXY = np.arange(imsize)  # 128x128 or 256x256
 
@@ -581,7 +796,7 @@ class GaborJet(Model):
         Apply GaborJet to given images.
 
         :Args:
-            ims: str or list of str
+            test_ims: str or list of str
                 Image(s) to process with the model.
 
         :Kwargs:
@@ -600,49 +815,25 @@ class GaborJet(Model):
         :Returns:
             Magnitude and, depending on 'return_dict', phase.
         """
-        if layers == 'all':
-            self.layers = ['phases', 'magnitudes']
-        elif isinstance(layers, str):
-            self.layers = [layers]
-        elif layers is None:
-            self.layers = ['magnitudes']
-        else:
-            self.layers = layers
-
         mags = []
         phases = []
-        for imno, im in enumerate(test_ims):
-            sys.stdout.write("\rRunning %s... %d%%" % (self.nice_name,
-                                                        100*imno/len(test_ims)))
+        imlist = self._im2iter(test_ims)
+        for imno, im in enumerate(imlist):
+            sys.stdout.write("\rRunning %s... %d%%" % (self.name,
+                                                        100*imno/len(imlist)))
             sys.stdout.flush()
-            im = load_images(im, resize=(self.imsize, self.imsize), flatten=True)
-
+            im = self.load_image(im, resize=(self.imsize, self.imsize), flatten=True)
             mag, phase = self._test(im, cell_type=cell_type, sigma=sigma)
             mags.append(mag.ravel())
             phases.append(phase.ravel())
-        sys.stdout.write("\rRunning %s... done\n" % self.nice_name)
+        sys.stdout.write("\rRunning %s... done\n" % self.name)
 
-        mags = np.array(mags)
-        phases = np.array(phases)
-
-        outputs = OrderedDict()
-        for layer in self.layers:
-            if layer == 'magnitudes':
-                outputs['magnitudes'] = mags
-            elif layer == 'phases':
-                outputs['phases'] = phases
-        if not return_dict:
-            outputs = outputs[self.layers[-1]]
-        return outputs
+        output = OrderedDict([('phases', np.array(phases)),
+                              ('magnitudes', np.array(mags))])
+        output = self._fmt_output(output, layers, return_dict=return_dict)
+        return output
 
     def _test(self, im, cell_type='complex', sigma=2*np.pi):
-        if im.shape[0] != im.shape[1]:
-            raise IOError('The image has to be square. Please try again.')
-
-        # generate the grid
-        # im = scipy.misc.imresize(im, (self.imsize, self.imsize))
-        #if len(im) in [128, 256]:
-        rangeXY = self.rangeXY
         # FFT of the image
         im_freq = np.fft.fft2(im)
 
@@ -651,7 +842,7 @@ class GaborJet(Model):
         ky_factor = 2 * np.pi / self.imsize
 
         # setup space coordinates
-        xy = np.arange(-self.imsize/2, self.imsize/2)
+        xy = np.arange(-self.imsize/2, self.imsize/2).astype(float)
         [tx,ty] = np.meshgrid(xy, xy)
         tx *= kx_factor
         ty *= -ky_factor
@@ -682,10 +873,11 @@ class GaborJet(Model):
 
                 # convolve the image with a kernel of the specified scale and orientation
                 conv = im_freq*freq_kernel
-                #
+
                 # calculate magnitude and phase
                 iconv = np.fft.ifft2(conv)
-                #
+                # import ipdb; ipdb.set_trace()
+
                 #eps = np.finfo(float).eps**(3./4)
                 #real = np.real(iTmpFilterImage)
                 #real[real<eps] = 0
@@ -694,33 +886,35 @@ class GaborJet(Model):
                 #iTmpFilterImage = real + 1j*imag
 
                 ph = np.angle(iconv)
-                ph = ph[rangeXY,:][:,rangeXY] + np.pi
+                ph = ph[self.rangeXY,:][:,self.rangeXY] + np.pi
                 ind = scale*self.noris+ori
                 phase[:,ind] = ph.ravel()
 
                 if cell_type == 'complex':
                     mg = np.abs(iconv)
                     # get magnitude and phase at specific positions
-                    mg = mg[rangeXY,:][:,rangeXY]
+                    mg = mg[self.rangeXY,:][:,self.rangeXY]
                     mag[:,ind] = mg.ravel()
                 else:
                     mg_real = np.real(iconv)
                     mg_imag = np.imag(iconv)
                     # get magnitude and phase at specific positions
-                    mg_real = mg_real[rangeXY,:][:,rangeXY]
-                    mg_imag = mg_imag[rangeXY,:][:,rangeXY]
+                    mg_real = mg_real[self.rangeXY,:][:,self.rangeXY]
+                    mg_imag = mg_imag[self.rangeXY,:][:,self.rangeXY]
                     mag[:,ind] = mg_real.ravel()
                     mag[:,nvars+ind] = mg_imag.ravel()
 
         # use magnitude for dissimilarity measures
         return mag, phase
 
-    def dissimilarity(self, kind='gaborjet', *args, **kwargs):
-        return super(GaborJet, self).dissimilarity(kind=kind,
-                                                   *args, **kwargs)
+    def dissimilarity(self, kind='cosine', *args, **kwargs):
+        """
+        Default dissimilarity for :class:`GaborJet` is `cosine`.
+        """
+        return super(GaborJet, self).dissimilarity(kind=kind, *args, **kwargs)
 
 
-class HMAX99(Model):
+class HMAX99(_Model):
     """
     HMAX for Python
 
@@ -733,16 +927,17 @@ class HMAX99(Model):
     much as possible while trying to maintain its structure close to the
     original. View-tuned units have been added by Hans Op de Beeck.
 
-    Code's output is tested against the Pure MatLab output which can be tested
+    The output was tested against the Pure MatLab output which can be tested
     against the Standard C/MATLAB code featured at `Riesenhuber's lab
     <http://riesenhuberlab.neuro.georgetown.edu/hmax/index.html#code>`_.
-    You can compare the outputs to the standard Lena image between the present
-    and C/MatLab implementation using function :mod:test_models
 
     .. note:: This implementation is not the most current HMAX
-    implementation that doesn't rely on hardcoding features anymore (e.g.,
-    Serre et al., 2007). Use :class:`HMAX` to access MATLAB interface to a
-    more current version of HMAX.
+              implementation that doesn't rely on hardcoding features anymore
+              (e.g., Serre et al., 2007). Use :class:`HMAX_HMIN` or :class:`HMAX_PNAS` to access MATLAB
+              interface to a more current version of HMAX.
+
+    .. note:: Images are resized to 256 x 256 as required by the original
+              implementation
 
     Original VTU implementation copyright 2007 Hans P. Op de Beeck
 
@@ -764,9 +959,10 @@ class HMAX99(Model):
 
     """
     def __init__(self, matlab=False, filter_type='gaussian'):
-        super(Model, self).__init__()
-        self.name = 'hmax99'
-        self.nice_name = "HMAX'99"
+        super(HMAX99, self).__init__()
+        self.name = "HMAX'99"
+        self.safename = 'hmax99'
+        self.isflat = True
 
         self.n_ori = 4 # number of orientations
         # S1 filter sizes for scale band 1, 2, 3, and 4
@@ -788,78 +984,58 @@ class HMAX99(Model):
             self.filts = self.get_gabors(self.filter_sizes_all, self.n_ori)
             self.mask_name = 'circle'
         else:
-            raise ValueError, "filter type not recognized"
+            raise ValueError("filter type not recognized")
 
         self.istrained = False  # initially VTUs are not set up
-
-    def run(self, test_ims=None, train_ims=None, layers=None, return_dict=True):
-        """
-        This is the main function to run the model.
-
-        First, it trains the model, i.e., sets up prototypes for VTU.
-        Next, it runs the model.
-        """
-        if train_ims is not None:
-            self.train(train_ims)
-        if test_ims is None:
-            test_ims = [self.get_teststim()]
-        output = self.test(test_ims, layers=layers, return_dict=return_dict)
-        # if oneval:
-        #     return output['C2']
-        # else:
-        return output
 
     def train(self, train_ims):
         """
         Train the model
 
-        That is, supply VTUs with C2 responses to 'prototype'
-        images to which these units will be maximally tuned.
+        That is, supply view-tuned units (VTUs) with C2 responses to
+        'prototype' images, to which these VTUs will be maximally tuned.
 
         :Args:
-            train_ims (str)
-                Path to training images; anything that :func:`load_images` takes
+            train_ims (str, list, tuple, np.ndarray)
+                Training images
         """
         try:
             self.tuning = pickle.load(open(train_ims,'rb'))
-            print 'done'
+            print('done')
         except:
-            train_ims = self.input2array(train_ims)
-            self.tuning = self.test(train_ims, op='training')['C2']
+            self.tuning = self.test(train_ims, op='training', layers='C2',
+                                    return_dict=False)
         self.istrained = True
 
-    def test(self, ims, op='testing', layers=None, return_dict=True, **kwrags):
+    def test(self, test_ims, op='testing', layers='output', return_dict=True):
         """
         Test the model on the given image
 
         :Args:
-            train_ims (str)
-                Path to training images; anything that :func:`load_images` takes
+            test_ims (str, list, tuple, np.ndarray)
+                Test images.
 
         """
-
-        ims = load_images(ims)
+        ims = self._im2iter(test_ims)
         # Get number of filter sizes
+        out = OrderedDict()
+
         size_S1 = sum([len(fs) for fs in self.filter_sizes_all])
-        # outputs from each layer are stored if you want to inspect them closer
-        # but note that S1 is *massive*
-        output = OrderedDict()
-        # S1 will not be in the output because it's too large:
-        # with default parameters S1 takes 256*256*12*4*64bits = 24Mb per image
-        S1 = np.zeros((ims.shape[1], ims.shape[2], size_S1, self.n_ori))
-        output['C1'] = np.zeros(ims.shape + (self.n_ori,
+        S1 = np.zeros((256, 256, size_S1, self.n_ori))
+        out['C1'] = np.zeros((len(ims), 256, 256, self.n_ori,
                                 len(self.filter_sizes_all)))
         # S2 has an irregular shape which depends on the spatial frequency band
-        # so we'll omit it as well
         S2 = []
         C2_tmp = np.zeros(((self.S2_config[0]*self.S2_config[1])**self.n_ori,
                             len(self.filter_sizes_all)))
-        output['C2'] = np.zeros((len(ims),C2_tmp.shape[0]))
+        out['C2'] = np.zeros((len(ims), C2_tmp.shape[0]))
 
         for imno, im in enumerate(ims):
-            sys.stdout.write("\rRunning HMAX... %s: %d%%" %(op, 100*imno/len(ims)))
+            # im *= 255
+            sys.stdout.write("\rRunning HMAX'99... %s: %d%%" %(op, 100*imno/len(ims)))
             sys.stdout.flush()
-            # im = load_images(im)
+            im = self.load_image(im, flatten=True, resize=(256,256))
+
             # Go through each scale band
             S1_idx = 0
             for which_band in range(len(self.filter_sizes_all)):
@@ -871,29 +1047,18 @@ class HMAX99(Model):
                 S1_idx += num_filter
                 # calculate other layers
                 C1_tmp = self.get_C1(S1_tmp, which_band)
-                output['C1'][imno, ..., which_band] = C1_tmp
+                out['C1'][imno, ..., which_band] = C1_tmp
                 S2_tmp = self.get_S2(C1_tmp, which_band)
                 S2.append(S2_tmp)
                 C2_tmp[:, which_band] = self.get_C2(S2_tmp, which_band)
-            output['C2'][imno] = np.max(C2_tmp, -1) # max over all scale bands
-        output['S2'] = S2
+            out['C2'][imno] = np.max(C2_tmp, -1) # max over all scale bands
+
         # calculate VTU if trained
         if self.istrained:
-            output['VTU'] = self.get_VTU(output['C2'])
-        sys.stdout.write("\rRunning HMAX... %s: done\n" %op)
+            out['VTU'] = self.get_VTU(out['C2'])
 
-        if layers is None:
-            output = OrderedDict([('C2', output['C2'])])
-            self.layers = ['C2']
-        elif layers != 'all':
-            output = OrderedDict([(layer, output[layer]) for layer in layers])
-            self.layers = layers
-        else:
-            self.layers = ['S1', 'C1', 'S2', 'C2']
-
-        if not return_dict:
-            output = output[self.layers[-1]]
-
+        sys.stdout.write("\rRunning HMAX'99... %s: done\n" %op)
+        output = self._fmt_output(out, layers, return_dict=return_dict)
         return output
 
     def get_gaussians(
@@ -959,6 +1124,9 @@ class HMAX99(Model):
         n_ori = 4,
         sigDivisor = 4.):
         """
+        .. warning:: Does not pass unittest, meaning that the outputs differ
+        slightly from MATLAB implementation. I recommend not using this option.
+
         Generates 2D difference of Gaussians (DoG) filters, MATLAB style.
 
         This is the original version of DoG filters used in HMAX. It was
@@ -972,7 +1140,7 @@ class HMAX99(Model):
             filter_sizes_all (list of depth 2)
                 A nested list (grouped by filter bands) of integer filter sizes
         :Kwargs:
-            - n_ori (int, defualt: 4)
+            - n_ori (int, default: 4)
                 A number of filter orientations. Orientations are spaced by np.pi/n_ori.
             - sigDivisor (float, default: 4.)
                 A parameter to adjust DoG filter frequency.
@@ -1146,7 +1314,6 @@ class HMAX99(Model):
                 mask = self.get_circle(fs)
             else:
                 mask = np.ones((fs,fs))
-            # import pdb; pdb.set_trace()
             norm = scipy.ndimage.convolve(im**2, mask, mode='constant') + \
                                           sys.float_info.epsilon
             for i in range(self.n_ori):
@@ -1167,7 +1334,7 @@ class HMAX99(Model):
             S1,
             size = (C1_pooling,C1_pooling,1,1),
             mode = 'constant',
-            origin = -(C1_pooling/2)
+            origin = -(C1_pooling // 2)
             )
 
         # Max over scales;
@@ -1185,7 +1352,7 @@ class HMAX99(Model):
         sharpness.
         """
         # half overlaped S2 sampling
-        S2_shift = int(np.ceil(self.C1_pooling_all[which_band]/2.))
+        S2_shift = int(np.ceil(self.C1_pooling_all[which_band] / 2.))
         # C1 afferents are adjacent for each S2
         C1_shift = S2_shift * 2 # distance/shift between C1 afferents
         S2_buf = [C1.shape[0] - C1_shift*(self.S2_config[0]-1),
@@ -1213,8 +1380,8 @@ class HMAX99(Model):
                 # for si, s in enumerate(seq):
                 #     S2_permute[:,:,si,c] = C1[jj,ii,s[c]] # the window is
                                                          # sliding in the x-dir
-        S2 = np.sum((S2_permute-target)**2,3)
-        S2 = np.exp(-S2/(2.*sigma**2))
+        S2 = np.sum((S2_permute-target)**2, 3)
+        S2 = np.exp(-S2 / (2. * sigma**2))
 
         return S2
 
@@ -1257,21 +1424,25 @@ class HMAX99(Model):
         return np.apply_along_axis(func, 1, C2resp)
 
 
-class HOG(Model):
+class HOG(_Model):
 
-    def __init__(self, *args, **kwargs):
-        super(HOG, self).__init__(*args, **kwargs)
-        self.name = 'hog'
-        self.nice_name = 'HOG'
+    def __init__(self):
+        super(HOG, self).__init__()
+        self.name = 'HOG'
+        self.safename = 'hog'
+        self.isflat = True
 
-    def test(self, test_ims, return_dict=False, layers=None, **kwargs):
-        self.layers = [self.name]
+    def test(self, test_ims, layers='output', return_dict=False, **kwargs):
+        """
+        You can also pass keyworded arguments to skimage.feature.hog.
+        """
+        self.layers = [self.safename]
         resps = []
-        for imno, im in enumerate(test_ims):
+        ims = self._im2iter(test_ims)
+        for imno, im in enumerate(ims):
             sys.stdout.write("\rRunning %s... %d%%" % (self.name, 100*imno/len(ims)))
             sys.stdout.flush()
-
-            im = load_images(im, flatten=True)
+            im = self.load_image(im, flatten=True)
             resps.append(skimage.feature.hog(im, **kwargs))
         resps = np.array(resps)
 
@@ -1281,27 +1452,29 @@ class HOG(Model):
         if kwargs.get('visualise'):
             resps, hog_image = resps
 
-        if return_dict:
-            resps = OrderedDict([(self.layers[-1], resps)])
+        output = self._fmt_output(OrderedDict([(self.safename, resps)]), layers,
+                                  return_dict=return_dict)
+        return output
 
-        return resps
 
+class Caffe(_Model):
 
-class Caffe(Model):
-
-    def __init__(self, model='CaffeNet', model_path=None, mode='cpu'):
+    def __init__(self, model='caffenet', mode='gpu', weight_file=None):
+        super(Caffe, self).__init__()
 
         if model in ALIASES:
-            self.name = ALIASES[model]
+            self.safename = ALIASES[model]
         else:
-            self.name = name.lower()
+            self.safename = model.lower()
 
-        if self.name in CAFFE_NICE_NAMES:
-            self.nice_name = CAFFE_NICE_NAMES[self.name]
+        if self.safename in NICE_NAMES:
+            self.name = NICE_NAMES[self.safename]
         else:
-            self.nice_name = model
+            self.name = model
 
-        self.model_path = model_path  # will be updated when self.test is called
+        # self.model_path = model_path  # will be updated when self.test is called
+        # self.model_file = self.model_file
+        self.weight_file = weight_file
 
         if mode == 'cpu':
             caffe.set_mode_cpu()
@@ -1321,52 +1494,74 @@ class Caffe(Model):
         else:
             self.caffe_root = os.environ['CAFFE']
 
-        if self.model_path is not None:
-            if '.caffemodel' in self.model_path:
-                self.weights_path = self.model_path
-                self.model_path = os.path.dirname(self.model_path)
+        if self.weight_file is not None:
+            if '.caffemodel' in self.weight_file:
+                model_path = os.path.dirname(self.weight_file)
             else:
-                self.weights_path = os.path.join(self.model_path, '*.caffemodel')
+                model_path = self.weight_file
         else:
             try:
-                self.model_path = CAFFE_MODELS[self.name]
+                model_path = CAFFE_PATHS[self.safename]
             except:
-                raise Exception('Model %s not recognized. Please provide a '
-                                'model_path when calling this model.' %
-                                self.nice_name)
-            self.weights_path = os.path.join(self.model_path, '*.caffemodel')
+                raise Exception('Model %s not recognized. Please provide '
+                                'weight_file when calling this model.' %
+                                self.name)
+            path = os.path.join(model_path, '*.caffemodel')
+            self.weight_file = sorted(glob.glob(path))[0]
 
-    def run(self, test_ims=None, train_ims=None, layers=None, return_dict=True):
-        """
-        This is the main function to run the model.
-        """
-        if train_ims is not None:
-            self.train(train_ims)
-        output = self.test(test_ims, layers=layers, return_dict=return_dict)
-        return output
+        # self.model_path =
+        path = os.path.join(model_path, '*deploy*.prototxt')
+        self.model_file = sorted(glob.glob(path))[0]
+        print('model parameters loaded from', self.model_file)
 
+    def layers_from_prototxt(self, keep=['Convolution', 'InnerProduct']):
+        self._set_paths()
+        net = caffe_pb2.NetParameter()
+        model_file = glob.glob(os.path.join(self.model_file,
+                               '*deploy*.prototxt'))[0]
+        text_format.Merge(open(model_file).read(), net)
+        layers = []
+        for layer in net.layer:
+            if layer.type in keep:
+                filt_layers.append(layer.name)
+        return layers
+
+    def _filter_layers(self, keep=['Convolution', 'InnerProduct']):
+        layers = []
+        for name, layer in zip(self.net._layer_names, self.net.layers):
+            if layer.type in keep:
+                if name in self.net.blobs:
+                    layers.append(name)
+                else:
+                    raise Exception('Layer %s not accessible' % name)
+
+        return layers
 
     def train(self, *args, **kwargs):
         raise NotImplemented
 
-    def _setup_layers(self, layers):
-        if layers is None:
-            self.layers = [self.net.params.keys()[-1]]  # top layer
-        elif layers == 'all':
-            self.layers = self.net.params.keys()
-        elif not isinstance(layers, (tuple, list)):
-            self.layers = [layers]
-        else:
-            self.layers = layers
+    def _classifier(self):
+        self._set_paths()
+        mn = self._read_mean()
+        net = caffe.Net(self.model_file, self.weight_file, caffe.TEST)
+        self.transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+        self.transformer.set_transpose('data', (2,0,1))
+        self.transformer.set_mean('data', mn.mean(1).mean(1)) # mean pixel
+        self.transformer.set_raw_scale('data', 255)  # the reference model operates on images in [0,255] range instead of [0,1]
+        self.transformer.set_channel_swap('data', (2,1,0))  # the reference model has channels in BGR order instead of RGB
 
-    def test(self, ims, layers=None, return_dict=True):
+        return net
 
+    def test(self, ims, layers='output', return_dict=True, filt_layers=True):
         if not hasattr(self, 'net'):
             self.net = self._classifier()
-        self._setup_layers(layers)
+
+        ims = self._im2iter(ims)
         new_shape = (1, ) + self.net.blobs['data'].data.shape[1:]
         self.net.blobs['data'].reshape(*new_shape)
         output = OrderedDict()
+        self._setup_layers(layers, self.net.blobs.keys())
+
         for layer in self.layers:
             sh = self.net.blobs[layer].data.shape[1:]
             if not isinstance(sh, tuple):
@@ -1376,10 +1571,7 @@ class Caffe(Model):
         for imno, im in enumerate(ims):
             sys.stdout.write("\rRunning %s... %d%%" % (self.name, 100*imno/len(ims)))
             sys.stdout.flush()
-            # im = load_images(im)
-            # im = np.dstack([im,im,im])
-            im = caffe.io.load_image(im)
-
+            im = self.load_image(im, color=True)
             out = self._test(im)
             for layer in self.layers:
                 output[layer][imno] = self.net.blobs[layer].data
@@ -1387,7 +1579,9 @@ class Caffe(Model):
         sys.stdout.write("\rRunning %s... done\n" % self.name)
         sys.stdout.flush()
 
-        if not return_dict:
+        if filt_layers:
+            output = self._fmt_output(output, layers, return_dict=return_dict)
+        elif not return_dict:
             output = output[self.layers[-1]]
         return output
 
@@ -1396,45 +1590,34 @@ class Caffe(Model):
         out = self.net.forward()
         return out
 
+    def confidence(self, ims, topn=1):
+        preds = self.test(ims, layers='prob', return_dict=False, filt_layers=False)
+        if topn is not None:
+            preds.sort(axis=1)
+            return np.squeeze(preds[:, :topn])
+        else:
+            return preds
+
     def predict(self, ims, topn=5):
         labels = self._get_labels()
-        self.layers = ['prob']
-        preds = self.run(test_ims=ims, return_dict=False)
+        preds = self.confidence(ims, topn=None)
         out = []
+
         for pred in preds:
             classno = np.argsort(pred)[::-1][:topn]
             tmp = []
             for n in classno:
                 d = {'classno': n,
                      'synset': labels[n][0],
-                     'label': labels[n][1]}
+                     'label': labels[n][1],
+                     'confidence': pred[n]}
                 tmp.append(d)
             out.append(tmp)
-
         return out
 
-    def _classifier(self):
-        self._set_paths()
-        mn = self.read_mean()
-
-        model_file = os.path.join(self.model_path, '*deploy*.prototxt')
-
-        model_file = sorted(glob.glob(model_file))[0]
-        if not self.istrained:
-            trained_values = sorted(glob.glob(self.weights_path))[0]
-        print 'model parameters loaded from', trained_values
-        net = caffe.Net(model_file, trained_values, caffe.TEST)
-
-        self.transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-        self.transformer.set_transpose('data', (2,0,1))
-        self.transformer.set_mean('data', mn.mean(1).mean(1)) # mean pixel
-        self.transformer.set_raw_scale('data', 255)  # the reference model operates on images in [0,255] range instead of [0,1]
-        self.transformer.set_channel_swap('data', (2,1,0))  # the reference model has channels in BGR order instead of RGB
-
-        return net
-
-    def read_mean(self):
-        meanf = os.path.join(self.model_path, '*mean*.protobinary')
+    def _read_mean(self):
+        model_path = os.path.dirname(self.weight_file)
+        meanf = os.path.join(model_path, '*mean*.binaryproto')
         meanf = glob.glob(meanf)
         if len(meanf) > 0:
             data = open(meanf[0], 'rb').read()
@@ -1447,7 +1630,8 @@ class Caffe(Model):
         return mn
 
     def _get_labels(self):
-        synset_file = os.path.join(self.caffe_root, 'data/ilsvrc12/synset_words.txt')
+        synset_file = os.path.join(os.environ['CAFFE'],
+                                   'data/ilsvrc12/synset_words.txt')
         try:
             with open(synset_file) as f:
                 lines = f.readlines()
@@ -1471,121 +1655,262 @@ class Caffe(Model):
         return pandas.DataFrame.from_dict(df)
 
 
-class MATLABModel(Model):
+class MATLABModel(_Model):
 
-    def __init__(self, model_path=None, *args, **kwargs):
+    def __init__(self, model_path=None, matlab_root=None):
         """
         A base class for making an interface to MATLAB-based models
         """
-        # super(MATLABModel, self).__init__(*args, **kwargs)
+        super(MATLABModel, self).__init__()
         self.model_path = model_path
+        self.matlab_root = matlab_root
 
     def _set_model_path(self):
         if self.model_path is None:
-            if self.nice_name.upper() not in os.environ:
+            try:
+                safename = getattr(self, 'safename')
+            except:
+                safename = self.name
+            finally:
+                safename = safename.upper()
+            if safename not in os.environ:
                 raise Exception('Please specify model_path to the location of '
                                 '%s or add it to your path '
                                 'using %s as the environment variable.' %
-                                (self.nice_name, self.nice_name.upper()))
+                                (self.name, safename))
             else:
-                self.model_path = os.environ[self.nice_name.upper()]
+                self.model_path = os.environ[safename]
 
-    def test(self, test_ims, return_dict=True, **kwargs):
+    def test(self, test_ims, layers='output', return_dict=True):
         self._set_model_path()
 
-        matlab = matlab_wrapper.MatlabSession(options='-nojvm -nodisplay -nosplash')
+        matlab = matlab_wrapper.MatlabSession(options='-nodisplay -nosplash', matlab_root=self.matlab_root)
         matlab.eval('addpath %s' % self.model_path)
 
-        resps = self._test(matlab, test_ims)
+        resps = self._test(matlab, test_ims, layers=layers)
 
-        sys.stdout.write("\rRunning %s... done\n" % self.nice_name)
+        sys.stdout.write("\rRunning %s... done\n" % self.name)
         sys.stdout.flush()
 
         matlab.eval('rmpath %s' % self.model_path)
         del matlab
 
-        if return_dict:
-            resps = OrderedDict([(self.name, resps)])
+        resps = self._fmt_output(resps, layers,
+                                 return_dict=return_dict)
         return resps
 
 
-class HMAX(MATLABModel):
+class HMAX_HMIN(MATLABModel):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model_path=None, matlab_root=None):
         """
-        The minimal implementation of HMAX (aka hmin)
+        The minimal implementation of HMAX (aka hmin).
 
-        The model can be downloaded from
-        `here <http://cbcl.mit.edu/jmutch/hmin/>`_
+        This is a simple reference implementation of HMAX that only provides
+        output of the C2 layer.
+
+        1. The model can be downloaded from
+        `here <http://cbcl.mit.edu/jmutch/hmin/>`_.
+        2. Compile it by running ``matlab -r "mex example.cpp"``.
+        3. You will have to add ``HMAX_HMIN`` variable that is pointing to the directory where you extracted the model to your path so that it could be found. an easy way to do it permanently is to add the following line in your ``.bashrc`` file::
+
+            export HMAX_HMIN=<path to the model>
 
         """
-        self.name = 'hmax'
-        self.nice_name = 'HMAX'
-        super(HMAX, self).__init__(*args, **kwargs)
+        super(HMAX_HMIN, self).__init__(model_path=model_path,
+                                        matlab_root=matlab_root)
+        self.name = 'HMAX-HMIN'
+        self.safename = 'hmax_hmin'
+        self.isflat = True
+        self.model_url = 'manual'
 
     def _test(self, matlab, test_ims, **kwargs):
         resps = []
-        for imno, im in enumerate(test_ims):
-            sys.stdout.write("\rRunning %s... %d%%" % (self.nice_name,
-                                                       100*imno/len(test_ims)))
+        ims = self._im2iter(test_ims)
+        for imno, im in enumerate(ims):
+            sys.stdout.write("\rRunning %s... %d%%" % (self.name,
+                                                       100*imno/len(ims)))
             sys.stdout.flush()
-            matlab.eval("example_run('%s')" % os.path.join(os.getcwd(), im))
+            im = self.load_image(im, flatten=True)
+            matlab.put('im', im)
+            matlab.eval("example_run(im)")
             resps.append(matlab.get('ans'))
 
-        return np.array(resps)
+        return OrderedDict([('C2', np.array(resps))])
+
+
+class HMAX_PNAS(MATLABModel):
+
+    def __init__(self, model_path=None, matlab_root=None):
+        """
+        HMAX implementation by Serre et al. (2007)
+
+        Installation:
+
+        1. `Download FHLib <http://www.mit.edu/~jmutch/fhlib/>`_.
+        2. Compile it by opening MATLAB, setting paths via ``run GLSetPath``, and running ``GLCompile``.
+        3. `Download PNAS version of HMAX <http://cbcl.mit.edu/software-datasets/pnas07/index.html>`_, place it in FHLib such that ``pnas_package`` folder is directly inside FHLib folder.
+        4. You will have to add ``HMAX_PNAS`` variable that is pointing to the directory where you extracted the model to your path so that it could be found. an easy way to do it permanently is to add the following line in your ``.bashrc`` file::
+
+            export HMAX_PNAS=<path to fullModel directory>
+
+        (you don't need the `SVMlight package <http://svmlight.joachims.org>`_ or `animal/non-animal dataset <http://cbcl.mit.edu/software-datasets/serre/SerreOlivaPoggioPNAS07/index.htm>`_)
+
+        """
+        super(HMAX_PNAS, self).__init__(model_path=model_path,
+                                        matlab_root=matlab_root)
+        self.name = 'HMAX-PNAS'
+        self.safename = 'hmax_pnas'
+        self.model_url = 'manual'
+        # self.layer_sizes = {'C1': 78344, 'C2': 3124000, 'C2b': 2000, 'C3': 2000}
+        self.layer_sizes = {'C1': 78344, 'C2': 3124000, 'C2b': 2000, 'C3': 2000}
+
+    def train(self, **kwargs):
+        """
+        Train the model
+
+        .. note:: You must modify the script 'featuresNatural_newGRBF.m' that is
+                  placed in the model path. Specifically, BASE_PATH variable
+                  must be defined, and IMAGE_DIR must point to your training
+                  images.
+        """
+        self._set_model_path()
+
+        matlab = matlab_wrapper.MatlabSession(options='-nojvm -nodisplay -nosplash')
+        matlab.eval('addpath %s' % self.model_path)
+        # base_path = os.path.dirname(train_ims[0])
+        # matlab.put('BASE_PATH', base_path)
+
+        sys.stdout.write("\Training %s..." % self.name)
+        sys.stdout.flush()
+
+        matlab.eval("run featuresNatural_newGRBF")
+
+        sys.stdout.write("\Training %s... done\n" % self.name)
+        sys.stdout.flush()
+
+        matlab.eval('rmpath %s' % self.model_path)
+        del matlab
+
+
+    def _test(self, matlab, test_ims, layers=['C3'], nfeatures=2000, **kwargs):
+        """
+        Test model
+
+        Note that S layers are inaccesible because at least S1 and S2 are
+        massive.
+        """
+        if layers == 'all':
+            self.layers = ['C1', 'C2', 'C2b', 'C3']
+        elif layers in [None, 'top', 'output']:
+            self.layers = ['C3']
+        else:
+            self.layers = layers
+
+        gl_path = os.path.normpath(os.path.join(self.model_path, '../../../GLSetPath'))
+        matlab.eval("run %s;" % gl_path)
+        matlab.eval("config = FHConfig_PNAS07;")
+        matlab.eval("config = FHSetupConfig(config);")
+        matlab.put('featureFile', os.path.join(self.model_path,
+                   'featureSets/featuresNatural_newGRBF.mat'))
+        matlab.eval("load(featureFile, 'lib');")
+
+        ims = self._im2iter(test_ims)
+        resps = OrderedDict([(l, np.zeros((len(ims), nfeatures))) for l in self.layers])
+        sel = OrderedDict([(l, np.random.choice(self.layer_sizes[l], size=nfeatures, replace=False)) for l in self.layers])
+
+        for imno, im in enumerate(ims):
+            sys.stdout.write("\rRunning %s... %d%%" % (self.name,
+                                                       100*imno/len(ims)))
+            sys.stdout.flush()
+            if not isinstance(im, (str, unicode)):
+                f = array2tempfile(im)
+                name = f.name
+            else:
+                name = im
+            impath = os.path.join(os.getcwd(), name)
+            matlab.eval("stream = FHCreateStream(config, lib, '%s', 'all');" % impath)
+            if not isinstance(im, (str, unicode)): f.close()
+
+            for layer, resp in resps.items():
+                matlab.eval("resps = FHGetResponses(config, lib, stream, '%s');" % layer.lower())
+                resp[imno] = matlab.get('resps')[sel[layer]]
+
+        return resps
 
 
 class PHOG(MATLABModel):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model_path=None, matlab_root=None):
         """
         Pyramid Histogram of Oriented Gradients
 
-        The model can be downloaded from `here <http://www.robots.ox.ac.uk/~vgg/research/caltech/phog.html>`_
+        The model can be downloaded from `here <http://www.robots.ox.ac.uk/~vgg/research/caltech/phog.html>`_. You will have to add ``PHOG`` variable that is pointing to the directory where you extracted the model to your path so that it could be found. an easy way to do it permanently is to add the following line in your ``.bashrc`` file::
+
+            export PHOG=<path to the model>
 
         Reference:
 
         `Bosch A., Zisserman A., Munoz X. Representing shape with a spatial pyramid kernel. CIVR 2007 <http://dx.doi.org/10.1145/1282280.1282340>`_
         """
-        self.name = 'phog'
-        self.nice_name = 'PHOG'
-        super(PHOG, self).__init__(*args, **kwargs)
+        super(PHOG, self).__init__(model_path=model_path,
+                                   matlab_root=matlab_root)
+        self.name = 'PHOG'
+        self.safename = 'phog'
+        self.model_url = 'http://www.robots.ox.ac.uk/~vgg/research/caltech/phog/phog.zip'
 
     def _test(self, matlab, test_ims, nbins=8, angle=360, nlayers=3, **kwargs):
         if angle not in [180, 360]:
             raise Exception('PHOG angle must be either 180 or 360')
-        im = load_images(test_ims[0])
+        ims = self._im2iter(test_ims)
+        im = self.load_image(ims[0])
         roi = np.mat([1, im.shape[0], 1, im.shape[1]]).T
         matlab.put('roi', roi)
         args = '{}, {}, {}, {}'.format(nbins, angle, nlayers, 'roi')
 
         resps = []
-        for imno, im in enumerate(test_ims):
-            sys.stdout.write("\rRunning %s... %d%%" % (self.nice_name,
-                                                       100*imno/len(test_ims)))
+        for imno, im in enumerate(ims):
+            sys.stdout.write("\rRunning %s... %d%%" % (self.name,
+                                                       100*imno/len(ims)))
             sys.stdout.flush()
-            matlab.eval("anna_phog('%s', %s)" % (os.path.join(os.getcwd(), im), args))
+            if not isinstance(im, (str, unicode)):
+                f = array2tempfile(im)
+                name = f.name
+            else:
+                name = im
+            impath = os.path.join(os.getcwd(), name)
+            matlab.eval("anna_phog('%s', %s)" % (impath, args))
+            sys.stdout.flush()
             resps.append(matlab.get('ans'))
+            if not isinstance(im, (str, unicode)): f.close()
 
-        return np.array(resps)
+        return OrderedDict([(self.safename, np.array(resps))])
 
 
 class PHOW(MATLABModel):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model_path=None, matlab_root=None):
         """
         Pyramid Histogram of Visual Words / Spatial Pyramid Matching
 
         The model can be downloaded from
-        `here <http://slazebni.cs.illinois.edu/research/SpatialPyramid.zip>`_.
+        `here <http://slazebni.cs.illinois.edu/research/SpatialPyramid.zip>`_. You will have to add ``PHOW`` variable that is pointing to the directory where you extracted the model to your path so that it could be found. an easy way to do it permanently is to add the following line in your ``.bashrc`` file::
+
+            export PHOW=<path to the model>
+
+        Note that all images must be in the same folder. If you can't do it,
+        consider passing an array of loaded images rather than filenames. These
+        images will then be temporarily saved in a single folder.
 
         Reference:
 
         `Lazebnik, S., Schmid, C, Ponce, J. Beyond Bags of Features: Spatial Pyramid Matching for Recognizing Natural Scene Categories. *CVPR 2006*. <http://slazebni.cs.illinois.edu/publications/cvpr06b.pdf>`_
         """
-        self.name = 'phow'
-        self.nice_name = 'PHOW'
-        super(PHOW, self).__init__(*args, **kwargs)
+        super(PHOW, self).__init__(model_path=model_path,
+                                   matlab_root=matlab_root)
+        self.name = 'PHOW'
+        self.safename = 'phow'
+        self.model_url = 'http://slazebni.cs.illinois.edu/research/SpatialPyramid.zip'
 
     def _test(self, matlab, test_ims,
              max_imsize=1000, grid_spacing=8, patch_size=16,
@@ -1605,24 +1930,43 @@ class PHOW(MATLABModel):
                           dtype=[(p[0],'<f8') for p in params])
 
         matlab.put('params', params.view(np.recarray))
-        ims = [os.path.basename(im) for im in test_ims]
+        test_ims = self._im2iter(test_ims)
+
+        ims = []
+        dirs = []
+        fs = []
+        for im in test_ims:
+            if not isinstance(im, (str, unicode)):
+                f = array2tempfile(im)
+                name = f.name
+                fs.append(f)
+            else:
+                name = im
+            ims.append(os.path.basename(name))
+            dirs.append(os.path.dirname(name))
+
+        if not all([d==dirs[0] for d in dirs]):
+            raise Exception('All images must be in the same folder')
         matlab.put('ims', ims)
-        image_dir = os.path.join(os.getcwd(), os.path.dirname(test_ims[0]))
-        data_dir = os.path.join(os.getcwd(), self.name + '_data')
+        image_dir = dirs[0]
+
+        data_dir = tempfile.mkdtemp()
         funcstr = "BuildPyramid(ims, '%s', '%s', params, %d, %d)" % (image_dir, data_dir, can_skip, save_sift)
 
-        sys.stdout.write("\rRunning %s..." % self.nice_name)
+        sys.stdout.write("\rRunning %s..." % self.name)
         sys.stdout.flush()
 
         matlab.eval(funcstr)
         resps = matlab.get('ans')
+        shutil.rmtree(data_dir)
+        for f in fs: f.close()
 
-        return resps
+        return OrderedDict([(self.safename, resps)])
 
 
 class RandomFilters(MATLABModel):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model_path=None, matlab_root=None):
         """
         Random Features and Supervised Classifier
 
@@ -1634,9 +1978,12 @@ class RandomFilters(MATLABModel):
         `Jarrett, K., Kavukcuoglu, K., Ranzato, M., & LeCun, Y. What is the Best Multi-Stage Architecture for Object Recognition?, *ICCV 2009 <http://cs.nyu.edu/~koray/publis/jarrett-iccv-09.pdf>`_
         """
 
-        self.name = 'randfilt'
-        self.nice_name = 'RandomFilters'
-        super(RandomFilters, self).__init__(*args, **kwargs)
+        super(RandomFilters, self).__init__(model_path=model_path,
+                                            matlab_root=matlab_root)
+        self.name = 'RandomFilters'
+        self.safename = 'randfilt'
+        self.isflat = True
+        self.model_url = 'http://cs.nyu.edu/~koray/publis/code/randomc101.tar.gz'
 
     # def train(self, train_ims):
     #     import matlab_wrapper
@@ -1652,152 +1999,56 @@ class RandomFilters(MATLABModel):
         # path = os.path.join(self.model_path, name+'.mat')
         # params = scipy.io.loadmat(open(path, 'rb'))
 
-        param_path = os.path.join(self.model_path, '../data/params.mat')
+        matlab.eval('addpath %s' % os.path.join(self.model_path, 'code'))
+
+        param_path = os.path.join(self.model_path, 'data/params.mat')
         matlab.eval("params = load('%s');" % param_path)
         matlab.eval('params.kc.layer1 = -0.11 + 0.22 * rand(size(params.ct.layer1,1),9,9);')
         matlab.eval('params.kc.layer2 = -0.11 + 0.22 * rand(size(params.ct.layer2,1),9,9);')
 
         funcstr = "extractRandomFeatures(pim, params.ker, params.kc, params.ct, params.bw, params.bs);"
         resps = []
-        for imno, im in enumerate(test_ims):
-            sys.stdout.write("\rRunning %s... %d%%" % (self.nice_name,
-                                                       100*imno/len(test_ims)))
+        ims = self._im2iter(test_ims)
+        for imno, im in enumerate(ims):
+            sys.stdout.write("\rRunning %s... %d%%" % (self.name,
+                                                       100*imno/len(ims)))
             sys.stdout.flush()
-            im = load_images(im, flatten=True)
+            im = self.load_image(im, flatten=True)
             mx = max(im.shape[:2])
             sh = (151./mx * im.shape[0], 151./mx * im.shape[1])
-            imr = np.round(resize_image(im, sh) * 255)
+            imr = np.round(utils.resize_image(im, sh) * 255)
             matlab.put('imr', imr)
             matlab.eval('pim = imPreProcess(imr,params.ker);')
             matlab.eval(funcstr)
             resp = matlab.get('ans')
             resps.append(resp.ravel())
 
-        return np.array(resps)
+        matlab.eval('rmpath %s' % os.path.join(self.model_path, 'code'))
 
-def call_matlab(script_path):
-    cmd = 'matlab -nojvm -nodisplay -nosplash -r {}; exit'.format(script_path)
-    subprocess.call(cmd.split())
+        return OrderedDict([(self.safename, np.array(resps))])
 
-def get_model(model_name):
-    if model_name in KNOWN_MODELS:
-        return KNOWN_MODELS[model_name]()
+
+def get_teststim(flatten=False):
+    """
+    Returns a cat image. If `flatten == True`, returns a gray scale version
+    of it. Note the the image is not grayscaled on the fly but rather loaded
+    from the disk.
+
+    Test image: `CC0 license - stormbringerser
+    <https://pixabay.com/en/cat-animal-cute-pet-feline-kitty-618470/>`_.
+    """
+    path = os.path.dirname(__file__)
+    if flatten:
+        im = utils.load_image(os.path.join(path, 'tests/cat-gray.png'))
     else:
-        raise Exception('Model %s not recognized' %model_name)
-
-def load_images(names, flatten=True, resize=1.):
-    try:
-        names = eval(names)
-    except:
-        pass
-
-    if isinstance(names, str):
-        array = _load_image(names, flatten=flatten, resize=resize)
-    elif isinstance(names, (list, tuple)):
-        if isinstance(names[0], str):
-            array = [_load_image(n, flatten=flatten, resize=resize) for n in names]
-            array = np.array(array)
-        else:
-            array = np.array(names)
-    elif isinstance(names, np.ndarray):
-        array = names
-    else:
-        raise ValueError('input image type not recognized')
-
-    # if array.ndim == 2:
-    #     array = np.reshape(array, (1,) + array.shape)
-    array = np.squeeze(array)
-
-    if np.max(array) > 1 or array.dtype == int:
-        norm = 255
-    else:
-        norm = 1
-    array = array.astype(float) / norm
-
-    return array
-
-def _load_image_orig(imname, flatten=False, resize=1.):
-    im = scipy.misc.imread(imname, flatten=flatten)
-    if len(im.shape) == 0:  # hello, Ubuntu + conda
-        im = skimage.img_as_float(skimage.io.imread(imname, as_grey=flatten)).astype(np.float32)
-    im = scipy.misc.imresize(im, resize).astype(np.float32)  # WARNING: rescales to [0,255]
-    im /= 255.
-
+        im = utils.load_image(os.path.join(path, 'tests/cat.png'))
     return im
 
-def _load_image(filename, flatten=True, color=False, resize=1., interp_order=1):
-    """
-    Load an image converting from grayscale or alpha as needed.
-
-    Adapted from
-    `caffe <https://github.com/BVLC/caffe/blob/master/python/caffe/io.py>`_.
-
-    :Args:
-        filename (str)
-    :Kwargs:
-        - flatten (bool)
-            flag for color format. True (default) loads as RGB while False
-            loads as intensity (if image is already grayscale).
-        - resize ()
-    :Returns:
-        An image with type np.float32 in range [0, 1]
-        of size (H x W x 3) in RGB or of size (H x W x 1) in grayscale.
-    """
-
-    im = skimage.img_as_float(skimage.io.imread(filename, flatten=flatten)).astype(np.float32)
-
-    if not flatten:
-        if im.ndim == 2:
-            im = im[:, :, np.newaxis]
-            if color:
-                im = np.tile(im, (1, 1, 3))
-        elif im.shape[2] == 4:
-            im = im[:, :, :3]
-
-    if not isinstance(resize, (tuple, list, np.ndarray)):
-        res = [resize, resize] + (im.ndim-2) * [1]
-        resize = [s*r for s,r in zip(im.shape,res)]
-    im = resize_image(im, resize, interp_order=interp_order)
-
-    return im
-
-def resize_image(im, new_dims, interp_order=1):
-    """
-    Resize an image array with interpolation.
-
-    From
-    `caffe <https://github.com/BVLC/caffe/blob/master/python/caffe/io.py>`_.
-
-    :Args:
-        - im (numpy.ndarray)
-            (H x W x K) ndarray
-        - new_dims (tuple)
-            (height, width) tuple of new dimensions.
-    :Kwargs:
-        interp_order (int, default: 1)
-            Interpolation order, default is linear.
-    :Returns:
-        Resized ndarray with shape (new_dims[0], new_dims[1], K)
-    """
-    if im.ndim == 2 or im.shape[-1] == 1 or im.shape[-1] == 3:
-        im_min, im_max = im.min(), im.max()
-        if im_max > im_min:
-            # skimage is fast but only understands {1,3} channel images
-            # in [0, 1].
-            im_std = (im - im_min) / (im_max - im_min)
-            resized_std = skimage.transform.resize(im_std, new_dims, order=interp_order)
-            resized_im = resized_std * (im_max - im_min) + im_min
-        else:
-            # the image is a constant -- avoid divide by 0
-            ret = np.empty((new_dims[0], new_dims[1], im.shape[-1]),
-                           dtype=np.float32)
-            ret.fill(im_min)
-            return ret
-    else:
-        # ndimage interpolates anything but more slowly.
-        scale = tuple(np.array(new_dims, dtype=float) / np.array(im.shape[:2]))
-        resized_im = zoom(im, scale + (1,), order=interp_order)
-    return resized_im.astype(np.float32)
+def array2tempfile(im):
+    import tempfile
+    f = tempfile.NamedTemporaryFile()
+    scipy.misc.imsave(f, im, format='png')
+    return f
 
 def run(model_name='HMAX', impaths=None):
     if model_name in KNOWN_MODELS:
@@ -1818,28 +2069,207 @@ def run(model_name='HMAX', impaths=None):
         except:
             ims = impaths
     #print ims
-    print m.predict([ims], topn=5)
+    print(m.predict([ims], topn=5))
     #output = m.compare(ims)
     #return output
 
+def _detect_args(mfunc, *args, **kwargs):
+
+    var = inspect.getargspec(mfunc)
+    if len(args) > 0:
+        if var.varargs is None:
+            args = args[:-len(var.defaults)]
+    if len(kwargs) > 0:
+        if var.keywords is None:
+            if var.defaults is None:
+                kwargs = {}
+            else:
+                kwargs = {k:kwargs[k] for k in var.args[-len(var.defaults):] if k in kwargs}
+    return args, kwargs
+
+def get_model(model_name, *args, **kwargs):
+    if model_name in CAFFE_MODELS:
+        ModelClass = Caffe
+        kwargs['model'] = model_name
+    elif model_name in MATLAB_MODELS:
+        ModelClass = MATLAB_MODELS[model_name]
+    elif model_name in KNOWN_MODELS:
+        ModelClass = KNOWN_MODELS[model_name]
+    else:
+        raise ValueError('model {} not recognized'.format(model_name))
+    margs, mkwargs = _detect_args(ModelClass.__init__, *args, **kwargs)
+    m = ModelClass(*margs, **mkwargs)
+    return m
+
+def get_model_from_obj(obj, *args, **kwargs):
+    if isinstance(obj, (str, unicode)):
+        try:
+            m = get_model(obj)
+        except:
+            pass
+    else:
+        try:
+            margs, mkwargs = _detect_args(obj.__init__, *args, **kwargs)
+            m = obj(*margs, **mkwargs)
+        except:
+            m = obj
+    return m
+
+def compare(func, test_ims, layer='output', models=None,
+            plot=True, save=False, html=None,
+            *func_args, **func_kwargs):
+
+    if models is None: models = KNOWN_MODELS.keys()
+
+    df = []
+    mnames = []
+    for model in models:
+        m = Model(model)
+        resps = m.run(test_ims=test_ims, layers=layer)
+        out = func(resps, *func_args, **func_kwargs)
+        df.append(pandas.DataFrame(out))
+        mnames.extend([m.name]*len(out))
+
+    df = pandas.concat(df)
+
+    df.insert(0, 'model', mnames)
+    if plot:
+        sns.factorplot(x='model', y=df.columns[-1], data=df, kind='bar')
+        if html is not None:
+            html.writeimg(str(func))
+        else:
+            sns.plt.show()
+    if save: df.to_csv(df)
+    return df
+
+def gen_report(models, test_ims, path='', labels=None):
+    html = report.Report(path=path)
+    html.open()
+
+    if len(labels) == 0: labels = np.arange(len(test_ims))
+
+    # for model in models:
+    #     m = Model(model)
+    #     m.gen_report(html=html, test_ims=impath)
+    # compare(dissimilarity, html=html)
+    # compare(mds, html=html)
+    html.writeh('Linear classification', h=1)
+    compare(linear_clf, test_ims, models=models, html=html, y=labels)
+
+    html.writeh('Clustering', h=1)
+    compare(cluster, test_ims, models=models, html=html, labels=labels)
+    # compare(linear_clf, html=html)
+    html.close()
+
+class Compare(object):
+
+    def __init__(self):
+        pass
+
+    def compare(self, func, models=None, plot=False, *func_args, **func_kwargs):
+        if models is None:
+            models = KNOWN_MODELS.keys() + [Caffe() for m,name in CAFFE_MODELS]
+        # elif models
+
+        df = []
+        for model in models:
+            m = get_model_from_obj(model)
+            out = getattr(m, func)(*func_args, **func_kwargs)
+            out = pandas.DataFrame(out)
+            for rno, v in out.iterrows():
+                df.append([m.name] + v.values.tolist())
+
+        df = pandas.DataFrame(df, columns=['model'] + out.columns.tolist())
+        if plot:
+            self.plot(df)
+        return df
+
+    def get_value_from_model_name(self, name, func, *args, **kwargs):
+        imodel = get_model_from_obj(name)
+        f = getattr(imodel, func)
+        data = f(*args, **kwargs)
+        return data
+
+    def pairwise_stats(self, models1, models2=None, func=None,
+                       bootstrap=True, plot=False, niter=1000, ci=95,struct=None,
+                       *func_args, **func_kwargs):
+        if models2 is None:
+            models2 = models1
+
+        if func is None:
+            func = stats.corr
+
+        if bootstrap:
+            print('bootstrapping...')
+
+        df = []
+        for name1, data1 in models1.items():
+            for layer1, d1 in data1.items():
+                for name2, data2 in models2.items():
+                    for layer2, d2 in data2.items():
+                        c = func(d1, d2, *func_args, **func_kwargs)
+                        if bootstrap:
+
+                            pct = stats.bootstrap_resample(d1, data2=d2,
+                                func=func, niter=niter, ci=ci, struct=struct, *func_args, **func_kwargs)
+                        else:
+                            pct = (np.nan, np.nan)
+                        df.append([name1, layer1, name2, layer2,
+                                   c, pct[0], pct[1]])
+
+        cols = ['model1', 'layer1','model2', 'layer2', 'correlation',
+                'ci_low', 'ci_high']
+        df = pandas.DataFrame(df, columns=cols)
+
+        # if plot:
+            # self.plot_corr(df)
+        return df
+
+    def corr(self, data1, data2=None, func=None, **kwargs):
+        return self.pairwise_stats(data1, models2=data2, func=stats.corr, **kwargs)
+
+def _get_model_from_str(name):
+    return ALIASES[name.lower()]
+
+MATLAB_MODELS = {'hmax_hmin': HMAX_HMIN, 'hmax_pnas': HMAX_PNAS,
+                 'phog': PHOG, 'phow': PHOW, 'randfilt': RandomFilters}
 
 KNOWN_MODELS = {'px': Pixelwise, 'gaborjet': GaborJet, 'hmax99': HMAX99,
-                'hmax': HMAX, 'hog': HOG, 'phog': PHOG, 'phow': PHOW,
-                'randfilt': RandomFilters}
+                'hog': HOG}
+KNOWN_MODELS.update(MATLAB_MODELS)
 
-aliases_inv = {'vgg-19': ['vgg-19', 'VGG_ILSVRC_19_layers', 'VGG-19'],
-           'places': ['places', 'Places205-CNN', 'Places'],
-           'googlenet': ['googlenet', 'GoogleNet', 'GoogLeNet']}
+aliases_inv = {'px': ['px', 'pixelwise', 'pixel-wise'],
+               'gaborjet': ['gaborjet', 'gj'],
+               'vgg-19': ['vgg-19', 'VGG_ILSVRC_19_layers', 'VGG-19'],
+               'places': ['places', 'Places205-CNN', 'Places'],
+               'googlenet': ['googlenet', 'GoogleNet', 'GoogLeNet'],
+               'cifar10': ['cifar10', 'CIFAR10_full_deploy']}
 
-ALIASES = dict([(v,k) for k, vals in aliases_inv.items() for v in vals])
 
-CAFFE_NICE_NAMES = {'vgg-19': 'VGG-19',
-                    'places': 'Places',
-                    'googlenet': 'GoogLeNet'}
+ALIASES = {v:k for k, vals in aliases_inv.items() for v in vals}
+ALIASES.update({k:k for k in KNOWN_MODELS})
+
+NICE_NAMES = {'px': 'Pixelwise',
+              'gaborjet': 'GaborJet',
+              'retinex': 'Retinex',
+              'hog': 'HOG',
+              'hmax99': "HMAX'99",
+              'hmax_hmin': 'HMAX-HMIN',
+              'hmax_pnas': 'HMAX-PNAS',
+              'phog': 'PHOG',
+              'phow': 'PHOW',
+              'randfilt': 'Random Filters',
+              'alexnet': 'AlexNet',
+              'caffenet': 'CaffeNet',
+              'vgg-19': 'VGG-19',
+              'places': 'Places',
+              'googlenet': 'GoogLeNet',
+              'cifar10': 'CIFAR10',
+              'resnet-152': 'ResNet-152'}
 
 CAFFE_MODELS = {}
+CAFFE_PATHS = {}
 if HAS_CAFFE:
-    caffe_models = {}
     modelpath = os.path.join(os.environ['CAFFE'], 'models')
     for path in os.listdir(modelpath):
         protocol = os.path.join(modelpath, path, '*deploy*.prototxt')
@@ -1858,17 +2288,50 @@ if HAS_CAFFE:
                     basename = name.lower()
                     ALIASES[name] = basename
                     ALIASES[basename] = basename
-                    aliases_inv[basename] = [basename, name]
-                for n in aliases_inv[basename]:
-                    caffe_models[n] = Caffe
-                    CAFFE_MODELS[n] = os.path.join(modelpath, path)
-    KNOWN_MODELS.update(caffe_models)
+                CAFFE_MODELS[basename] = Caffe
+                CAFFE_PATHS[basename] = os.path.dirname(protocol)
+    KNOWN_MODELS.update(CAFFE_MODELS)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 2:
-        output = run(model_name=sys.argv[1])
-    elif len(sys.argv) > 2:
-        output = run(model_name=sys.argv[1], impaths=sys.argv[2])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('task', choices=['run', 'dissimilarity', 'mds', 'cluster', 'linear_clf', 'report'])
+    parser.add_argument('-m', '--models', nargs='*', default=['gaborjet'])
+    parser.add_argument('-i', '--impath', default=None)
+    parser.add_argument('-o', '--output', default=None)
+    parser.add_argument('--labels', nargs='*')
+    parser.add_argument('-p', '--plot', action='store_true', default=True)
+    parsed = parser.parse_args()
 
-    # np.save('results_%s.npy' % sys.argv[1], output)
+    if parsed.impath is None:
+        parsed.impath = os.getcwd()
+    if parsed.output is None:
+        parsed.output = os.getcwd()
+
+    ims = sorted(glob.glob(os.path.join(parsed.impath, '*.*')))
+
+    if parsed.task == 'report':
+        gen_report(models=parsed.models, test_ims=ims, path=parsed.output,
+                   labels=parsed.labels)
+    else:
+        m = Model(model=parsed.models[0])
+        outputs = m.run(test_ims=ims)
+        if parsed.task != 'run':
+            func = globals()[parsed.task]
+            if parsed.task in ['cluster', 'linear_clf']:
+                df = func(outputs, labels=parsed.labels)
+            elif parsed.task == 'mds':
+                dis = dissimilarity(outputs)
+                df = mds(dis)
+            else:
+                df = func(outputs)
+
+            if parsed.plot:
+                if parsed.task == 'mds':
+                    plot_data(df, kind=parsed.task, icons=ims)
+                else:
+                    plot_data(df, kind=parsed.task)
+                sns.plt.show()
+            if parsed.output is not None:
+                fname = os.path.join(parsed.output, parsed.task + '.pkl')
+                pickle.dump(df, open(fname, 'wb'))
