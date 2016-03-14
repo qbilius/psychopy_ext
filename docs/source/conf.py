@@ -93,16 +93,16 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'psychopy_ext'
-copyright = u'2010-2014, Jonas Kubilius'
+copyright = u'2010-2016, Jonas Kubilius'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = '0.5'
+version = '0.6'
 # The full version, including alpha/beta/rc tags.
-release = '0.5.4'
+release = '0.6.0'
 
 # Generate summaries
 autosummary_generate = True
@@ -376,7 +376,7 @@ texinfo_documents = [
 epub_title = u'psychopy_ext'
 epub_author = u'Jonas Kubilius'
 epub_publisher = u'Jonas Kubilius'
-epub_copyright = u'2014, Jonas Kubilius'
+epub_copyright = u'2016, Jonas Kubilius'
 
 # The language of the text. It defaults to the language option
 # or en if the language is not set.

@@ -194,10 +194,10 @@ class Analysis(object):
                 if self.rp['verbose']:
                     mtime = os.path.getmtime(df_fname)
                     mtime = datetime.fromtimestamp(mtime).ctime()
-                    print ('loaded stored dataset of %s %s results '
+                    print('loaded stored dataset of %s %s results '
                            '[saved on %s]' % (self.rp['values'],
                            self.rp['method'], mtime))
-                    print 'subjids: %s' % ', '.join(df.subjid.unique())
+                    print('subjids: %s' % ', '.join(df.subjid.unique()))
         except:
             res_fname = self.paths['analysis']+'%s_%s_%s.pkl'
             # generate some fake data to check a particular hypothesis
@@ -367,7 +367,7 @@ class Analysis(object):
         #if not np.all(loadable):
 
         for subjid in subjids:
-            print subjid,
+            print(subjid, end=',')
             #sys.stdout.write("\n%s" % subjid)
             sys.stdout.flush()
             try:
@@ -386,16 +386,16 @@ class Analysis(object):
                         # header = [i[0] for i in result[0]]
                         # for res in result:
                         #     results.append([r[1] for r in res])
-                        print ': loaded stored %s results' % values
+                        print(': loaded stored %s results' % values)
                         loaded = True
                 except:
-                    print
-                    print "Could not load or find the results file %s" % out_fname
-                    print "Will proceed to do %s analysis from scratch" % method
+                    print()
+                    print("Could not load or find the results file %s" % out_fname)
+                    print("Will proceed to do %s analysis from scratch" % method)
             if not loaded:
                 temp_res = []
                 for r, ROI_list in enumerate(rois):
-                    print ROI_list[1],
+                    print(ROI_list[1], end=',')
                     sys.stdout.flush()
                     if simds is not None:
                         values = 'sim'
@@ -442,7 +442,7 @@ class Analysis(object):
                     for line in result:
                         line = [subjid, ROI_list[1]] + line
                         temp_res.append(line)
-                print
+                print()
                 results.extend(temp_res)
 
                 if not self.rp['no_output'] and method in ['corr', 'svm']:
@@ -1070,7 +1070,7 @@ class Analysis(object):
         # import pdb; pdb.set_trace()
 
         for n in range(nIter):
-            print n,
+            print(n, end=',')
             # we want each iteration to have a different (random) split
             np.random.shuffle(runtype)
             # for each datapoint within a chunk, assign the same runtype
@@ -1138,7 +1138,7 @@ class Analysis(object):
                     # cvte(ds_pair)
 
 
-        print
+        print()
         if self.visualize:
             meanPerIter = np.mean(np.mean(results, 2), 1)
             cumMean = np.cumsum(meanPerIter)/range(1, len(meanPerIter)+1)
@@ -1171,7 +1171,7 @@ class Analysis(object):
             thisds = ds[np.array([i in pair for i in ds.sa.targets])]
             res = sl(ds)
             resOrig = res.a.mapper.reverse(res.samples)
-            print res_orig.shape
+            print(res_orig.shape)
             fig = plt.figure()
             fig.subplot(221)
             plt.imshow(np.mean(resOrig.samples,0), interpolation='nearest')
@@ -1446,14 +1446,14 @@ class Analysis(object):
 
                     # check for overlap
                     # if subjid == 'twolines_06': import pdb; pdb.set_trace()
-                    print [os.path.basename(subROI) for subROI in allROIs]
+                    print([os.path.basename(subROI) for subROI in allROIs])
                     #
                     mask = sum([np.squeeze(nb.load(subROI).get_mri_data()) for subROI in allROIs])
                     if not suppressText:
                         overlap = mask > 2
                         if np.sum(overlap) > 0:
-                            print 'WARNING: Overlap in %(subjid)s %(ROI)s detected.'\
-                            %{'subjid': subjid, 'ROI': ROI_list[1]}
+                            print('WARNING: Overlap in %(subjid)s %(ROI)s detected.'\
+                            %{'subjid': subjid, 'ROI': ROI_list[1]})
 
 
                     if not subROIs: allROIs = [mask]
@@ -1505,18 +1505,18 @@ class Analysis(object):
 
             lenROI = min([len(ROI) for ROI in ROImean['ROI']])
             if subROIs: lenSubROI = min([len(ROI) for ROI in ROImean['subROI']])
-            print
-            print ROIparams.dtype.names[1:]
+            print()
+            print(ROIparams.dtype.names[1:])
             for i, line in enumerate(ROImean):
-                print line['ROI'].ljust(lenROI+2),
-                if subROIs: print line['subROI'].ljust(lenSubROI+2),
-                print '%3d' %np.round(line['x']),
-                print u'\xb1 %d  ' %np.round(xyzErr[i,0]),
-                print '%3d' %np.round(line['y']),
-                print u'\xb1 %d  ' %np.round(xyzErr[i,1]),
-                print '%3d' %np.round(line['z']),
-                print u'\xb1 %d  ' %np.round(xyzErr[i,2]),
-                print '%4d' %np.round(line['numVoxels'])
+                print(line['ROI'].ljust(lenROI+2), end=',')
+                if subROIs: print(line['subROI'].ljust(lenSubROI+2), end=',')
+                print ('%3d' %np.round(line['x']), end=',')
+                print (u'\xb1 %d  ' %np.round(xyzErr[i,0]), end=',')
+                print ('%3d' %np.round(line['y']), end=',')
+                print (u'\xb1 %d  ' %np.round(xyzErr[i,1]), end=',')
+                print ('%3d' %np.round(line['z']), end=',')
+                print (u'\xb1 %d  ' %np.round(xyzErr[i,2]), end=',')
+                print ('%4d' %np.round(line['numVoxels']))
 
         return ROIparams
 
@@ -1597,7 +1597,7 @@ class Preproc(object):
 
         if len(rpfiles) == 0:  # probably split_rp has been done before
             if self.rp['verbose']:
-                print 'No rp files like %s found' % rp_pattern
+                print('No rp files like %s found' % rp_pattern)
         else:
             rp = []
             for rpfile in rpfiles:
@@ -1609,7 +1609,7 @@ class Preproc(object):
                 if not self.rp['dry']:
                     shutil.move(rpfile, rp_bck)
                 else:
-                    print '%s --> %s' % (rpfile, rp_bck)
+                    print('%s --> %s' % (rpfile, rp_bck))
 
             last = 0
             for func in func_img:
@@ -1624,7 +1624,7 @@ class Preproc(object):
                     f.writelines(rp[last:last+dynscans])
                     f.close()
                 else:
-                    print '%s: %s' % (func, outname)
+                    print('%s: %s' % (func, outname))
 
                 last += dynscans
 
@@ -1663,7 +1663,7 @@ class Preproc(object):
             try:
                 os.makedirs(analysis_dir)
             except:
-                print ('WARNING: Analysis folder already exists at %s' %
+                print('WARNING: Analysis folder already exists at %s' %
                         os.path.abspath(analysis_dir))
             # make analysis path relative to stats.m
             analysis_dir_str = ("cellstr(spm_select('CPath','%s'))" %
@@ -1818,11 +1818,11 @@ def plot_similarity(similarity, names=None, percent=False):
     similarity = make_symmetric(similarity)
     trace = similarity.trace()/len(similarity)
     offdiag = (np.sum(similarity) - similarity.trace()) / len(similarity) / (len(similarity)-1)
-    print '%.2f' %trace,
-    print '%.2f' %offdiag,
+    print('%.2f' %trace, end=',')
+    print('%.2f' %offdiag, end=',')
     iu = np.triu_indices(len(similarity),k=1)  # upper triangle less diagonal
     rel = np.corrcoef(similarity[iu],similarity.T[iu])[0,1]
-    print '%.2f' %rel
+    print('%.2f' %rel)
 #    import pdb; pdb.set_trace()
     if percent: plot_data = similarity*100
     else: plot_data = similarity
@@ -1883,7 +1883,7 @@ def avg_blocks(matrix, coding):
 #        import pdb; pdb.set_trace()
     coding_int = coding_int.astype(np.int)
     if not np.all(np.bincount(coding_int)>1):
-        print np.bincount(coding_int)
+        print(np.bincount(coding_int))
         sys.exit('You have a single occurence of some entry')
     else:
         uniquec = np.unique(coding_int)
@@ -2180,9 +2180,9 @@ class GenHRF(object):
         exp.try_makedirs(self.paths['rois'] % self.subjid)
         #nmeasr = len(conds)*blocklen
         self.prepare_roi(roi_coords)
-        print 'Generating fMRI data...',
+        print('Generating fMRI data...', end=',')
         for runno in range(nruns):
-            print runno+1,
+            print(runno+1, end=',')
             df = self._gen_behav_data(labels, runno, blocklen=4)
 
             weights_full = (df.cond>0) * np.take(weights, df.cond)
@@ -2366,4 +2366,3 @@ class GenHRF(object):
         if not normalize:
             return hrf
         return hrf / np.max(hrf)
-

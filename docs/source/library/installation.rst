@@ -18,84 +18,56 @@ Notice however that often certain dependencies will fail to install via pip and 
 Dependencies
 ------------
 
-*Required*
+This is a Python 2 (`Python 2.7 <http://python.org/download/>`_) package, but due to ``__future__`` imports, it should be compatible with Python 3 (untested).
 
-* `Python 2.7 <http://python.org/download/>`_
-* `PsychoPy 1.79.01+ <http://sourceforge.net/projects/psychpy/files/>`_
-* `pandas 0.12+ <http://pandas.pydata.org/getpandas.html>`_
-* `seaborn 0.3+ <https://pypi.python.org/pypi/seaborn>`_ (pretty plots; not really mandatory but required for the benefit of your eyes)
-* `docutils <https://pypi.python.org/pypi/docutils>`_ (technically it is not mandatory but it will allow rendering docstrings on screen by the ``exp`` class)
-* `svgwrite <https://pypi.python.org/pypi/svgwrite>`_ (it's used to export stimuli to SVG format, so it's also not super mandatory but given its pip-installable, why not?)
+Since this is a wrapper of multiple packages, it requires multiple packages. However, as you will probably end up using only some of ``psychopy_ext`` functionality and dependencies in Python are a mess, I decided to let you install the necessary dependencies on your own. If you need an easy way to do it, go with `conda <http://conda.pydata.org/miniconda.html>`_.
 
-*Optional*
+Here is a list of packages based on what needs them:
 
-* `PyMVPA 2.3.1+ <http://www.pymvpa.org/download.html>`_ (required for the `fmri` class; `Windows version for Python 2.7 here <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
-* `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (required for the `fmri` class; install with ``pip install nibabel``)
-* `h5py <https://pypi.python.org/pypi/h5py>`_ (required for the `fmri` class; install with ``pip install h5py``)
+- general
+    * `numpy`
+    * `scipy`
+    * `pandas 0.17+ <http://pandas.pydata.org/getpandas.html>`_
+- exp
+    * `PsychoPy 1.83.04+ <http://sourceforge.net/projects/psychpy/files/>`_
+    * `docutils <https://pypi.python.org/pypi/docutils>`_ (will allow rendering docstrings on screen by the ``exp`` class)
+    * `svgwrite <https://pypi.python.org/pypi/svgwrite>`_ (used to export stimuli to SVG format)
+- plots
+    * `seaborn 0.7+ <https://pypi.python.org/pypi/seaborn>`_ (pretty plots; not really mandatory but required for the benefit of your eyes)
+- models
+    * `sklearn`_
+    * `skimage`_
+    * `caffe`
+    * `matlab_wrapper <https://github.com/mrkrd/matlab_wrapper>`_ (for accessing MATLAB)
+- fMRI
+    * `PyMVPA 2.3.1+ <http://www.pymvpa.org/download.html>`_ (`Windows version for Python 2.7 here <http://www.lfd.uci.edu/~gohlke/pythonlibs/>`_)
+    * `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_ (install with ``pip install nibabel``)
+    * `h5py <https://pypi.python.org/pypi/h5py>`_ (install with ``pip install h5py``)
 
-
-----------------------------
-Preparation for installation
-----------------------------
-
-Debian/Ubuntu
-~~~~~~~~~~~~~
-
-Add the NeuroDebian repository using `instructions on their wesbite <http://neuro.debian.net/#how-to-use-this-repository>`_.
-
-Then:
-
-* Install *PsychoPy* for running experiments: `sudo apt-get install psychopy` (all its dependencies will be installed automatically)
-* Install *pandas* for data analysis: `sudo apt-get install python-pandas`
-* For fMRI analyses:
-
-    * *PyMVPA*: `sudo apt-get install python-mvpa2`
-    * *NiBabel*: `sudo apt-get install python-nibabel`
-
-Windows
-~~~~~~~
-
-Standalone PsychoPy
-^^^^^^^^^^^^^^^^^^^
-
-Total beginners might want to merely install `Standalone PsychoPy distribution <http://sourceforge.net/projects/psychpy/files/>`_ which contains most packages required by *psychopy_ext* except for *pymvpa* an *nibabel*. These packages are used for fMRI analyses and if you are planning to conduct them, then this method will not work for you (so read on).
-
-Others
-^^^^^^
-
-First, you'll have to choose an environment to run Python. Some good options are listed in :ref:`python-ide`.
-
-Next, install `Python 2.7 <http://www.python.org/getit/>`_ (except if you chose *Canopy*). You have to add Python to your path: right-click on My Computer, go to Properties > Advanced system settings > Environment Variables..., look for Path variable in System Variables, click to edit it and add `C:\\Python27;` (or wherever your Python is installed). Also add `C:\\Python27\\Scripts;` to have setuptools/easy_install/pip work.
-
-Now install `PsychoPy <http://sourceforge.net/projects/psychpy/files/>`_ (not a standalone version) and `pandas <http://pandas.pydata.org/getpandas.html>`_. If you intend to do fMRI analyses, also get `PyMVPA2 <http://www.pymvpa.org/download.html>`_ and `NiBabel <http://nipy.sourceforge.net/nibabel/installation.html#installation>`_.
-
-Alternatively, consider `installing a virtual machine with Debian on it <http://neuro.debian.net/#virtual-machine>_` and following the instructions above for Debian/Ubuntu.
 
 ------------
 Installation
 ------------
 
-Standalone PsychoPy
-~~~~~~~~~~~~~~~~~~~
+Recommended way
+~~~~~~~~~~~~~~~
 
-Download the zip file from `PyPI <https://pypi.python.org/pypi/psychopy_ext>`_ and follow instructions on `PsychoPy documentation <http://www.psychopy.org/recipes/addCustomModules.html>`_ to install it.
+* Get `conda <http://conda.pydata.org/miniconda.html>`_
+* Install all dependencies
+* Install `psychopy_ext`: ``pip install psychopy_ext`
 
-Others
-~~~~~~
+Note: for maximal flexibility, I recommend installing ``psychopyt_ext`` using ``-e``flag which will allow you to both have the package installed and edit it according to your needs. You may also want to choose a custom installation path then by using ``--prefix=<path>``.
 
-Many users will be satisfied by merely installing ``psychopy_ext`` from PyPI::
+Another way
+~~~~~~~~~~~
 
-    pip install psychopy_ext
+Debian/Ubuntu users or those who like `virtual machines with Debian on it <http://neuro.debian.net/#virtual-machine>_` can add the NeuroDebian repository using `instructions on their website <http://neuro.debian.net/#how-to-use-this-repository>`_. Then install all dependencies via `sudo apt-get instal <package>`.
 
-However, to have an easy access to ``psychopy_ext`` and customize it to your own needs, I recommend downloading the source code and placing it where you keep your other projects. There are two possibilities then to use the package:
-
-- In `run.py` add a line `sys.path.insert(0, '../psychopy_ext/')` (i.e., a relative path to the ``psychopy_ext`` folder)
-- Or: simply append the location of `psychopy_ext` to PYTHONPATH
 
 Bleeding edge
 ~~~~~~~~~~~~~
 
-If you want the lastest, greatest, and the least stable copy of psychopy_ext:
+If you want the latest, greatest, and the least stable copy of psychopy_ext:
 
 - If you know how to use a mouse: download and unzip ``psychopy_ext`` `source code <https://github.com/qbilius/psychopy_ext/archive/master.zip>`_
 

@@ -12,9 +12,11 @@ Unlike ``PsychoPy``, ``PyMVPA`` or ``matplotlib`` that are very flexible and sup
 License
 -------
 
-Copyright 2010-2013 Jonas Kubilius (http://klab.lt)
+Copyright 2010-2016 Jonas Kubilius (http://klab.lt)
 
-Laboratories of Biological and Experimental Psychology, KU Leuven (Belgium)
+Brain and Cognition, KU Leuven (Belgium)
+
+McGovern Institute for Brain Research, MIT (USA)
 
 [GNU General Public License v3 or later](http://www.gnu.org/licenses/)
 
@@ -26,5 +28,4 @@ Acknowledgements
 
 I would like to thank Jonathan Peirce, Jeremy Gray and all `PsychoPy <http://www.psychopy.org/>`_ developers for the well maintained code from which I learned a lot about development, `Scott Torborg <http://www.scotttorborg.com/python-packaging>`_ and `The Hitchhiker's guide to packaging <http://guide.python-distribute.org/>`_ for guiding me in packaging, and `ZetCode <http://zetcode.com/wxpython/>`_ for examples on dealing with wxPython.
 
-Jonas Kubilius is a Research Assistant of the Research Foundation -- Flanders (FWO).
-
+Jonas Kubilius is funded by the Research Foundation -- Flanders (FWO).

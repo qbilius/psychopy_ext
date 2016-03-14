@@ -449,7 +449,7 @@ class Task(TrialHandler):
         self.win.flip()
 
         if self.rp['unittest']:
-            print text
+            print(text)
 
         if auto > 0:  # show text and blank out
             if self.rp['autorun']:
@@ -2723,7 +2723,7 @@ def get_behav_df(subjid, pattern='%s'):
         if data is not None:
             dfs.append(data)
     if dfs == []:
-        print df_fnames
+        print(df_fnames)
         raise IOError('Behavioral data files not found.\n'
             'Tried to look for %s' % (pattern % subjid))
     df = pandas.concat(dfs, ignore_index=True)

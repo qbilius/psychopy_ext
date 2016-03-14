@@ -220,6 +220,13 @@ HMAX model
    HMAX.get_VTU
    HMAX.compare
 
+Caffe
+~~~~~
+.. autosummary::
+   :toctree: generated/
+
+   Caffe.__init__
+
 Helper functions
 ~~~~~~~~~~~~~~~~
 .. autosummary::
@@ -235,66 +242,14 @@ Statistical analyses
 .. autosummary::
    :toctree: generated/
 
-   aggregate
-   accuracy
-   confidence
-   get_star
-   reorder
    df_fromdict
    nan_outliers
-   oneway_anova
-   p_corr
-   reliability
-   mds
-   classical_mds
-
 
 ---------------
 Pretty plotting
 ---------------
 
 .. automodule:: psychopy_ext.plot
-
-
-Plotting
-~~~~~~~~
-.. autosummary::
-   :toctree: generated/
-
-   Plot.__init__
-   Plot.plot
-   Plot.bar_plot
-   Plot.line_plot
-   Plot.scatter_plot
-   Plot.histogram
-   Plot.matrix_plot
-   Plot.mds_plot
-   Plot.bean_plot
-   Plot.show
-
-   Plot.get_ax
-   Plot.next
-   Plot.hide_plots
-   Plot.display_legend
-   Plot.set_legend_pos
-   Plot.draw_sig
-
-
-Helper functions
-~~~~~~~~~~~~~~~~
-.. autosummary::
-   :toctree: generated/
-
-   Plot.get_ax
-   Plot.next
-   Plot.sample_paired
-   Plot.get_colors
-   Plot.hide_plots
-   Plot.add_inner_title
-   Plot.set_legend_pos
-   Plot.show
-   Plot.printfig
-
 
 --------------
 User interface
@@ -310,4 +265,3 @@ User interface
    Control.run_builtin
    Control.cmd
    Control.app
-
