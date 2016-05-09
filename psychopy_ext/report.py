@@ -41,14 +41,14 @@ class Report(object):
                     except:
                         pass
 
-        for f in glob.glob(self.resources + '*'):
-            if os.path.isfile(f):
-                if os.path.basename(f) != 'index.html':
-                    shutil.copy2(f)
-            else:
-                dst = os.path.join(self.path, os.path.basename(f))
-                shutil.copytree(f, dst,
-                    ignore=shutil.ignore_patterns('index.html'))
+        # for f in glob.glob(self.resources + '*'):
+        #     if os.path.isfile(f):
+        #         if os.path.basename(f) != 'index.html':
+        #             shutil.copy2(f)
+        #     else:
+        #         dst = os.path.join(self.path, os.path.basename(f))
+        #         shutil.copytree(f, dst,
+        #             ignore=shutil.ignore_patterns('index.html'))
         with open(self.resources + 'index.html', 'rb') as tmp:
             self.temp_begin, self.temp_end = tmp.read().split('####REPLACE####')
         self.htmlfile = open(self.path + 'index.html', 'wb')
