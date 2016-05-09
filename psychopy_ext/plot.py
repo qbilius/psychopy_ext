@@ -159,23 +159,31 @@ def tsplot(data, x=None, unit=None, hue=None, y=None, palette=None,
         else:
             return stats.bootstrap_resample(r, ci=ci, niter=n_boot)
 
-    agg = data if unit is None else data.groupby(unit).mean().reset_index()
+    if isinstance(hue, (str, unicode)): hue = [hue]
+    if unit is None:
+        agg = data
+    else:
+        agg = data.groupby([x]+hue+[unit])[y].mean().reset_index()
     agg = agg.pivot_table(index=x, columns=hue, values=y,
                           aggfunc=[estimator, bootstrap_resample])
     if ax is None: ax = sns.plt.subplot(111)
+
+    if 'lw' not in kwargs:
+        kwargs['lw'] = sns.mpl.rcParams['lines.linewidth']*1.8
+
     if hue is None:
         ci_low = map(lambda x: x[0], agg['bootstrap_resample'])
         ci_high = map(lambda x: x[1], agg['bootstrap_resample'])
         ax.fill_between(agg.index, ci_low, ci_high, alpha=.5)
-        ax.plot(agg.index, agg['mean'], lw=sns.mpl.rcParams['lines.linewidth']*1.8)
+        ax.plot(agg.index, agg['mean'], **kwargs)
     else:
-        if color is None: color = sns.color_palette(palette, n_colors=len(data[hue].unique()))
-        for n, col in enumerate(data[hue].unique()):
+        if color is None: color = sns.color_palette(palette, n_colors=len(data.groupby(hue).groups))
+        for n, col in enumerate(agg['mean']):
             c = color[n % len(color)]
             ci_low = map(lambda x: x[0], agg[('bootstrap_resample', col)])
             ci_high = map(lambda x: x[1], agg[('bootstrap_resample', col)])
             ax.fill_between(agg.index, ci_low, ci_high, alpha=.5, color=c)
-            ax.plot(agg.index, agg[('mean', col)], lw=sns.mpl.rcParams['lines.linewidth']*1.8, c=c, label=col)
+            ax.plot(agg.index, agg[('mean', col)], c=c, label=col, **kwargs)
     if legend:
         handles, labels = ax.get_legend_handles_labels()
         lgd = ax.legend(handles, labels, loc='center left', bbox_to_anchor=(1.1, .5))
