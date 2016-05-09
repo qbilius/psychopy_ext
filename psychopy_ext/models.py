@@ -74,13 +74,14 @@ if HAS_CAFFE:
 
 class Model(object):
 
-    def __init__(self, model, labels=None, *args, **kwargs):
+    def __init__(self, model, labels=None, verbose=True, *args, **kwargs):
         self.name = ALIASES[model]
         self.nice_name = NICE_NAMES[model]
         self.safename = self.name
         self.labels = labels
         self.args = args
         self.kwargs = kwargs
+        self.verbose = verbose
 
     def download_model(self, path=None):
         """Downloads and extracts a model
@@ -125,6 +126,7 @@ class Model(object):
                 self.model = KNOWN_MODELS[self.name](*self.args, **self.kwargs)
             self.model.labels = self.labels
             self.isflat = self.model.isflat
+            self.model.verbose = self.verbose
 
     def run(self, *args, **kwargs):
         self._setup()
@@ -301,19 +303,16 @@ class _Model(object):
                 except:
                     out = ims
                 else:
-                    if self.isflat:
-                        if ndim == 2:
-                            out = [ims]
-                        elif ndim == 3:
-                            out = ims
+                    if ndim == 1: out = ims.tolist()
+                    elif self.isflat:
+                        if ndim == 2: out = [ims]
+                        elif ndim == 3: out = ims
                         else:
                             raise ValueError('images must be 2D or 3D, got %d '
                                              'dimensions instead' % ndim)
                     else:
-                        if ndim == 3:
-                            out = [ims]
-                        elif ndim == 4:
-                            out = ims
+                        if ndim == 3: out = [ims]
+                        elif ndim == 4: out = ims
                         else:
                             raise ValueError('images must be 3D or 4D, got %d '
                                              'dimensions instead' % ndim)
@@ -1569,15 +1568,17 @@ class Caffe(_Model):
             output[layer] = np.zeros((len(ims),) + sh)
 
         for imno, im in enumerate(ims):
-            sys.stdout.write("\rRunning %s... %d%%" % (self.name, 100*imno/len(ims)))
-            sys.stdout.flush()
+            if self.verbose:
+                sys.stdout.write("\rRunning %s... %d%%" % (self.name, 100*imno/len(ims)))
+                sys.stdout.flush()
             im = self.load_image(im, color=True)
             out = self._test(im)
             for layer in self.layers:
                 output[layer][imno] = self.net.blobs[layer].data
 
-        sys.stdout.write("\rRunning %s... done\n" % self.name)
-        sys.stdout.flush()
+        if self.verbose:
+            sys.stdout.write("\rRunning %s... done\n" % self.name)
+            sys.stdout.flush()
 
         if filt_layers:
             output = self._fmt_output(output, layers, return_dict=return_dict)
@@ -1594,7 +1595,7 @@ class Caffe(_Model):
         preds = self.test(ims, layers='prob', return_dict=False, filt_layers=False)
         if topn is not None:
             preds.sort(axis=1)
-            return np.squeeze(preds[:, :topn])
+            return np.squeeze(preds[:, ::-1][:topn])
         else:
             return preds
 
