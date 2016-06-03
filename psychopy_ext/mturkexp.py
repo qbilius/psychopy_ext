@@ -15,8 +15,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import glob, datetime
+import glob, datetime, argparse, shutil
 import cPickle as pickle
+from warnings import warn
+
+import numpy as np
+import scipy
+import pandas
 
 import pymongo
 import mturkutils
@@ -66,8 +71,8 @@ class Experiment(mturkutils.base.Experiment):
             print('Creating exp_plan')
             exp_plan = self.create_exp_plan()
         else:
-            if len(fnames) > 1:
-                print('Multiple exp_plan files found:')
+            if len(fnames) > 0:
+                print('exp_plan files found:')
                 for i, fname in enumerate(fnames):
                     print(i+1, fname, sep=' - ')
                 print(0, 'Create a new exp_plan', sep=' - ')
@@ -76,6 +81,7 @@ class Experiment(mturkutils.base.Experiment):
                 if choice == '0':
                     print('Creating exp_plan')
                     self.create_exp_plan()
+                    fname = sorted(glob.glob(self.bucket + '_exp_plan_*.pkl'))[-1]
                 else:
                     if choice == '': choice = '1'
                     try:
@@ -93,7 +99,7 @@ class Experiment(mturkutils.base.Experiment):
             exp_plan = exp_plan[:self.trials_per_hit]
         elif self.short:
             exp_plan = exp_plan[:10]
-
+            
         return exp_plan
 
     def save_exp_plan(self, exp_plan):
@@ -110,7 +116,7 @@ class Experiment(mturkutils.base.Experiment):
         if len(fnames) == 0:
             raise Exception('No HIT ID files found with pattern ' + pattern)
         elif len(fnames) > 1:
-            print('Multiple HIT ID files found:')
+            print('HIT ID files found:')
             for i, fname in enumerate(fnames):
                 print(i+1, fname, sep=' - ')
             choice = raw_input('Choose which one to load (default is 1): ')
@@ -126,6 +132,9 @@ class Experiment(mturkutils.base.Experiment):
         print('Using', fname, end='\n\n')
         hitids = pickle.load(open(fname))
         return hitids
+
+    def check_hits(self):
+        return self.check_if_hits_are_completed()
 
     def check_if_hits_are_completed(self):
         """
@@ -143,21 +152,25 @@ class Experiment(mturkutils.base.Experiment):
         idx = 0
         for subjid, hitid in enumerate(hitids):
             subj_data = self.getHITdata(hitid, full=False)
-            assert len(subj_data) == 1  # don't know what to do otherwise
+            if len(subj_data) == 0:  # no data yet
+                idx += self.trials_per_hit
+            elif len(subj_data) == 1:                    
+                for subj in subj_data:
+                    assert isinstance(subj, dict)
+                    data = zip(subj['ImgOrder'], subj['Response'], subj['RT'])
+                    for k, (img, resp, rt) in enumerate(data):
+                        imgid = mturkutils.base.getidfromURL(img[0])
+                        assert imgid == self.exp_plan['id'][idx]
+                        # respid = mturkutils.base.getidfromURL(resp)
+                        # respid = respid[:-len(self.label_prefix)]
+                        self.exp_plan['subj_resp'][idx] = self.exp_plan['label' + str(resp+1)][idx]
+                        self.exp_plan['acc'][idx] = int(self.exp_plan['corr_resp'][idx] == self.exp_plan['subj_resp'][idx])
+                        self.exp_plan['rt'][idx] = rt
+                        idx += 1
+            else:  # don't know what to do
+                raise Exception
 
-            for subj in subj_data:
-                assert isinstance(subj, dict)
-
-                data = zip(subj['ImgOrder'], subj['Response'], subj['RT'])
-                for k, (img, resp, rt) in enumerate(data):
-                    imgid = mturkutils.base.getidfromURL(img[0])
-                    assert imgid == self.exp_plan['id'][idx]
-                    # respid = mturkutils.base.getidfromURL(resp)
-                    # respid = respid[:-len(self.label_prefix)]
-                    self.exp_plan['subj_resp'][idx] = self.exp_plan['label' + str(resp+1)][idx]
-                    self.exp_plan['acc'][idx] = int(self.exp_plan['corr_resp'][idx] == self.exp_plan['subj_resp'][idx])
-                    self.exp_plan['rt'][idx] = rt
-                    idx += 1
+    # def get_workedids(self)
 
     def updateDBwithHITs(self, verbose=False, overwrite=False):
         hitids = self.get_hitids()
@@ -227,7 +240,7 @@ def get_args():
     return args, kwargs
 
 def run_exp(exp=None, dataset=None):
-    args, kwargs = mturkexp.get_args()
+    args, kwargs = get_args()
 
     if args.task == 'dataset':
         if dataset is None:
@@ -258,15 +271,15 @@ def run_exp(exp=None, dataset=None):
             exp.testHTMLs()
             exp.uploadHTMLs()
             exp.createHIT(secure=True)
-        elif args.func == 'download':
-            exp.download_results(**kwargs)
+        # elif args.func == 'download':
+        #     exp.download_results(**kwargs)
+        #     import pdb; pdb.set_trace()
         elif args.func == 'download_and_store':
             exp.updateDBwithHITs(**kwargs)
         elif args.func == 'test_data':
-            hitids = exp.get_hitids()
-            print(hitids)
-            data = exp.getHITdata(hitids[0], full=False)
-            return data
+            exp.download_results()
+            df = pandas.DataFrame(exp.exp_plan)
+            import pdb; pdb.set_trace()
         else:
             getattr(exp, args.func)(**kwargs)
 
