@@ -6,7 +6,7 @@ This is a major release of `psychopy_ext`, containing a number of new features a
 * CHANGED: New pandas versions added support for categorical data and broke ordering. This is now fixed. **However**, this changes the way ``stats.aggregate`` and ``stats.accuracy`` work; **you will need to change your code** to have it work with this new version or, better yet, not use these functions and rely on ``pandas.groupby``. Reorder has been deprecated. Make your data categorical in pandas and use cat.reorder_categories().
 * NEW: Many bootstrap methods added to ``stats``.
 * DEPRECATED: ``plot`` is now deprecated in favor os ``seaborn`` that does everything ``plot`` was always aiming to do, but much better. There are now only a couple of functions left in ``plot`` that extend the functionality of ``seaborn``.
-* NEW: ``mturkexp``: Experimental and very simple wrapper to ``mturkutils``.
+* NEW: ``mturkexp``: Experimental and very simple wrapper to ``mturkutils`` (moved to ``mturkutils`` as of 0.6.0.2).
 * NEW: ``utils``: a collection of convenience functions
 
 v0.5.5

@@ -12,7 +12,7 @@ A collection of useful functions.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import unicode_literals
+
 import os, subprocess, warnings, tempfile
 import io, zipfile, tarfile, urllib, shutil
 
@@ -83,7 +83,6 @@ def load_image(im, flatten=False, color=False, resize=1.0, interp_order=1, keep_
 
     return im
 
-
 def resize_image(im, new_dims, interp_order=1):
     u"""
     Resize an image array with interpolation.
@@ -102,7 +101,13 @@ def resize_image(im, new_dims, interp_order=1):
     :Returns:
         Resized ndarray with shape (new_dims[0], new_dims[1], K)
     """
-    if im.ndim == 2 or im.shape[-1] == 1 or im.shape[-1] == 3:
+    if im.shape[-1] == 4:
+        alpha = resize_image(im[:,:,3], (new_dims[0], new_dims[1]), 
+                             interp_order=interp_order)
+        im_rgb = resize_image(im[:,:,:3],  (new_dims[0], new_dims[1], 3),
+                              interp_order=interp_order)
+        return np.dstack([im_rgb, alpha])  
+    elif im.ndim == 2 or im.shape[-1] == 1 or im.shape[-1] == 3:
         im_min, im_max = im.min(), im.max()
         if im_max > im_min:
             im_std = (im - im_min) / (im_max - im_min)
@@ -111,7 +116,7 @@ def resize_image(im, new_dims, interp_order=1):
         else:
             ret = np.empty((new_dims[0], new_dims[1], im.shape[-1]), dtype=np.float32)
             ret.fill(im_min)
-            return ret
+            return ret        
     else:
         scale = tuple(np.array(new_dims, dtype=float) / np.array(im.shape[:2]))
         resized_im = scipy.ndimage.zoom(im, scale + (1,), order=interp_order)

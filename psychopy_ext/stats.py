@@ -13,7 +13,6 @@ functionality and integrate seamlessly with `pandas`.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import unicode_literals
 
 import numpy as np
 import scipy.stats
@@ -28,7 +27,7 @@ def aggregate(df, groupby=None, agg_out=None, aggfunc=None, reset_index=True):
 
     df = pandas.DataFrame(df)  # make sure it's a DataFrame
     # import ipdb; ipdb.set_trace()
-    df = factorize(df)
+    # df = factorize(df)
 
     if groupby is not None:
         if not isinstance(groupby, (list, tuple)):

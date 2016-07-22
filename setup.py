@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import unicode_literals
 
 from setuptools import setup
 from distutils.version import LooseVersion
@@ -102,7 +101,7 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Topic :: Scientific/Engineering'
     ],
-    keywords=('psychology experiments plotting data visualization analysis ',
+    keywords=('psychology experiments plotting data visualization analysis '
               'fMRI simulations deep neural networks models hmax gaborjet hog '
               'phog reproducible research open science'),
 )

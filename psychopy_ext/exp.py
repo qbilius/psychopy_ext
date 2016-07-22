@@ -11,7 +11,6 @@ All experiment-related methods are kept here.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import unicode_literals
 
 import sys, os, csv, glob, random, warnings, copy
 from UserDict import DictMixin
@@ -1263,12 +1262,11 @@ class SVG(object):
         #visual.helpers.setColor(win, win.color)
         win.contrast = 1
         self.win = win
-        self.aspect = self.win.size[0]/float(self.win.size[1])
+        self.aspect = self.win.size[0]/float(self.win.size[1])        
         self.open(filename)
 
     def open(self, filename):
         filename = filename.split('.svg')[0]
-
         self.svgfile = svgwrite.Drawing(profile='tiny',filename='%s.svg' % filename,
                                 size=('%dpx' % self.win.size[0],
                                       '%dpx' % self.win.size[1]),
@@ -1859,7 +1857,6 @@ class Experiment(ExperimentHandler, Task):
         for key in kwargs:
             if key in ['monitor', 'fullscr', 'allowGUI', 'screen', 'viewScale']:
                 del kwargs[key]
-
         self.win = visual.Window(
             monitor=monitor,
             units=units,
