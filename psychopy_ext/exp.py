@@ -34,6 +34,7 @@ else:
 
 import psychopy.info
 from psychopy import visual, core, event, logging, misc, monitors, data
+from psychopy.visual.shape import ShapeStim
 from psychopy.data import TrialHandler, ExperimentHandler
 from psychopy.tools.attributetools import attributeSetter
 
@@ -2124,7 +2125,7 @@ class Event(object):
             #self.key = value
 
 
-class ThickShapeStim(visual.shape.ShapeStim):
+class ThickShapeStim(ShapeStim):
     """
     Draws thick shape stimuli as a collection of lines.
 
@@ -2135,7 +2136,7 @@ class ThickShapeStim(visual.shape.ShapeStim):
     ..note:: `lineWidth` is specified in your units, not pixels (as is default
              in PsychoPy)
 
-    Modified from :class:`~visual.ShapeStim`.
+    Modified from :class:`~visual.shape.ShapeStim`.
     """
     def __init__(self, win, lineWidth=.01, **kwargs):
         super(ThickShapeStim, self).__init__(win, lineWidth=lineWidth, **kwargs)
