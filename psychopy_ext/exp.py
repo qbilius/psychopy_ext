@@ -1263,7 +1263,7 @@ class SVG(object):
         #visual.helpers.setColor(win, win.color)
         win.contrast = 1
         self.win = win
-        self.aspect = self.win.size[0]/float(self.win.size[1])        
+        self.aspect = self.win.size[0]/float(self.win.size[1])
         self.open(filename)
 
     def open(self, filename):
@@ -1372,15 +1372,15 @@ class SVG(object):
         elif 'SimpleImageStim' in str(stim):
             raise NotImplemented
         elif 'TextStim' in str(stim):
-            if stim.fontname == '':
+            if stim.font == '':
                 font = 'arial'
             else:
-                font = stim.fontname
+                font = stim.font
             svgstim = self.svgfile.text(text=stim.text,
                                     insert=self.get_pos(stim) + np.array([0,stim.height/2.]),
                                     fill=self.color2rgb255(stim),
                                     font_family=font,
-                                    font_size=stim.heightPix,
+                                    font_size=self._calc_attr(stim, stim.height),
                                     text_anchor='middle',
                                     opacity=stim.opacity
                                     )
@@ -2140,6 +2140,7 @@ class ThickShapeStim(ShapeStim):
     """
     def __init__(self, win, lineWidth=.01, **kwargs):
         super(ThickShapeStim, self).__init__(win, lineWidth=lineWidth, **kwargs)
+        self.setVertices(self.vertices)
 
     @attributeSetter
     def vertices(self, value=None):

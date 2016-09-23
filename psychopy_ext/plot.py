@@ -163,6 +163,7 @@ def tsplot(data, x=None, unit=None, hue=None, y=None, palette=None,
         agg = data
     else:
         agg = data.groupby([x]+hue+[unit])[y].mean().reset_index()
+
     agg = agg.pivot_table(index=x, columns=hue, values=y,
                           aggfunc=[estimator, bootstrap_resample])
     if ax is None: ax = sns.plt.subplot(111)

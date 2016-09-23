@@ -18,7 +18,7 @@ import io, zipfile, tarfile, urllib, shutil
 
 import numpy as np
 import scipy.ndimage
-import skimage, skimage.io
+import skimage, skimage.io, skimage.transform
 
 
 def call_matlab(script_path):
@@ -102,11 +102,11 @@ def resize_image(im, new_dims, interp_order=1):
         Resized ndarray with shape (new_dims[0], new_dims[1], K)
     """
     if im.shape[-1] == 4:
-        alpha = resize_image(im[:,:,3], (new_dims[0], new_dims[1]), 
+        alpha = resize_image(im[:,:,3], (new_dims[0], new_dims[1]),
                              interp_order=interp_order)
         im_rgb = resize_image(im[:,:,:3],  (new_dims[0], new_dims[1], 3),
                               interp_order=interp_order)
-        return np.dstack([im_rgb, alpha])  
+        return np.dstack([im_rgb, alpha])
     elif im.ndim == 2 or im.shape[-1] == 1 or im.shape[-1] == 3:
         im_min, im_max = im.min(), im.max()
         if im_max > im_min:
@@ -116,7 +116,7 @@ def resize_image(im, new_dims, interp_order=1):
         else:
             ret = np.empty((new_dims[0], new_dims[1], im.shape[-1]), dtype=np.float32)
             ret.fill(im_min)
-            return ret        
+            return ret
     else:
         scale = tuple(np.array(new_dims, dtype=float) / np.array(im.shape[:2]))
         resized_im = scipy.ndimage.zoom(im, scale + (1,), order=interp_order)
