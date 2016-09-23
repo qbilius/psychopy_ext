@@ -209,7 +209,7 @@ def confidence(agg, kind='sem', within=None, alpha=.05, nsamples=None,
 
             levels = []
             for dim in within:
-                tmp = [r for r in agg.columns.names if not r.startswith(dim + '.')]
+                tmp = [r for r in agg.columns.values if not r.startswith(dim + '.')]
                 levels += tmp
             if len(levels) > 0:
                 #raise Exception('Could not find levels that start with any of the following: %s' % within)
